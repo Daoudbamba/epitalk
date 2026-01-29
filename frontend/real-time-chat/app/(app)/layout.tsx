@@ -1,26 +1,37 @@
+"use client"
+
 import type { ReactNode } from "react"
+import { useAuthStore } from "@/store/auth.store";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function AppLayout({
   children,
 }: {
   children: ReactNode
 }) {
+  const user = useAuthStore((state) => state.user);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!user) {
+      router.push("/login");
+    }
+  }, [user, router]);
+
   return (
     <div className="h-screen w-screen flex">
-      {/* Sidebar serveurs */}
       <aside className="w-16 bg-muted border-r flex items-center justify-center">
-        <span className="text-xs text-muted-foreground">Servers</span>
+        Servers
       </aside>
 
-      {/* Sidebar channels */}
       <aside className="w-60 bg-background border-r flex items-center justify-center">
-        <span className="text-sm text-muted-foreground">Channels</span>
+        Channels
       </aside>
 
-      {/* Contenu dynamique */}
       <main className="flex-1 flex items-center justify-center">
         {children}
       </main>
     </div>
-  )
+  );
 }
