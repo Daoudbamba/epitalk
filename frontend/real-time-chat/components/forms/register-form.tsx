@@ -14,6 +14,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import Link from "next/link"
 
 export function RegisterForm({
   className,
@@ -61,7 +62,8 @@ export function RegisterForm({
                   Créer un compte avec Google
                 </Button>
                 <FieldDescription className="text-center">
-                  Vous avez déjà un compte? <a href="/login">Se connecter</a>
+                  Vous avez déjà un compte? 
+                  <Link href="/login">Se connecter</Link>
                 </FieldDescription>
               </Field>
             </FieldGroup>
