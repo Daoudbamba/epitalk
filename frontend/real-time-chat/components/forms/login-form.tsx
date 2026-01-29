@@ -58,7 +58,7 @@ export function LoginForm({
                   Se connecter avec Google
                 </Button>
                 <FieldDescription className="text-center">
-                  Vous n&apos;avez pas de compte? <a href="#">&apos;inscrire</a>
+                  Vous n&apos;avez pas de compte? <a href="/register">S&apos;inscrire</a>
                 </FieldDescription>
               </Field>
             </FieldGroup>
