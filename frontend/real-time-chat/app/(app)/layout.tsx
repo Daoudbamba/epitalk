@@ -21,14 +21,6 @@ export default function AppLayout({
 
   return (
     <div className="h-screen w-screen flex">
-      <aside className="w-16 bg-muted border-r flex items-center justify-center">
-        Servers
-      </aside>
-
-      <aside className="w-60 bg-background border-r flex items-center justify-center">
-        Channels
-      </aside>
-
       <main className="flex-1 flex items-center justify-center">
         {children}
       </main>
