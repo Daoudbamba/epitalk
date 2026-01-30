@@ -18,15 +18,15 @@ import {
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  // ✅ HOOKS AU BON ENDROIT
   const login = useAuthStore((state) => state.login);
-  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -41,9 +41,8 @@ export function LoginForm({
         <CardContent>
           <form
             onSubmit={(e) => {
-              e.preventDefault(); // ✅ empêche le reload
-              login("test@email.com");
-              router.push("/servers");
+              e.preventDefault();
+              login({ id: "temp", email });
             }}
           >
             <FieldGroup>
@@ -53,21 +52,21 @@ export function LoginForm({
                   id="email"
                   type="email"
                   placeholder="m@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </Field>
 
               <Field>
-                <div className="flex items-center">
-                  <FieldLabel htmlFor="password">Mot de passe</FieldLabel>
-                  <a
-                    href="#"
-                    className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                  >
-                    Mot de passe oublié ?
-                  </a>
-                </div>
-                <Input id="password" type="password" required />
+                <FieldLabel htmlFor="password">Mot de passe</FieldLabel>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
               </Field>
 
               <Field>

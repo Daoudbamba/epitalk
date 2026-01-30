@@ -1,15 +1,20 @@
-import type { ReactNode } from "react"
+import type { Metadata } from "next";
 
 import "./globals.css"
+
+export const metadata: Metadata = {
+  title: "Real Time Chat",
+  description: "RTC",
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <html lang="fr">
       <body>{children}</body>
     </html>
-  )
+  );
 }

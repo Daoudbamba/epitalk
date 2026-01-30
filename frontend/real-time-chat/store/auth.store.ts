@@ -1,26 +1,18 @@
-import { create } from "zustand"
+import { create } from "zustand";
 
 type User = {
-  id: string
-  email: string
-}
+  id: string;
+  email: string;
+};
 
 type AuthState = {
-  user: User | null
-  login: (email: string) => void
-  logout: () => void
-}
+  user: User | null;
+  login: (user: User) => void;
+  logout: () => void;
+};
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-
-  login: (email) =>
-    set({
-      user: {
-        id: "1",
-        email,
-      },
-    }),
-
+  login: (user) => set({ user }),
   logout: () => set({ user: null }),
-}))
+}));
