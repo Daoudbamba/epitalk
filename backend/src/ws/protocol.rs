@@ -1,19 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Événements envoyés par le client
+#[derive(Debug, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ClientEvent {
     MessageSend {
         channel_id: String,
         content: String,
     },
-    Typing {
-        channel_id: String,
-        is_typing: bool,
-    },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/// Événements envoyés par le serveur
+#[derive(Debug, Serialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ServerEvent {
     MessageNew {
@@ -23,14 +21,8 @@ pub enum ServerEvent {
         content: String,
         created_at: String,
     },
-    UserTyping {
-        user_id: String,
-        channel_id: String,
-    },
-    UserOnline {
-        user_id: String,
-    },
-    UserOffline {
-        user_id: String,
-    },
+
+    // Tu peux ajouter d’autres événements ici
+    // UserJoined { user_id: String, room_id: String },
+    // UserLeft { user_id: String, room_id: String },
 }
