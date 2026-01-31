@@ -1,54 +1,70 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use dashmap::{DashMap, DashSet};
+use tokio::sync::mpsc::UnboundedSender;
+use axum::extract::ws::Message;
 use uuid::Uuid;
 
 use crate::ws::protocol::ServerEvent;
 
+pub type ConnId = Uuid;
+pub type UserId = String;
+pub type RoomId = String;
+
 #[derive(Clone)]
 pub struct Hub {
-    inner: Arc<RwLock<HubInner>>,
-}
-
-struct HubInner {
-    connections: HashMap<String, HashSet<Uuid>>,
+    pub connections: DashMap<UserId, DashSet<ConnId>>,
+    pub sockets: DashMap<ConnId, UnboundedSender<Message>>,
+    pub rooms: DashMap<RoomId, DashSet<ConnId>>,
 }
 
 impl Hub {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(HubInner {
-                connections: HashMap::new(),
-            })),
+            connections: DashMap::new(),
+            sockets: DashMap::new(),
+            rooms: DashMap::new(),
         }
     }
 
-    /// Retourne true si c’est la première connexion de l’utilisateur
-    pub async fn register(&self, user_id: &str, conn_id: Uuid) -> bool {
-        let mut inner = self.inner.write().await;
-
-        let entry = inner.connections.entry(user_id.to_string()).or_default();
-        let first = entry.is_empty();
-        entry.insert(conn_id);
-
-        first
+    /// Rejoindre une room
+    pub fn join_room(&self, room_id: &RoomId, conn_id: ConnId) {
+        let room = self.rooms.entry(room_id.clone()).or_default();
+        room.insert(conn_id);
     }
 
-    /// Retourne true si c’était la dernière connexion de l’utilisateur
-    pub async fn unregister(&self, user_id: &str, conn_id: Uuid) -> bool {
-        let mut inner = self.inner.write().await;
+    /// Quitter une room
+    pub fn leave_room(&self, room_id: &RoomId, conn_id: &ConnId) {
+        if let Some(room) = self.rooms.get(room_id) {
+            room.remove(conn_id);
+        }
+    }
 
-        if let Some(set) = inner.connections.get_mut(user_id) {
-            set.remove(&conn_id);
-            let last = set.is_empty();
+    /// Broadcast à tous les clients d’une room
+    pub async fn broadcast_room(&self, room_id: &RoomId, event: ServerEvent) {
+    let payload = format!(
+        "{}\n",
+        serde_json::to_string(&event).unwrap()
+    );
 
-            if last {
-                inner.connections.remove(user_id);
+    if let Some(room) = self.rooms.get(room_id) {
+        for conn_id in room.iter() {
+            if let Some(sender) = self.sockets.get(&*conn_id) {
+                let _ = sender.send(Message::Text(payload.clone()));
             }
-
-            return last;
         }
-
-        false
     }
+}
+
+
+    /// Broadcast global (tous les sockets)
+    pub async fn broadcast_all(&self, event: ServerEvent) {
+    let payload = format!(
+        "{}\n",
+        serde_json::to_string(&event).unwrap()
+    );
+
+    for sender in self.sockets.iter() {
+        let _ = sender.value().send(Message::Text(payload.clone()));
+    }
+}
+
 }
