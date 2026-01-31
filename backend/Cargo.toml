@@ -7,8 +7,7 @@ edition = "2021"
 # Web framework
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
-
-# WebSocket utils
+tokio-stream = "0.1"
 futures-util = "0.3"
 
 # Serialization
@@ -19,16 +18,16 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 
-# Concurrency
+# Concurrency / state
 dashmap = "5"
 
-# MongoDB
+# Database
 mongodb = "2.8"
 
 # Error handling
 anyhow = "1"
 thiserror = "1"
 
-# Logging (simple pour commencer)
+# Logging
 tracing = "0.1"
 tracing-subscriber = "0.3"
