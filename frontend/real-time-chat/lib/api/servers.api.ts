@@ -1,17 +1,17 @@
-//gère les serveurs
+import type { FetchClient } from "./fetchClient";
+import type { Server } from "./schemas/servers.schema";
 
-import { FetchClient } from "./fetchClient";
-import { ServerListSchema, type Server } from "./schemas/servers.schema";
+export function createServersApi(client: FetchClient) {
+  return {
+    list: () => client.get<Server[]>("/servers"),
 
-export class ServersAPI {
-  private client: FetchClient;
+    create: (name: string) => client.post<Server>("/servers", { name }),
 
-  constructor(client: FetchClient) {
-    this.client = client;
-  }
+    join: (serverId: string) => client.post<Server>(`/servers/${serverId}/join`),
 
-  async list(): Promise<Server[]> {
-    const response = await this.client.get<Server[]>("/api/servers");
-    return ServerListSchema.parse(response);
-  }
+    leave: (serverId: string) =>
+      client.post<Server>(`/servers/${serverId}/leave`),
+
+    delete: (serverId: string) => client.delete<void>(`/servers/${serverId}`),
+  };
 }

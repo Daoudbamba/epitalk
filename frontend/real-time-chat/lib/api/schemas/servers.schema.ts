@@ -1,10 +1,17 @@
+// lib/api/schemas/servers.schema.ts
 import { z } from "zod";
 
-export const ServerSchema = z.object({
+export const memberSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  username: z.string(),
 });
 
-export const ServerListSchema = z.array(ServerSchema);
+export const serverSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  ownerId: z.string(),
+  members: z.array(memberSchema),
+});
 
-export type Server = z.infer<typeof ServerSchema>;
+export type Member = z.infer<typeof memberSchema>;
+export type Server = z.infer<typeof serverSchema>;
