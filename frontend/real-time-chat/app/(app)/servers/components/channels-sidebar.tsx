@@ -1,25 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { Channel } from "@/lib/api/schemas/channels.schema";
+import { useChannelStore } from "@/store/channel.store";
 
 export function ChannelsSidebar() {
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/channels")
-      .then((res) => {
-        if (!res.ok) throw new Error("API error");
-        return res.json();
-      })
-      .then((data: Channel[]) => {
-        setChannels(data);
-      })
-      .catch((err) => {
-        console.error("Erreur chargement channels", err);
-      });
-  }, []);
+  const channels = useChannelStore((s) => s.channels);
+  const activeChannelId = useChannelStore((s) => s.activeChannelId);
+  const setActiveChannel = useChannelStore((s) => s.setActiveChannel);
 
   return (
     <div className="w-64 border-r p-3">
@@ -44,9 +30,9 @@ export function ChannelsSidebar() {
                     ? "bg-muted font-medium"
                     : "hover:bg-muted/50"
                 }`}
-                onClick={() => setActiveChannelId(channel.id)}
+                onClick={() => setActiveChannel(channel.id)}
               >
-                {channel.name}
+                #{channel.name}
               </li>
             );
           })}

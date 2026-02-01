@@ -4,6 +4,6 @@ export async function GET() {
   return NextResponse.json([
     { id: "channel-1", name: "général" },
     { id: "channel-2", name: "annonces" },
-    { id: "channel-3", name: "random" },
+    { id: "channel-3", name: "jeux vidéos" },
   ]);
 }
