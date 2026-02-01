@@ -11,7 +11,7 @@ export class ServersAPI {
   }
 
   async list(): Promise<Server[]> {
-    const response = await this.client.get<Server[]>("/servers");
+    const response = await this.client.get<Server[]>("/api/servers");
     return ServerListSchema.parse(response);
   }
 }
