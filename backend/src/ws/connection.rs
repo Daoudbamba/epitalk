@@ -7,61 +7,128 @@ use uuid::Uuid;
 
 use crate::ws::hub::Hub;
 use crate::ws::protocol::{ClientEvent, ServerEvent};
+use crate::services::message_service::MessageService;
 
 pub async fn handle_connection(
     socket: WebSocket,
     hub: Arc<Hub>,
+    message_service: Arc<MessageService>,
     conn_id: Uuid,
 ) {
     let user_id = "debug-user".to_string();
 
-    // Créer un channel pour envoyer les messages vers le client
+    // Canal interne pour envoyer des messages au client
     let (tx, rx) = mpsc::unbounded_channel();
     hub.sockets.insert(conn_id, tx);
 
     let mut rx = UnboundedReceiverStream::new(rx);
     let (mut sender, mut receiver) = socket.split();
 
-    // Task pour forwarder les messages du hub vers le client
-    let _send_task = {
-        let hub_send = hub.clone(); // clone si besoin dans le futur
-        tokio::spawn(async move {
-            while let Some(msg) = rx.next().await {
-                let _ = sender.send(msg).await;
-            }
-        })
-    };
+    // ---------------------------------------------------------
+    // TASK SEND : envoie les messages du hub → client WebSocket
+    // ---------------------------------------------------------
+    tokio::spawn(async move {
+        while let Some(msg) = rx.next().await {
+            let _ = sender.send(msg).await;
+        }
+    });
 
-    // Rejoindre la room globale
+    // Rejoindre la room globale par défaut
     hub.join_room(&"global".to_string(), conn_id);
 
-    // Task pour recevoir les messages du client
     let hub_recv = hub.clone();
+
+    // ---------------------------------------------------------
+    // TASK RECEIVE : reçoit les messages du client
+    // ---------------------------------------------------------
     let recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
             if let Message::Text(text) = msg {
-                if let Ok(ClientEvent::MessageSend { content, .. }) =
-                    serde_json::from_str(&text)
-                {
-                    let event = ServerEvent::MessageNew {
-                        id: Uuid::new_v4().to_string(),
-                        channel_id: "global".into(),
-                        author_id: user_id.clone(),
-                        content,
-                        created_at: chrono::Utc::now().to_rfc3339(),
-                    };
+                if let Ok(event) = serde_json::from_str::<ClientEvent>(&text) {
+                    match event {
 
-                    // broadcast à tous les clients de la room "global"
-                    hub_recv.broadcast_room(&"global".to_string(), event).await;
+                        // ==================================================
+                        // MESSAGE SEND (MongoDB + WebSocket)
+                        // ==================================================
+                        ClientEvent::MessageSend { channel_id, content } => {
+                            let created_at = chrono::Utc::now().to_rfc3339();
+
+                            // 🔥 Stockage MongoDB
+                            let id = message_service
+                                .create_message(
+                                    channel_id.clone(),
+                                    user_id.clone(),
+                                    content.clone(),
+                                    created_at.clone(),
+                                )
+                                .await;
+
+                            // 🔊 Broadcast WebSocket
+                            let event = ServerEvent::MessageNew {
+                                id: id.to_hex(),
+                                channel_id: channel_id.clone(),
+                                author_id: user_id.clone(),
+                                content,
+                                created_at,
+                            };
+
+                            hub_recv.broadcast_room(&channel_id, event).await;
+                        }
+
+                        // ==================================================
+                        // JOIN CHANNEL + HISTORIQUE
+                        // ==================================================
+                        ClientEvent::JoinChannel { channel_id } => {
+                            // Ajouter la connexion dans la room
+                            hub_recv.join_room(&channel_id, conn_id);
+
+                            // 1) 🔥 Envoyer l’historique des messages
+                            let history = message_service.get_history(&channel_id).await;
+
+                            for msg in history {
+                                let event = ServerEvent::MessageNew {
+                                    id: msg.id.expect("missing _id").to_hex(),
+                                    channel_id: msg.channel_id.clone(),
+                                    author_id: msg.author_id.clone(),
+                                    content: msg.content.clone(),
+                                    created_at: msg.created_at.clone(),
+                                };
+
+                                hub_recv.broadcast_room(&channel_id, event).await;
+                            }
+
+                            // 2) 🔊 Notifier les autres utilisateurs
+                            let event = ServerEvent::UserJoined {
+                                user_id: user_id.clone(),
+                                channel_id: channel_id.clone(),
+                            };
+
+                            hub_recv.broadcast_room(&channel_id, event).await;
+                        }
+
+                        // ==================================================
+                        // LEAVE CHANNEL
+                        // ==================================================
+                        ClientEvent::LeaveChannel { channel_id } => {
+                            hub_recv.leave_room(&channel_id, &conn_id);
+
+                            let event = ServerEvent::UserLeft {
+                                user_id: user_id.clone(),
+                                channel_id: channel_id.clone(),
+                            };
+
+                            hub_recv.broadcast_room(&channel_id, event).await;
+                        }
+                    }
                 }
             }
         }
     });
 
-    // Attendre que la task de réception finisse
+    // Attendre la fin de la task
     recv_task.await.unwrap();
 
-    // Nettoyage : retirer le socket et quitter la room
+    // Nettoyage
     hub.sockets.remove(&conn_id);
     hub.leave_room(&"global".to_string(), &conn_id);
 }
