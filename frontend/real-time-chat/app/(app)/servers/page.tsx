@@ -39,7 +39,7 @@ export default async function ServersPage() {
       </div>
 
       {/* Barre des serveurs (pas encore branchée aux données) */}
-      <ServersBar />
+      <ServersBar servers={servers}/>
 
       <div className="flex flex-1 overflow-hidden">
         <ChannelsSidebar />

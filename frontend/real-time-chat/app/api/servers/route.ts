@@ -14,5 +14,9 @@ export async function GET() {
       id: "server-3",
       name: "Serveur privé",
     },
+    {
+      id: "server-4",
+      name: "Serveur test",
+    },
   ]);
 }
