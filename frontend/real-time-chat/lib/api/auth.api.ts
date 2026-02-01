@@ -18,7 +18,7 @@ export class AuthAPI {
   }
 
   async me(): Promise<User> {
-    const response = await this.client.get<User>("/auth/me");
+    const response = await this.client.get<User>("/api/auth/me");
     return UserSchema.parse(response);
   }
 
