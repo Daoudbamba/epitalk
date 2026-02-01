@@ -36,6 +36,25 @@ pub async fn handle_connection(
     // Rejoindre la room globale par défaut
     hub.join_room(&"global".to_string(), conn_id);
 
+    // 🔥 Envoyer l’historique dès la connexion
+let history = message_service.get_history("global").await;
+
+for msg in history {
+    let event = ServerEvent::MessageNew {
+        id: msg.id.expect("missing _id").to_hex(),
+        channel_id: msg.channel_id.clone(),
+        author_id: msg.author_id.clone(),
+        content: msg.content.clone(),
+        created_at: msg.created_at.clone(),
+    };
+
+    // On envoie l’événement uniquement au client connecté
+    if let Some(tx) = hub.sockets.get(&conn_id) {
+        let json = serde_json::to_string(&event).unwrap();
+        let _ = tx.send(Message::Text(json));
+    }
+}
+
     let hub_recv = hub.clone();
 
     // ---------------------------------------------------------
