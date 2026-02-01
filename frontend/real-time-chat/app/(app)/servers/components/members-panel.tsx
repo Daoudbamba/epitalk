@@ -1,8 +1,13 @@
 "use client";
 
-import type { Server } from "@/lib/api/schemas/servers.schema";
+import { useServerStore } from "@/store/server.store";
 
-export function MembersPanel({ server }: { server?: Server | null }) {
+export function MembersPanel() {
+  const servers = useServerStore((s) => s.servers);
+  const activeServerId = useServerStore((s) => s.activeServerId);
+
+  const server = servers.find((s) => s.id === activeServerId) ?? null;
+
   if (!server) {
     return (
       <aside className="w-64 border-l p-4">
