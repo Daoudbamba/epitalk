@@ -22,7 +22,7 @@ export default async function TestPage() {
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>TEST API : OK ✅</h1>
+      <h1>TEST API : OK ! ✅</h1>
       <pre>{JSON.stringify(user, null, 2)}</pre>
     </div>
   );
