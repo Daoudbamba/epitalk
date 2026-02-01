@@ -24,5 +24,10 @@ export function createChannelsApi(client: FetchClient) {
       const res = await client.get<Channel>(`/channels/${channelId}`);
       return ChannelSchema.parse(res);
     },
+
+    async list(): Promise<Channel[]> {
+      const res = await client.get<Channel[]>("/api/channels");
+      return ChannelListSchema.parse(res);
+    },
   };
 }
