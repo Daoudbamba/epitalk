@@ -25,46 +25,78 @@ impl Hub {
         }
     }
 
-    /// Rejoindre une room
     pub fn join_room(&self, room_id: &RoomId, conn_id: ConnId) {
         let room = self.rooms.entry(room_id.clone()).or_default();
         room.insert(conn_id);
     }
 
-    /// Quitter une room
     pub fn leave_room(&self, room_id: &RoomId, conn_id: &ConnId) {
         if let Some(room) = self.rooms.get(room_id) {
             room.remove(conn_id);
         }
     }
 
-    /// Broadcast à tous les clients d’une room
-    pub async fn broadcast_room(&self, room_id: &RoomId, event: ServerEvent) {
-    let payload = format!(
-        "{}\n",
-        serde_json::to_string(&event).unwrap()
-    );
+    // ---------------------------------------------------------
+    // BROADCAST ROOM (3 messages séparés)
+    // ---------------------------------------------------------
 
-    if let Some(room) = self.rooms.get(room_id) {
-        for conn_id in room.iter() {
-            if let Some(sender) = self.sockets.get(&*conn_id) {
-                let _ = sender.send(Message::Text(payload.clone()));
+    pub async fn broadcast_room(&self, room_id: &RoomId, event: ServerEvent) {
+        let json = serde_json::to_string_pretty(&event).unwrap();
+
+        let (time, author_id, content) = match &event {
+            ServerEvent::MessageNew {
+                created_at,
+                author_id,
+                content,
+                ..
+            } => (
+                created_at.clone(),
+                author_id.clone(),
+                content.clone(),
+            ),
+        };
+
+        let text = format!("[{}] {}: {}", time, author_id, content);
+        let separator = "----------------------------------------";
+
+        if let Some(room) = self.rooms.get(room_id) {
+            for conn_id in room.iter() {
+                if let Some(sender) = self.sockets.get(&*conn_id) {
+                    let _ = sender.send(Message::Text(text.clone()));
+                    let _ = sender.send(Message::Text(json.clone()));
+                    let _ = sender.send(Message::Text(separator.to_string()));
+                }
             }
         }
     }
-}
 
+    // ---------------------------------------------------------
+    // BROADCAST GLOBAL (3 messages séparés)
+    // ---------------------------------------------------------
 
-    /// Broadcast global (tous les sockets)
     pub async fn broadcast_all(&self, event: ServerEvent) {
-    let payload = format!(
-        "{}\n",
-        serde_json::to_string(&event).unwrap()
-    );
+        let json = serde_json::to_string_pretty(&event).unwrap();
 
-    for sender in self.sockets.iter() {
-        let _ = sender.value().send(Message::Text(payload.clone()));
+        let (time, author_id, content) = match &event {
+            ServerEvent::MessageNew {
+                created_at,
+                author_id,
+                content,
+                ..
+            } => (
+                created_at.clone(),
+                author_id.clone(),
+                content.clone(),
+            ),
+        };
+
+        let text = format!("[{}] {}: {}", time, author_id, content);
+        let separator = "----------------------------------------";
+
+        for sender in self.sockets.iter() {
+            let _ = sender.value().send(Message::Text(text.clone()));
+            let _ = sender.value().send(Message::Text(json.clone()));
+            let _ = sender.value().send(Message::Text(separator.to_string()));
+        }
     }
-}
-
 }
