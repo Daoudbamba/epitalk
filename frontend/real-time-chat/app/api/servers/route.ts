@@ -1,17 +1,44 @@
 import { NextResponse } from "next/server";
 
-type ServerMember = { id: string; username: string };
-type Server = { id: string; name: string; ownerId: string; members: ServerMember[] };
+export const dynamic = "force-dynamic";
 
-// Mémoire RAM (mock)
-let SERVERS: Server[] = [
-  {
-    id: "srv_1",
-    name: "Mon premier serveur",
-    ownerId: "u_1",
-    members: [{ id: "u_1", username: "zakary" }],
-  },
-];
+type ServerMember = { id: string; username: string };
+type Server = {
+  id: string;
+  name: string;
+  ownerId: string;
+  members: ServerMember[];
+};
+
+type Channel = { id: string; serverId: string; name: string };
+
+declare global {
+  var __SERVERS__: Server[] | undefined;
+  var __CHANNELS__: Channel[] | undefined;
+}
+
+function serversStore(): Server[] {
+  if (!globalThis.__SERVERS__) {
+    globalThis.__SERVERS__ = [
+      {
+        id: "srv_1",
+        name: "Mon premier serveur",
+        ownerId: "u_1",
+        members: [{ id: "u_1", username: "zakary" }],
+      },
+    ];
+  }
+  return globalThis.__SERVERS__;
+}
+
+function channelsStore(): Channel[] {
+  if (!globalThis.__CHANNELS__) {
+    globalThis.__CHANNELS__ = [
+      { id: "ch_1", serverId: "srv_1", name: "général" },
+    ];
+  }
+  return globalThis.__CHANNELS__;
+}
 
 // Mock “current user”
 function getCurrentUser(): ServerMember {
@@ -19,7 +46,7 @@ function getCurrentUser(): ServerMember {
 }
 
 export async function GET() {
-  return NextResponse.json(SERVERS);
+  return NextResponse.json(serversStore());
 }
 
 export async function POST(req: Request) {
@@ -32,6 +59,7 @@ export async function POST(req: Request) {
 
   const me = getCurrentUser();
 
+  // ✅ newServer est créé ICI
   const newServer: Server = {
     id: `srv_${Date.now()}`,
     name,
@@ -39,6 +67,16 @@ export async function POST(req: Request) {
     members: [me],
   };
 
-  SERVERS = [newServer, ...SERVERS];
+  // Ajoute le serveur au store
+  const servers = serversStore();
+  globalThis.__SERVERS__ = [newServer, ...servers];
+
+  // ✅ AJOUT : créer automatiquement le channel "général" pour ce serveur
+  const channels = channelsStore();
+  globalThis.__CHANNELS__ = [
+    { id: `ch_${Date.now() + 1}`, serverId: newServer.id, name: "général" },
+    ...channels,
+  ];
+
   return NextResponse.json(newServer, { status: 201 });
 }

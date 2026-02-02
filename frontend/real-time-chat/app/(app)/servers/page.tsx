@@ -4,7 +4,6 @@ import { ServersLoader } from "./components/servers-loader";
 import { ServersBar } from "./components/servers-bar";
 import { MembersPanel } from "./components/members-panel";
 import { ChannelsSidebar } from "./components/channels-sidebar";
-import { ChatPanel } from "./components/chat-panel";
 
 export default function ServersPage() {
   return (
@@ -18,8 +17,11 @@ export default function ServersPage() {
               <ChannelsSidebar />
             </div>
 
-            <div className="flex-1 overflow-hidden">
-              <ChatPanel />
+            {/* Centre : vide pour l’instant (pas de messagerie) */}
+            <div className="flex-1 p-6">
+              <p className="text-sm text-muted-foreground">
+                Sélectionne un channel à gauche. (Messagerie désactivée pour cette étape.)
+              </p>
             </div>
 
             <MembersPanel />

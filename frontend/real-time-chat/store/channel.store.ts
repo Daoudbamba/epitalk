@@ -1,18 +1,18 @@
 import { create } from "zustand";
 import type { Channel } from "@/lib/api/schemas/channels.schema";
 
-type ChannelStore = {
+type ChannelState = {
   channels: Channel[];
   activeChannelId: string | null;
-
   setChannels: (channels: Channel[]) => void;
-  setActiveChannel: (channelId: string) => void;
+  setActiveChannel: (id: string | null) => void;
+  reset: () => void;
 };
 
-export const useChannelStore = create<ChannelStore>((set) => ({
+export const useChannelStore = create<ChannelState>((set) => ({
   channels: [],
   activeChannelId: null,
-
   setChannels: (channels) => set({ channels }),
-  setActiveChannel: (channelId) => set({ activeChannelId: channelId }),
+  setActiveChannel: (id) => set({ activeChannelId: id }),
+  reset: () => set({ channels: [], activeChannelId: null }),
 }));

@@ -7,7 +7,11 @@ export const ChannelSchema = z.object({
   type: z.enum(["text", "voice"]).default("text"),
 });
 
-export type Channel = z.infer<typeof ChannelSchema>;
+export type Channel = {
+  id: string;
+  serverId: string;
+  name: string;
+};
 
 export const ChannelListSchema = z.array(ChannelSchema);
 
