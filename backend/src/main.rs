@@ -1,5 +1,6 @@
 //! RTC Backend - Main entry point
 
+mod auth;
 mod config;
 mod db;
 mod error;
@@ -13,6 +14,7 @@ use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

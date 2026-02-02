@@ -13,6 +13,7 @@ use axum::{
 };
 use uuid::Uuid;
 
+use crate::auth::RequireAuth;
 use crate::error::{AppError, AppResult};
 use crate::models::{MemberResponse, MemberRole, UpdateMemberRoleRequest};
 use crate::repositories::MembershipRepository;
@@ -40,9 +41,10 @@ pub struct MemberPath {
 /// List all members of a server
 async fn list_members(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(params): Path<ServerPath>,
 ) -> AppResult<Json<Vec<MemberResponse>>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check membership
     if !MembershipRepository::is_member(&state.db, user_id, params.server_id).await? {
@@ -57,9 +59,10 @@ async fn list_members(
 /// Get member details
 async fn get_member(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(params): Path<MemberPath>,
 ) -> AppResult<Json<MemberResponse>> {
-    let current_user_id = get_current_user_id()?;
+    let current_user_id = auth.user_id;
 
     // Check membership
     if !MembershipRepository::is_member(&state.db, current_user_id, params.server_id).await? {
@@ -78,10 +81,11 @@ async fn get_member(
 /// Update member role (OWNER only)
 async fn update_member_role(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(params): Path<MemberPath>,
     Json(payload): Json<UpdateMemberRoleRequest>,
 ) -> AppResult<Json<MemberResponse>> {
-    let current_user_id = get_current_user_id()?;
+    let current_user_id = auth.user_id;
 
     // Check caller's role
     let caller_role = MembershipRepository::get_role(&state.db, current_user_id, params.server_id)
@@ -132,9 +136,10 @@ async fn update_member_role(
 /// Kick member (ADMIN+, cannot kick OWNER or higher/equal role)
 async fn kick_member(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(params): Path<MemberPath>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let current_user_id = get_current_user_id()?;
+    let current_user_id = auth.user_id;
 
     // Cannot kick yourself (use leave instead)
     if current_user_id == params.user_id {
@@ -170,9 +175,4 @@ async fn kick_member(
     MembershipRepository::delete(&state.db, params.user_id, params.server_id).await?;
 
     Ok(Json(serde_json::json!({ "kicked": true })))
-}
-
-// TODO: Replace with actual JWT auth middleware
-fn get_current_user_id() -> AppResult<Uuid> {
-    Err(AppError::Unauthorized)
 }

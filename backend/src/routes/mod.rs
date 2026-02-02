@@ -1,10 +1,11 @@
 //! API Routes
 
-pub mod servers;
+pub mod auth;
 pub mod channels;
-pub mod members;
-pub mod invites;
 pub mod health;
+pub mod invites;
+pub mod members;
+pub mod servers;
 
 use axum::Router;
 use crate::state::AppState;
@@ -13,5 +14,7 @@ use crate::state::AppState;
 pub fn api_router() -> Router<AppState> {
     Router::new()
         .merge(health::router())
+        .nest("/auth", auth::routes())
         .nest("/servers", servers::router())
+        .nest("/join", invites::join_router())
 }

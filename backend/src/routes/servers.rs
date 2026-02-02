@@ -11,11 +11,12 @@
 
 use axum::{
     extract::{Path, State},
-    routing::{delete, get, patch, post},
+    routing::{get, post},
     Json, Router,
 };
 use uuid::Uuid;
 
+use crate::auth::RequireAuth;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     CreateServerRequest, MemberRole, ServerResponse, UpdateServerRequest,
@@ -39,14 +40,11 @@ pub fn router() -> Router<AppState> {
 }
 
 /// List all servers the user is a member of
-/// 
-/// TODO: Extract user_id from JWT auth middleware
 async fn list_servers(
     State(state): State<AppState>,
+    auth: RequireAuth,
 ) -> AppResult<Json<Vec<ServerResponse>>> {
-    // TODO: Get user_id from auth context
-    // For now, we'll use a placeholder - this should come from JWT middleware
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     let servers = ServerRepository::find_by_user_id(&state.db, user_id).await?;
     
@@ -64,10 +62,10 @@ async fn list_servers(
 /// Create a new server
 async fn create_server(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Json(payload): Json<CreateServerRequest>,
 ) -> AppResult<Json<ServerResponse>> {
-    // TODO: Get user_id from auth context
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     let server = ServerRepository::create(&state.db, &payload.name, user_id).await?;
     let mut response = ServerResponse::from(server);
@@ -79,10 +77,10 @@ async fn create_server(
 /// Get server details
 async fn get_server(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(server_id): Path<Uuid>,
 ) -> AppResult<Json<ServerResponse>> {
-    // TODO: Verify user is a member
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check membership
     if !MembershipRepository::is_member(&state.db, user_id, server_id).await? {
@@ -103,10 +101,11 @@ async fn get_server(
 /// Update server (ADMIN+ only)
 async fn update_server(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(server_id): Path<Uuid>,
     Json(payload): Json<UpdateServerRequest>,
 ) -> AppResult<Json<ServerResponse>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, server_id)
@@ -128,9 +127,10 @@ async fn update_server(
 /// Delete server (OWNER only)
 async fn delete_server(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(server_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, server_id)
@@ -149,9 +149,10 @@ async fn delete_server(
 /// Leave server (non-OWNER only)
 async fn leave_server(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(server_id): Path<Uuid>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, server_id)
@@ -178,10 +179,11 @@ pub struct TransferOwnershipRequest {
 /// Transfer server ownership (OWNER only)
 async fn transfer_ownership(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(server_id): Path<Uuid>,
     Json(payload): Json<TransferOwnershipRequest>,
 ) -> AppResult<Json<ServerResponse>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check current user is owner
     let role = MembershipRepository::get_role(&state.db, user_id, server_id)
@@ -210,11 +212,4 @@ async fn transfer_ownership(
     response.member_count = Some(member_count);
 
     Ok(Json(response))
-}
-
-// TODO: Replace with actual JWT auth middleware
-fn get_current_user_id() -> AppResult<Uuid> {
-    // This is a placeholder - should be replaced with actual auth extraction
-    // For testing, return a fixed UUID or error
-    Err(AppError::Unauthorized)
 }
