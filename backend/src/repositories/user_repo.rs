@@ -40,6 +40,22 @@ impl UserRepository {
         Ok(user)
     }
 
+    /// Find user by username
+    pub async fn find_by_username(pool: &PgPool, username: &str) -> AppResult<Option<User>> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            SELECT id, email, password_hash, username, created_at, updated_at
+            FROM users
+            WHERE username = $1
+            "#,
+        )
+        .bind(username)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(user)
+    }
+
     /// Create a new user
     pub async fn create(
         pool: &PgPool,

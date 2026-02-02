@@ -15,6 +15,7 @@ use axum::{
 };
 use uuid::Uuid;
 
+use crate::auth::RequireAuth;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     CreateInviteRequest, InviteResponse, JoinServerRequest, MemberRole, ServerResponse,
@@ -50,9 +51,10 @@ pub struct InvitePath {
 /// List all invites for a server (ADMIN+ only)
 async fn list_invites(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(params): Path<ServerPath>,
 ) -> AppResult<Json<Vec<InviteResponse>>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, params.server_id)
@@ -72,10 +74,11 @@ async fn list_invites(
 /// Create a new invite (ADMIN+ only)
 async fn create_invite(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(params): Path<ServerPath>,
     Json(payload): Json<CreateInviteRequest>,
 ) -> AppResult<Json<InviteResponse>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, params.server_id)
@@ -101,9 +104,10 @@ async fn create_invite(
 /// Delete an invite (ADMIN+ only)
 async fn delete_invite(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Path(params): Path<InvitePath>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, params.server_id)
@@ -131,9 +135,10 @@ async fn delete_invite(
 /// Join a server using an invite code
 async fn join_server(
     State(state): State<AppState>,
+    auth: RequireAuth,
     Json(payload): Json<JoinServerRequest>,
 ) -> AppResult<Json<ServerResponse>> {
-    let user_id = get_current_user_id()?;
+    let user_id = auth.user_id;
 
     // Find invite by code
     let invite = InviteRepository::find_by_code(&state.db, &payload.code)
@@ -166,9 +171,4 @@ async fn join_server(
     response.member_count = Some(member_count);
 
     Ok(Json(response))
-}
-
-// TODO: Replace with actual JWT auth middleware
-fn get_current_user_id() -> AppResult<Uuid> {
-    Err(AppError::Unauthorized)
 }
