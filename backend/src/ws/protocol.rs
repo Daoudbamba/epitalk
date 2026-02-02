@@ -8,6 +8,12 @@ pub enum ClientEvent {
         channel_id: String,
         content: String,
     },
+    JoinChannel {
+        channel_id: String,
+    },
+    LeaveChannel {
+        channel_id: String,
+    },
 }
 
 /// Événements envoyés par le serveur
@@ -21,8 +27,12 @@ pub enum ServerEvent {
         content: String,
         created_at: String,
     },
-
-    // Tu peux ajouter d’autres événements ici
-    // UserJoined { user_id: String, room_id: String },
-    // UserLeft { user_id: String, room_id: String },
+    UserJoined {
+        user_id: String,
+        channel_id: String,
+    },
+    UserLeft {
+        user_id: String,
+        channel_id: String,
+    },
 }
