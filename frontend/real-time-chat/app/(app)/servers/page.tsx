@@ -19,11 +19,10 @@ export default function ServersPage() {
               <ChannelsSidebar />
 
             </div>
-            {/* Centre : vide pour l’instant (pas de messagerie) */}
-            <div className="flex-1 p-6">
-              <p className="text-sm text-muted-foreground">
+            <div className="flex-1 overflow-hidden">
+              {/*<p className="text-sm text-muted-foreground"> */}
                 <ChatPanel />
-              </p>
+              {/*</p>*/}
             </div>
 
             <MembersPanel />
