@@ -6,42 +6,76 @@ use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
 /// Member role enum (matches PostgreSQL ENUM)
+/// Hierarchy: OWNER > ADMIN > MODERATOR > MEMBER
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "member_role", rename_all = "UPPERCASE")]
 pub enum MemberRole {
     Owner,
     Admin,
+    Moderator,
     Member,
 }
 
 impl MemberRole {
     /// Check if this role can manage members (promote/demote/kick)
+    /// Only Owner can manage members
     pub fn can_manage_members(&self) -> bool {
         matches!(self, MemberRole::Owner)
     }
 
-    /// Check if this role can manage channels
+    /// Check if this role can manage channels (create/edit/delete)
+    /// Owner and Admin can manage channels
     pub fn can_manage_channels(&self) -> bool {
         matches!(self, MemberRole::Owner | MemberRole::Admin)
     }
 
     /// Check if this role can create invites
+    /// Owner, Admin and Moderator can create invites
     pub fn can_create_invites(&self) -> bool {
-        matches!(self, MemberRole::Owner | MemberRole::Admin)
+        matches!(self, MemberRole::Owner | MemberRole::Admin | MemberRole::Moderator)
     }
 
     /// Check if this role can delete messages from others
+    /// Owner, Admin and Moderator can delete others' messages
     pub fn can_delete_others_messages(&self) -> bool {
-        matches!(self, MemberRole::Owner | MemberRole::Admin)
+        matches!(self, MemberRole::Owner | MemberRole::Admin | MemberRole::Moderator)
+    }
+
+    /// Check if this role can kick members
+    /// Owner and Admin can kick, Moderator can kick Members only
+    pub fn can_kick(&self, target_role: &MemberRole) -> bool {
+        match self {
+            MemberRole::Owner => true,
+            MemberRole::Admin => matches!(target_role, MemberRole::Moderator | MemberRole::Member),
+            MemberRole::Moderator => matches!(target_role, MemberRole::Member),
+            MemberRole::Member => false,
+        }
+    }
+
+    /// Check if this role can mute members
+    /// Owner, Admin and Moderator can mute lower roles
+    pub fn can_mute(&self, target_role: &MemberRole) -> bool {
+        self.can_kick(target_role)
     }
 
     /// Check if the role is higher or equal to another
     pub fn is_higher_or_equal(&self, other: &MemberRole) -> bool {
         match (self, other) {
             (MemberRole::Owner, _) => true,
-            (MemberRole::Admin, MemberRole::Admin | MemberRole::Member) => true,
+            (MemberRole::Admin, MemberRole::Admin | MemberRole::Moderator | MemberRole::Member) => true,
+            (MemberRole::Moderator, MemberRole::Moderator | MemberRole::Member) => true,
             (MemberRole::Member, MemberRole::Member) => true,
             _ => false,
+        }
+    }
+
+    /// Get numeric priority (higher = more permissions)
+    pub fn priority(&self) -> u8 {
+        match self {
+            MemberRole::Owner => 4,
+            MemberRole::Admin => 3,
+            MemberRole::Moderator => 2,
+            MemberRole::Member => 1,
         }
     }
 }
@@ -51,6 +85,7 @@ impl std::fmt::Display for MemberRole {
         match self {
             MemberRole::Owner => write!(f, "OWNER"),
             MemberRole::Admin => write!(f, "ADMIN"),
+            MemberRole::Moderator => write!(f, "MODERATOR"),
             MemberRole::Member => write!(f, "MEMBER"),
         }
     }
