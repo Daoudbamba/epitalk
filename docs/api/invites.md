@@ -59,7 +59,50 @@ Authorization: Bearer <access_token>
 | 403 | Insufficient permissions |
 | 404 | Server not found |
 
-### POST /servers/:server_id/invites
+### GET /servers/:server_id/invites/active
+
+Liste des invitations **actives** d'un serveur (non expirées et n'ayant pas atteint le nombre max d'utilisations). Requiert le rôle `moderator` ou supérieur.
+
+**Request**
+
+```http
+GET /api/v1/servers/660e8400-e29b-41d4-a716-446655440001/invites/active
+Authorization: Bearer <access_token>
+```
+
+**Response 200 OK**
+
+```json
+{
+  "data": [
+    {
+      "id": "880e8400-e29b-41d4-a716-446655440002",
+      "code": "xyz789AB",
+      "server_id": "660e8400-e29b-41d4-a716-446655440001",
+      "created_by": "550e8400-e29b-41d4-a716-446655440001",
+      "uses": 0,
+      "max_uses": null,
+      "expires_at": null,
+      "created_at": "2026-02-01T15:30:00Z",
+      "is_valid": true
+    }
+  ]
+}
+```
+
+**Différence avec GET /invites**
+
+| Endpoint | Retourne |
+| -------- | -------- |
+| `GET /invites` | Toutes les invitations (y compris expirées) |
+| `GET /invites/active` | Uniquement les invitations utilisables |
+
+**Errors**
+
+| Code | Message |
+| ---- | ------- |
+| 403 | Insufficient permissions |
+| 404 | Server not found |
 
 Créer une invitation. Requiert le rôle `moderator` ou supérieur.
 
