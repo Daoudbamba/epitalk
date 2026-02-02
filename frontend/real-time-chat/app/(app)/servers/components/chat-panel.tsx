@@ -1,3 +1,5 @@
+"use client";
+
 import { Input } from "@/components/ui/input";
 import { Plus, Smile, Gift, Sticker } from "lucide-react";
 
