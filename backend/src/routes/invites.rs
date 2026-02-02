@@ -1,7 +1,8 @@
 //! Invite routes
 //!
 //! Routes (nested under /servers/:server_id/invites):
-//! - GET    /           - List server invites (ADMIN+)
+//! - GET    /           - List all server invites (ADMIN+)
+//! - GET    /active     - List active server invites only (ADMIN+)
 //! - POST   /           - Create an invite (ADMIN+)
 //! - DELETE /:invite_id - Delete an invite (ADMIN+)
 //!
@@ -28,6 +29,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_invites).post(create_invite))
+        .route("/active", get(list_active_invites))
         .route("/:invite_id", axum::routing::delete(delete_invite))
 }
 
@@ -66,6 +68,29 @@ async fn list_invites(
     }
 
     let invites = InviteRepository::find_by_server(&state.db, params.server_id).await?;
+    let responses: Vec<InviteResponse> = invites.into_iter().map(Into::into).collect();
+
+    Ok(Json(responses))
+}
+
+/// List only ACTIVE invites for a server (not expired, not at max uses) - ADMIN+ only
+async fn list_active_invites(
+    State(state): State<AppState>,
+    auth: RequireAuth,
+    Path(params): Path<ServerPath>,
+) -> AppResult<Json<Vec<InviteResponse>>> {
+    let user_id = auth.user_id;
+
+    // Check role
+    let role = MembershipRepository::get_role(&state.db, user_id, params.server_id)
+        .await?
+        .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
+
+    if !role.can_create_invites() {
+        return Err(AppError::Forbidden("Insufficient permissions to view invites".to_string()));
+    }
+
+    let invites = InviteRepository::find_active_by_server(&state.db, params.server_id).await?;
     let responses: Vec<InviteResponse> = invites.into_iter().map(Into::into).collect();
 
     Ok(Json(responses))

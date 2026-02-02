@@ -58,6 +58,25 @@ impl InviteRepository {
         Ok(invites)
     }
 
+    /// Find all ACTIVE invites for a server (not expired, not at max uses)
+    pub async fn find_active_by_server(pool: &PgPool, server_id: Uuid) -> AppResult<Vec<Invite>> {
+        let invites = sqlx::query_as::<_, Invite>(
+            r#"
+            SELECT id, server_id, code, created_by, expires_at, max_uses, use_count, created_at
+            FROM invites
+            WHERE server_id = $1
+              AND (expires_at IS NULL OR expires_at > NOW())
+              AND (max_uses IS NULL OR use_count < max_uses)
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(server_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(invites)
+    }
+
     /// Create a new invite
     pub async fn create(
         pool: &PgPool,
