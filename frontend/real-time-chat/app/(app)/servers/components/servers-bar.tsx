@@ -10,17 +10,16 @@ function extractInviteCode(value: string): string | null {
   const v = value.trim();
   if (!v) return null;
 
-  // Cas 1: lien complet contenant /invite/<code>
   const match = v.match(/\/invite\/([^/?#\s]+)/i);
   if (match?.[1]) return match[1].trim();
 
-  // Cas 2: l’utilisateur a collé juste le code
-  // (on accepte lettres/chiffres/underscore/tiret)
   const codeOnly = v.match(/^([a-z0-9_-]{4,64})$/i);
   if (codeOnly?.[1]) return codeOnly[1].trim();
 
   return null;
 }
+
+type Status = { type: "success" | "error" | "info"; text: string } | null;
 
 export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const servers = useServerStore((s) => s.servers);
@@ -37,47 +36,75 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const [inviteInput, setInviteInput] = useState("");
   const [joinLoading, setJoinLoading] = useState(false);
 
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+
+  const [status, setStatus] = useState<Status>(null);
+
+  const setOk = (text: string) => setStatus({ type: "success", text });
+  const setErr = (text: string) => setStatus({ type: "error", text });
+  const setInfo = (text: string) => setStatus({ type: "info", text });
+
   const onCreateServer = async () => {
     const name = prompt("Nom du serveur ?");
     if (!name?.trim()) return;
 
+    setStatus(null);
     await serversApi.create(name.trim());
     await onRefresh();
+    setOk("Serveur créé.");
   };
 
   const onInvite = async () => {
     if (!activeServerId) return;
 
     if (!isOwner) {
-      alert("Seul le créateur peut générer une invitation (mock).");
+      setErr("Seul le créateur peut générer une invitation (mock).");
       return;
     }
 
-    const res = await fetch(`/api/servers/${activeServerId}/invite`, {
-      method: "POST",
-    });
+    setInviteLoading(true);
+    setStatus(null);
+    setInviteLink(null);
 
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      alert(txt || "Erreur invitation");
-      return;
+    try {
+      const res = await fetch(`/api/servers/${activeServerId}/invite`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        setErr(txt || "Erreur invitation");
+        return;
+      }
+
+      const data = (await res.json()) as { code: string };
+      const link = `${window.location.origin}/invite/${data.code}`;
+
+      setInviteLink(link);
+      await navigator.clipboard.writeText(link).catch(() => {});
+      setOk("Invitation générée (lien copié).");
+    } finally {
+      setInviteLoading(false);
     }
+  };
 
-    const data = (await res.json()) as { code: string };
-    const link = `${window.location.origin}/invite/${data.code}`;
-
-    await navigator.clipboard.writeText(link).catch(() => {});
-    alert(`Lien copié :\n${link}`);
+  const onCopyInvite = async () => {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink).catch(() => {});
+    setInfo("Lien copié.");
   };
 
   const onJoin = async () => {
     const code = extractInviteCode(inviteInput);
     if (!code) {
-      alert("Colle un lien /invite/<code> ou un code valide.");
+      setErr("Colle un lien /invite/<code> ou un code valide.");
       return;
     }
 
     setJoinLoading(true);
+    setStatus(null);
+
     try {
       const res = await fetch(`/api/invites/${encodeURIComponent(code)}/join`, {
         method: "POST",
@@ -85,12 +112,13 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        alert(txt || "Invite invalide");
+        setErr(txt || "Invite invalide");
         return;
       }
 
       setInviteInput("");
       await onRefresh();
+      setOk("Serveur rejoint.");
     } finally {
       setJoinLoading(false);
     }
@@ -99,14 +127,18 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const onLeaveOrDelete = async () => {
     if (!activeServerId || !activeServer) return;
 
+    setStatus(null);
+
     if (isOwner) {
       const ok = confirm("Tu es le créateur. Supprimer le serveur ?");
       if (!ok) return;
       await serversApi.delete(activeServerId);
+      setInfo("Serveur supprimé.");
     } else {
       const ok = confirm("Quitter ce serveur ?");
       if (!ok) return;
       await serversApi.leave(activeServerId);
+      setInfo("Serveur quitté.");
     }
 
     await onRefresh();
@@ -122,50 +154,96 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const joinDisabled = joinLoading || inviteInput.trim().length === 0;
 
+  const statusClasses =
+    status?.type === "success"
+      ? "border-green-200 text-green-700 bg-green-50"
+      : status?.type === "error"
+      ? "border-red-200 text-red-700 bg-red-50"
+      : "border-zinc-200 text-zinc-700 bg-zinc-50";
+
   return (
-    <div className="flex items-center gap-2 border-b px-4 py-2">
-      {servers.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Aucun serveur</p>
-      ) : (
-        servers.map((server) => (
-          <Button
-            key={server.id}
-            variant={server.id === activeServerId ? "default" : "outline"}
-            onClick={() => setActiveServer(server.id)}
-          >
-            {server.name}
+    <div className="border-b px-4 py-2">
+      <div className="flex items-center gap-2">
+        {servers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucun serveur</p>
+        ) : (
+          servers.map((server) => (
+            <Button
+              key={server.id}
+              variant={server.id === activeServerId ? "default" : "outline"}
+              onClick={() => setActiveServer(server.id)}
+            >
+              {server.name}
+            </Button>
+          ))
+        )}
+
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            value={inviteInput}
+            onChange={(e) => setInviteInput(e.target.value)}
+            placeholder="Lien d’invite ou code..."
+            className="h-9 w-56 rounded-md border px-3 text-sm bg-background"
+          />
+
+          <Button variant="outline" onClick={onJoin} disabled={joinDisabled}>
+            {joinLoading ? "..." : "Rejoindre"}
           </Button>
-        ))
-      )}
 
-      <div className="ml-auto flex items-center gap-2">
-        {/* ✅ Rejoindre via lien/code */}
-        <input
-          value={inviteInput}
-          onChange={(e) => setInviteInput(e.target.value)}
-          placeholder="Lien d’invite ou code..."
-          className="h-9 w-56 rounded-md border px-3 text-sm bg-background"
-        />
+          <Button
+            variant="outline"
+            onClick={onInvite}
+            disabled={!activeServerId || inviteLoading}
+            title={isOwner ? "Générer une invitation" : "Réservé au créateur"}
+          >
+            {inviteLoading ? "..." : "Inviter"}
+          </Button>
 
-        <Button variant="outline" onClick={onJoin} disabled={joinDisabled}>
-          {joinLoading ? "..." : "Rejoindre"}
-        </Button>
+          <Button
+            variant={isOwner ? "destructive" : "outline"}
+            onClick={onLeaveOrDelete}
+            disabled={!activeServerId}
+            title={isOwner ? "Supprimer le serveur" : "Quitter le serveur"}
+          >
+            {isOwner ? "Supprimer" : "Quitter"}
+          </Button>
 
-        <Button variant="outline" onClick={onInvite} disabled={!activeServerId}>
-          Inviter
-        </Button>
-
-        <Button
-          variant={isOwner ? "destructive" : "outline"}
-          onClick={onLeaveOrDelete}
-          disabled={!activeServerId}
-          title={isOwner ? "Supprimer le serveur" : "Quitter le serveur"}
-        >
-          {isOwner ? "Supprimer" : "Quitter"}
-        </Button>
-
-        <Button onClick={onCreateServer}>+ Nouveau serveur</Button>
+          <Button onClick={onCreateServer}>+ Nouveau serveur</Button>
+        </div>
       </div>
+
+      {/* ✅ Zone de retour utilisateur (status + lien invite) */}
+      {(status || inviteLink) && (
+        <div className="mt-2 flex items-center gap-2">
+          {status && (
+            <div className={`text-xs border rounded-md px-3 py-2 ${statusClasses}`}>
+              {status.text}
+            </div>
+          )}
+
+          {inviteLink && (
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="text-xs border rounded-md px-3 py-2 bg-background">
+                <span className="text-muted-foreground">Lien :</span>{" "}
+                <span className="font-mono">{inviteLink}</span>
+              </div>
+              <Button size="sm" variant="outline" onClick={onCopyInvite}>
+                Copier
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setInviteLink(null);
+                  setInfo("Lien masqué.");
+                }}
+              >
+                Fermer
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
