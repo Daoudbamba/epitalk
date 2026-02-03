@@ -12,7 +12,9 @@ export function MembersPanel() {
     return (
       <aside className="w-64 border-l p-4">
         <h3 className="text-sm font-semibold mb-4">Membres du serveur</h3>
-        <p className="text-sm text-muted-foreground">Aucun serveur sélectionné</p>
+        <p className="text-sm text-muted-foreground">
+          Aucun serveur sélectionné
+        </p>
       </aside>
     );
   }
@@ -26,7 +28,7 @@ export function MembersPanel() {
           const isOwner = m.id === server.ownerId;
           return (
             <li key={m.id}>
-              🟢 {m.username} {isOwner ? "(Créateur)" : "(Membre)"}
+              {m.username} {isOwner ? "(Créateur)" : "(Membre)"}
             </li>
           );
         })}
