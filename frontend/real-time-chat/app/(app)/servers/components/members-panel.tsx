@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { ME } from "@/lib/me";
 
-export function MembersPanel() {
+export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
 
@@ -34,8 +34,7 @@ export function MembersPanel() {
         return;
       }
 
-      // simple et stable pour l'instant
-      window.location.reload();
+      await onRefresh(); // ✅ refresh propre
     } finally {
       setLoadingKick(null);
     }

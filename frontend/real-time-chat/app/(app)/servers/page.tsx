@@ -6,7 +6,6 @@ import { ChatPanel } from "./components/chat-panel";
 import { MembersPanel } from "./components/members-panel";
 import { ChannelsSidebar } from "./components/channels-sidebar";
 
-
 export default function ServersPage() {
   return (
     <ServersLoader>
@@ -17,15 +16,13 @@ export default function ServersPage() {
           <div className="flex flex-1 overflow-hidden">
             <div className="w-72 border-r overflow-hidden">
               <ChannelsSidebar />
-
             </div>
+
             <div className="flex-1 overflow-hidden">
-              {/*<p className="text-sm text-muted-foreground"> */}
-                <ChatPanel />
-              {/*</p>*/}
+              <ChatPanel />
             </div>
 
-            <MembersPanel />
+            <MembersPanel onRefresh={refresh} />
           </div>
         </div>
       )}
