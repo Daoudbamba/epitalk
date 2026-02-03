@@ -1,4 +1,5 @@
 //! RTC Backend - Main entry point
+//! REST API for authentication and RBAC
 
 mod auth;
 mod config;
@@ -8,23 +9,12 @@ mod models;
 mod repositories;
 mod routes;
 mod state;
-mod ws;
-mod services;
 
 use axum::Router;
-use axum::routing::get;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use mongodb::Client;
-
-use crate::ws::hub::Hub;
-use crate::ws::ws_upgrade::ws_handler;
-use crate::db::message_repo::{MessageRepo, MessageDb};
-use crate::services::message_service::MessageService;
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -47,28 +37,12 @@ async fn main() -> anyhow::Result<()> {
     let pg_pool = db::postgres::create_pool(&config.database_url).await?;
     tracing::info!("PostgreSQL connected");
 
-    // Initialize MongoDB
-    let mongo_client = Client::with_uri_str(&config.mongo_url)
-        .await
-        .expect("MongoDB connection failed");
-    let mongo_db = mongo_client.database("chat");
-    let messages_collection = mongo_db.collection::<MessageDb>("messages");
-    tracing::info!("MongoDB connected");
-
-    // Initialize WebSocket Hub
-    let hub = Arc::new(Hub::new());
-    
-    // Initialize Message Service
-    let message_repo = MessageRepo::new(messages_collection);
-    let message_service = Arc::new(MessageService::new(message_repo));
-
     // Create application state
-    let state = state::AppState::new(pg_pool, config.clone(), hub.clone(), message_service.clone());
+    let state = state::AppState::new(pg_pool, config.clone());
 
     // Build router
     let app = Router::new()
         .nest("/api", routes::api_router())
-        .route("/ws", get(ws_handler))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
         .layer(

@@ -3,20 +3,17 @@ name = "rtc-backend"
 version = "0.1.0"
 edition = "2021"
 authors = ["James <james@epitech.eu>"]
-description = "RTC (Real Time Chat) Backend - Rust/Axum"
+description = "RTC (Real Time Chat) Backend - REST API for authentication and RBAC"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["macros", "ws"] }
+axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
-tokio-stream = "0.1"
-futures-util = "0.3"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 
 # Database
 sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
-mongodb = "2.8"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -32,9 +29,6 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
 anyhow = "1"
 validator = { version = "0.18", features = ["derive"] }
-
-# Concurrency / state (WebSocket)
-dashmap = "5"
 
 # Logging & Tracing
 tracing = "0.1"
