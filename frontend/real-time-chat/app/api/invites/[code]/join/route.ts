@@ -8,7 +8,7 @@ export async function POST(
   const { code } = await params;
   const db = getDb();
 
-  const invite = db.invites.find((i) => i.code === code);
+  const invite = db.invites.find((i) => i.code === code.trim());
   if (!invite) return new NextResponse("Invite not found", { status: 404 });
 
   const server = db.servers.find((s) => s.id === invite.serverId);

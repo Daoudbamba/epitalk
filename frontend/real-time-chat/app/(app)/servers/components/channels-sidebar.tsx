@@ -8,6 +8,7 @@ import { useChannelStore } from "@/store/channel.store";
 
 export function ChannelsSidebar() {
   const activeServerId = useServerStore((s) => s.activeServerId);
+  const servers = useServerStore((s) => s.servers);
 
   const channels = useChannelStore((s) => s.channels);
   const activeChannelId = useChannelStore((s) => s.activeChannelId);
@@ -16,6 +17,12 @@ export function ChannelsSidebar() {
   const reset = useChannelStore((s) => s.reset);
 
   const [loading, setLoading] = useState(false);
+
+  // ⚠️ Mock: notre "current user" côté API est u_1
+  const meId = "u_1";
+
+  const activeServer = servers.find((s) => s.id === activeServerId) ?? null;
+  const isOwner = !!activeServer && activeServer.ownerId === meId;
 
   const refresh = async () => {
     if (!activeServerId) {
@@ -48,14 +55,17 @@ export function ChannelsSidebar() {
 
   const onCreate = async () => {
     if (!activeServerId) return;
+
     const name = prompt("Nom du channel ?");
     if (!name?.trim()) return;
+
     await channelsApi.create(activeServerId, name.trim());
     await refresh();
   };
 
   const onDelete = async (channelId: string) => {
     if (!activeServerId) return;
+
     const ok = confirm("Supprimer ce channel ?");
     if (!ok) return;
 
@@ -67,7 +77,8 @@ export function ChannelsSidebar() {
     <div className="h-full flex flex-col">
       <div className="border-b px-4 py-3 flex items-center gap-2">
         <div className="text-sm font-semibold">Channels</div>
-        <div className="ml-auto">
+
+        <div className="ml-auto flex items-center gap-2">
           <Button size="sm" onClick={onCreate} disabled={!activeServerId}>
             + Nouveau
           </Button>
@@ -95,14 +106,17 @@ export function ChannelsSidebar() {
                   # {c.name}
                 </button>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onDelete(c.id)}
-                  title="Supprimer"
-                >
-                  ×
-                </Button>
+                {/* ✅ Suppression visible seulement si owner (sinon l'API renvoie 403) */}
+                {isOwner && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onDelete(c.id)}
+                    title="Supprimer"
+                  >
+                    ×
+                  </Button>
+                )}
               </div>
             );
           })
