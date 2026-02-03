@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  backend:
+    environment:
+      - RUST_LOG=debug
+    volumes:
+      - ./:/usr/src/backend
+    command: cargo run --bin backend
