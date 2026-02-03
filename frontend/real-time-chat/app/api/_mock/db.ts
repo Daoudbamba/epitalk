@@ -33,7 +33,7 @@ export type MockInvite = {
 
 export const mockCurrentUser: MockMember = {
   id: "u_1",
-  username: "zakary",
+  username: "Moïse",
 };
 
 declare global {

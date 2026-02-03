@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { channelsApi } from "@/lib/api";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
+import { ME } from "@/lib/me";
 
 export function ChannelsSidebar() {
   const activeServerId = useServerStore((s) => s.activeServerId);
@@ -19,7 +20,7 @@ export function ChannelsSidebar() {
   const [loading, setLoading] = useState(false);
 
   // ⚠️ Mock: notre "current user" côté API est u_1
-  const meId = "u_1";
+  const meId = ME.id;
 
   const activeServer = servers.find((s) => s.id === activeServerId) ?? null;
   const isOwner = !!activeServer && activeServer.ownerId === meId;
