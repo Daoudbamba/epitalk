@@ -51,3 +51,5 @@ Files added for docker/infra
 - `scripts/init-postgres.sql` - SQL to create `users` table
 - `scripts/init-mongo.js` - optional MongoDB seeding script
 - `.env.example` - env variables example
+
+Branches created locally for feature work: see `BRANCHES.md`.
