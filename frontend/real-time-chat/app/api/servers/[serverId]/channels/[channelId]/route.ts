@@ -1,35 +1,28 @@
 import { NextResponse } from "next/server";
-
-export const dynamic = "force-dynamic";
-
-type Channel = { id: string; serverId: string; name: string };
-
-declare global {
-  var __CHANNELS__: Channel[] | undefined;
-}
-
-function store(): Channel[] {
-  if (!globalThis.__CHANNELS__) globalThis.__CHANNELS__ = [];
-  return globalThis.__CHANNELS__;
-}
+import { getDb, mockCurrentUser } from "@/app/api/_mock/db";
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { serverId: string; channelId: string } }
+  { params }: { params: Promise<{ serverId: string; channelId: string }> }
 ) {
-  const channels = store();
-  const idx = channels.findIndex(
-    (c) => c.serverId === params.serverId && c.id === params.channelId
-  );
+  const { serverId, channelId } = await params;
+  const db = getDb();
 
-  if (idx === -1) {
+  const server = db.servers.find((s) => s.id === serverId);
+  if (!server) return new NextResponse("Server not found", { status: 404 });
+
+  if (server.ownerId !== mockCurrentUser.id) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  const before = db.channels.length;
+  db.channels = db.channels.filter((c) => !(c.serverId === serverId && c.id === channelId));
+
+  if (db.channels.length === before) {
     return new NextResponse("Channel not found", { status: 404 });
   }
 
-  const deleted = channels[idx];
-  channels.splice(idx, 1);
-  globalThis.__CHANNELS__ = channels;
+  db.messages = db.messages.filter((m) => m.channelId !== channelId);
 
-  // ✅ on renvoie JSON (plus fiable que 204)
-  return NextResponse.json(deleted, { status: 200 });
+  return new NextResponse(null, { status: 204 });
 }

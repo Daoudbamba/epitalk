@@ -2,7 +2,6 @@
 
 import { Input } from "@/components/ui/input";
 import { Plus, Smile, Gift, Sticker } from "lucide-react";
-import Image from "next/image";
 
 const MOCK_MESSAGES = [
   {
@@ -26,7 +25,6 @@ const MOCK_MESSAGES = [
 export function ChatPanel() {
   return (
     <div className="flex-1 min-w-0 flex flex-col h-full bg-white dark:bg-[#313338]">
-      
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0">
         <span className="text-zinc-500 mr-2 text-2xl">#</span>
@@ -37,7 +35,7 @@ export function ChatPanel() {
 
       {/* --- MESSAGES --- */}
       <div className="flex-1 overflow-y-auto flex flex-col py-4">
-        <div className="flex-1" /> 
+        <div className="flex-1" />
         <div className="flex flex-col mt-auto">
           {MOCK_MESSAGES.map((msg) => (
             <div
@@ -45,7 +43,7 @@ export function ChatPanel() {
               className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
             >
               <div className="cursor-pointer hover:drop-shadow-md transition mr-4">
-                <Image
+                <img
                   src={msg.avatar}
                   alt="Avatar"
                   className="w-10 h-10 rounded-full bg-zinc-200"
