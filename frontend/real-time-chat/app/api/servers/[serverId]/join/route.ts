@@ -14,7 +14,7 @@ function getServersStore(): Server[] {
 }
 
 function getCurrentUser(): ServerMember {
-  return { id: "u_1", username: "zakary" };
+  return { id: "u_1", username: "Moïse" };
 }
 
 export async function POST(

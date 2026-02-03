@@ -4,7 +4,23 @@ import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { serversApi } from "@/lib/api";
 import { ME } from "@/lib/me";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+
+function extractInviteCode(value: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+
+  // Cas 1: lien complet contenant /invite/<code>
+  const match = v.match(/\/invite\/([^/?#\s]+)/i);
+  if (match?.[1]) return match[1].trim();
+
+  // Cas 2: l’utilisateur a collé juste le code
+  // (on accepte lettres/chiffres/underscore/tiret)
+  const codeOnly = v.match(/^([a-z0-9_-]{4,64})$/i);
+  if (codeOnly?.[1]) return codeOnly[1].trim();
+
+  return null;
+}
 
 export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const servers = useServerStore((s) => s.servers);
@@ -17,6 +33,9 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   );
 
   const isOwner = !!activeServer && activeServer.ownerId === ME.id;
+
+  const [inviteInput, setInviteInput] = useState("");
+  const [joinLoading, setJoinLoading] = useState(false);
 
   const onCreateServer = async () => {
     const name = prompt("Nom du serveur ?");
@@ -34,7 +53,10 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       return;
     }
 
-    const res = await fetch(`/api/servers/${activeServerId}/invite`, { method: "POST" });
+    const res = await fetch(`/api/servers/${activeServerId}/invite`, {
+      method: "POST",
+    });
+
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       alert(txt || "Erreur invitation");
@@ -45,21 +67,33 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     const link = `${window.location.origin}/invite/${data.code}`;
 
     await navigator.clipboard.writeText(link).catch(() => {});
-    alert(`Lien copié (ou affiche-le) :\n${link}`);
+    alert(`Lien copié :\n${link}`);
   };
 
-  const onJoinByCode = async () => {
-    const code = prompt("Code d'invitation ?");
-    if (!code?.trim()) return;
-
-    const res = await fetch(`/api/invites/${code.trim()}/join`, { method: "POST" });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      alert(txt || "Invite invalide");
+  const onJoin = async () => {
+    const code = extractInviteCode(inviteInput);
+    if (!code) {
+      alert("Colle un lien /invite/<code> ou un code valide.");
       return;
     }
 
-    await onRefresh();
+    setJoinLoading(true);
+    try {
+      const res = await fetch(`/api/invites/${encodeURIComponent(code)}/join`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        alert(txt || "Invite invalide");
+        return;
+      }
+
+      setInviteInput("");
+      await onRefresh();
+    } finally {
+      setJoinLoading(false);
+    }
   };
 
   const onLeaveOrDelete = async () => {
@@ -86,6 +120,8 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     }
   };
 
+  const joinDisabled = joinLoading || inviteInput.trim().length === 0;
+
   return (
     <div className="flex items-center gap-2 border-b px-4 py-2">
       {servers.length === 0 ? (
@@ -103,8 +139,16 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       )}
 
       <div className="ml-auto flex items-center gap-2">
-        <Button variant="outline" onClick={onJoinByCode}>
-          Rejoindre (code)
+        {/* ✅ Rejoindre via lien/code */}
+        <input
+          value={inviteInput}
+          onChange={(e) => setInviteInput(e.target.value)}
+          placeholder="Lien d’invite ou code..."
+          className="h-9 w-56 rounded-md border px-3 text-sm bg-background"
+        />
+
+        <Button variant="outline" onClick={onJoin} disabled={joinDisabled}>
+          {joinLoading ? "..." : "Rejoindre"}
         </Button>
 
         <Button variant="outline" onClick={onInvite} disabled={!activeServerId}>
