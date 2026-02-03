@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { serversApi } from "@/lib/api";
+import { ME } from "@/lib/me";
 import { useMemo } from "react";
 
 export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
@@ -10,15 +11,12 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
 
-  // ⚠️ mock : notre "current user" côté API est u_1
-  const meId = "u_1";
-
   const activeServer = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
     [servers, activeServerId]
   );
 
-  const isOwner = !!activeServer && activeServer.ownerId === meId;
+  const isOwner = !!activeServer && activeServer.ownerId === ME.id;
 
   const onCreateServer = async () => {
     const name = prompt("Nom du serveur ?");
@@ -30,6 +28,7 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const onInvite = async () => {
     if (!activeServerId) return;
+
     if (!isOwner) {
       alert("Seul le créateur peut générer une invitation (mock).");
       return;
@@ -41,9 +40,10 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       alert(txt || "Erreur invitation");
       return;
     }
-    const data = (await res.json()) as { code: string };
 
+    const data = (await res.json()) as { code: string };
     const link = `${window.location.origin}/invite/${data.code}`;
+
     await navigator.clipboard.writeText(link).catch(() => {});
     alert(`Lien copié (ou affiche-le) :\n${link}`);
   };
@@ -75,11 +75,15 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       await serversApi.leave(activeServerId);
     }
 
-    // refresh + sélection d'un autre serveur si possible
     await onRefresh();
+
+    // recaler un serveur actif si celui-ci a disparu
     const after = useServerStore.getState().servers;
-    const next = after[0]?.id ?? null;
-    if (next) setActiveServer(next);
+    const stillThere = after.some((s) => s.id === activeServerId);
+    if (!stillThere) {
+      const next = after[0]?.id ?? null;
+      if (next) setActiveServer(next);
+    }
   };
 
   return (
