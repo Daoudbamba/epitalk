@@ -26,29 +26,6 @@ services:
       - rtc-network
 
   # =============================================================================
-  # MongoDB Database (for messages)
-  # =============================================================================
-  mongodb:
-    image: mongo:7
-    container_name: rtc-mongodb
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: rtc
-      MONGO_INITDB_ROOT_PASSWORD: rtc_password
-      MONGO_INITDB_DATABASE: rtc
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - rtc-network
-
-  # =============================================================================
   # Adminer (Database GUI - Development only)
   # =============================================================================
   adminer:
@@ -68,7 +45,6 @@ services:
 
 volumes:
   postgres_data:
-  mongodb_data:
 
 networks:
   rtc-network:
