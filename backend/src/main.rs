@@ -1,5 +1,5 @@
 //! RTC Backend - Main entry point
-//! REST API for authentication, RBAC, servers, channels & members
+//! REST API for authentication, RBAC, servers, channels, members & invites
 
 mod auth;
 mod config;

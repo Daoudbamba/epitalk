@@ -33,7 +33,7 @@ impl MembershipRepository {
     pub async fn find_by_server(pool: &PgPool, server_id: Uuid) -> AppResult<Vec<MemberResponse>> {
         let members = sqlx::query_as::<_, MemberResponse>(
             r#"
-            SELECT m.id, m.user_id, u.username, m.role, m.joined_at
+            SELECT m.user_id, u.username, m.role, m.joined_at
             FROM memberships m
             INNER JOIN users u ON m.user_id = u.id
             WHERE m.server_id = $1
@@ -64,7 +64,7 @@ impl MembershipRepository {
             r#"
             INSERT INTO memberships (user_id, server_id, role)
             VALUES ($1, $2, $3)
-            RETURNING id, user_id, server_id, role, joined_at
+            RETURNING user_id, server_id, role, joined_at
             "#,
         )
         .bind(user_id)
@@ -96,7 +96,7 @@ impl MembershipRepository {
             UPDATE memberships
             SET role = $3
             WHERE user_id = $1 AND server_id = $2
-            RETURNING id, user_id, server_id, role, joined_at
+            RETURNING user_id, server_id, role, joined_at
             "#,
         )
         .bind(user_id)

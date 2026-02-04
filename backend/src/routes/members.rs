@@ -127,7 +127,7 @@ async fn update_member_role(
     let members = MembershipRepository::find_by_server(&state.db, params.server_id).await?;
     let member = members
         .into_iter()
-        .find(|m| m.id == membership.id)
+        .find(|m| m.user_id == params.user_id)
         .ok_or_else(|| AppError::Internal("Failed to fetch updated member".to_string()))?;
 
     Ok(Json(member))

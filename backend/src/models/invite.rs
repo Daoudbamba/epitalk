@@ -5,28 +5,29 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+/// Invite entity matching the database schema.
+/// Note: The `invites` table uses `code` as primary key (no `id` column).
+/// Note: The column is named `uses` (not `use_count`).
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Invite {
-    pub id: Uuid,
-    pub server_id: Uuid,
     pub code: String,
+    pub server_id: Uuid,
     pub created_by: Uuid,
     pub expires_at: Option<DateTime<Utc>>,
     pub max_uses: Option<i32>,
-    pub use_count: i32,
+    pub uses: i32,
     pub created_at: DateTime<Utc>,
 }
 
 /// Invite response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InviteResponse {
-    pub id: Uuid,
-    pub server_id: Uuid,
     pub code: String,
+    pub server_id: Uuid,
     pub created_by: Uuid,
     pub expires_at: Option<DateTime<Utc>>,
     pub max_uses: Option<i32>,
-    pub use_count: i32,
+    pub uses: i32,
     pub created_at: DateTime<Utc>,
     pub is_valid: bool,
 }
@@ -35,13 +36,12 @@ impl From<Invite> for InviteResponse {
     fn from(invite: Invite) -> Self {
         let is_valid = invite.is_valid();
         Self {
-            id: invite.id,
-            server_id: invite.server_id,
             code: invite.code,
+            server_id: invite.server_id,
             created_by: invite.created_by,
             expires_at: invite.expires_at,
             max_uses: invite.max_uses,
-            use_count: invite.use_count,
+            uses: invite.uses,
             created_at: invite.created_at,
             is_valid,
         }
@@ -59,7 +59,7 @@ impl Invite {
         }
         // Check max uses
         if let Some(max_uses) = self.max_uses {
-            if self.use_count >= max_uses {
+            if self.uses >= max_uses {
                 return false;
             }
         }

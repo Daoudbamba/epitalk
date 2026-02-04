@@ -1,7 +1,8 @@
 //! Invite routes
 //!
 //! Routes (nested under /servers/:server_id/invites):
-//! - GET    /           - List server invites (ADMIN+)
+//! - GET    /           - List all server invites (ADMIN+)
+//! - GET    /active     - List active server invites only (ADMIN+)
 //! - POST   /           - Create an invite (ADMIN+)
 //! - DELETE /:invite_id - Delete an invite (ADMIN+)
 //!
@@ -28,6 +29,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_invites).post(create_invite))
+        .route("/active", get(list_active_invites))
         .route("/:invite_id", axum::routing::delete(delete_invite))
 }
 
@@ -45,7 +47,7 @@ pub struct ServerPath {
 #[derive(serde::Deserialize)]
 pub struct InvitePath {
     pub server_id: Uuid,
-    pub invite_id: Uuid,
+    pub invite_id: String, // invite_id is the code (string), not a UUID
 }
 
 /// List all invites for a server (ADMIN+ only)
@@ -66,6 +68,29 @@ async fn list_invites(
     }
 
     let invites = InviteRepository::find_by_server(&state.db, params.server_id).await?;
+    let responses: Vec<InviteResponse> = invites.into_iter().map(Into::into).collect();
+
+    Ok(Json(responses))
+}
+
+/// List only ACTIVE invites for a server (not expired, not at max uses) - ADMIN+ only
+async fn list_active_invites(
+    State(state): State<AppState>,
+    auth: RequireAuth,
+    Path(params): Path<ServerPath>,
+) -> AppResult<Json<Vec<InviteResponse>>> {
+    let user_id = auth.user_id;
+
+    // Check role
+    let role = MembershipRepository::get_role(&state.db, user_id, params.server_id)
+        .await?
+        .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
+
+    if !role.can_create_invites() {
+        return Err(AppError::Forbidden("Insufficient permissions to view invites".to_string()));
+    }
+
+    let invites = InviteRepository::find_active_by_server(&state.db, params.server_id).await?;
     let responses: Vec<InviteResponse> = invites.into_iter().map(Into::into).collect();
 
     Ok(Json(responses))
@@ -119,7 +144,7 @@ async fn delete_invite(
     }
 
     // Verify invite belongs to server
-    let invite = InviteRepository::find_by_id(&state.db, params.invite_id)
+    let invite = InviteRepository::find_by_code(&state.db, &params.invite_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Invite not found".to_string()))?;
 
@@ -127,7 +152,7 @@ async fn delete_invite(
         return Err(AppError::NotFound("Invite not found in this server".to_string()));
     }
 
-    InviteRepository::delete(&state.db, params.invite_id).await?;
+    InviteRepository::delete(&state.db, &params.invite_id).await?;
 
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
@@ -159,7 +184,7 @@ async fn join_server(
     MembershipRepository::create(&state.db, user_id, invite.server_id, MemberRole::Member).await?;
 
     // Increment invite use count
-    InviteRepository::increment_use_count(&state.db, invite.id).await?;
+    InviteRepository::increment_uses(&state.db, &invite.code).await?;
 
     // Return server info
     let server = ServerRepository::find_by_id(&state.db, invite.server_id)
