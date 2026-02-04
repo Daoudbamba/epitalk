@@ -1,4 +1,3 @@
-// frontend/real-time-chat/app/api/_mock/db.ts
 export type MockMember = { id: string; username: string };
 
 export type MockServer = {
