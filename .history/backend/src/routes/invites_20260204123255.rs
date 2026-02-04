@@ -184,7 +184,7 @@ async fn join_server(
     MembershipRepository::create(&state.db, user_id, invite.server_id, MemberRole::Member).await?;
 
     // Increment invite use count
-    InviteRepository::increment_uses(&state.db, &invite.code).await?;
+    InviteRepository::increment_use_count(&state.db, invite.id).await?;
 
     // Return server info
     let server = ServerRepository::find_by_id(&state.db, invite.server_id)

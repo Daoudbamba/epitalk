@@ -144,7 +144,7 @@ async fn delete_invite(
     }
 
     // Verify invite belongs to server
-    let invite = InviteRepository::find_by_code(&state.db, &params.invite_id)
+    let invite = InviteRepository::find_by_id(&state.db, params.invite_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Invite not found".to_string()))?;
 
@@ -152,7 +152,7 @@ async fn delete_invite(
         return Err(AppError::NotFound("Invite not found in this server".to_string()));
     }
 
-    InviteRepository::delete(&state.db, &params.invite_id).await?;
+    InviteRepository::delete(&state.db, params.invite_id).await?;
 
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
@@ -184,7 +184,7 @@ async fn join_server(
     MembershipRepository::create(&state.db, user_id, invite.server_id, MemberRole::Member).await?;
 
     // Increment invite use count
-    InviteRepository::increment_uses(&state.db, &invite.code).await?;
+    InviteRepository::increment_use_count(&state.db, invite.id).await?;
 
     // Return server info
     let server = ServerRepository::find_by_id(&state.db, invite.server_id)

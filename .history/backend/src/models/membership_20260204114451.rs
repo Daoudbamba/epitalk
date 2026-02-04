@@ -56,10 +56,9 @@ impl std::fmt::Display for MemberRole {
     }
 }
 
-/// Membership entity matching the database schema.
-/// Note: The `memberships` table uses composite key (user_id, server_id) - NO `id` column.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Membership {
+    pub id: Uuid,
     pub user_id: Uuid,
     pub server_id: Uuid,
     pub role: MemberRole,

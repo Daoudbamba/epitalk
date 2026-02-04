@@ -64,7 +64,7 @@ impl MembershipRepository {
             r#"
             INSERT INTO memberships (user_id, server_id, role)
             VALUES ($1, $2, $3)
-            RETURNING user_id, server_id, role, joined_at
+            RETURNING id, user_id, server_id, role, joined_at
             "#,
         )
         .bind(user_id)
@@ -96,7 +96,7 @@ impl MembershipRepository {
             UPDATE memberships
             SET role = $3
             WHERE user_id = $1 AND server_id = $2
-            RETURNING user_id, server_id, role, joined_at
+            RETURNING id, user_id, server_id, role, joined_at
             "#,
         )
         .bind(user_id)
