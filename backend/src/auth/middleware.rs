@@ -116,6 +116,11 @@ impl RequireRole {
     pub fn is_admin_or_above(&self) -> bool {
         self.role.can_manage_channels()
     }
+
+    /// Check if user is moderator or above (Owner, Admin, Moderator)
+    pub fn is_moderator_or_above(&self) -> bool {
+        self.role.can_create_invites()
+    }
 }
 
 /// Helper function to extract and validate user role in a server

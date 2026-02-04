@@ -116,7 +116,7 @@ pub async fn register(
     let password_hash = password_service.hash_password(&payload.password)?;
 
     // Create user
-    let user = UserRepository::create(&state.db, &payload.email, &payload.username, &password_hash)
+    let user = UserRepository::create(&state.db, &payload.email, &password_hash, &payload.username)
         .await?;
 
     // Generate token

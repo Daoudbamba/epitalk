@@ -3,7 +3,7 @@ name = "rtc-backend"
 version = "0.1.0"
 edition = "2021"
 authors = ["James <james@epitech.eu>"]
-description = "RTC (Real Time Chat) Backend - Database branch"
+description = "RTC (Real Time Chat) Backend - REST API with authentication, RBAC, servers, channels & members"
 
 [dependencies]
 # Web framework

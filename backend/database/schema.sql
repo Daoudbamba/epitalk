@@ -2,7 +2,7 @@
 -- RTC (Real Time Chat) - PostgreSQL Schema
 -- =============================================================================
 -- Tables: users, servers, memberships, channels, invites
--- Roles: OWNER, ADMIN, MEMBER
+-- Roles: OWNER, ADMIN, MODERATOR, MEMBER
 -- =============================================================================
 
 -- Extension pour UUID et CITEXT
@@ -13,8 +13,8 @@ CREATE EXTENSION IF NOT EXISTS "citext";
 -- ENUM TYPES
 -- =============================================================================
 
--- Rôles des membres (OWNER > ADMIN > MEMBER)
-CREATE TYPE member_role AS ENUM ('OWNER', 'ADMIN', 'MEMBER');
+-- Rôles des membres (OWNER > ADMIN > MODERATOR > MEMBER)
+CREATE TYPE member_role AS ENUM ('OWNER', 'ADMIN', 'MODERATOR', 'MEMBER');
 
 -- Types de channels (extensible pour VOICE plus tard)
 CREATE TYPE channel_kind AS ENUM ('TEXT');
