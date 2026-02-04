@@ -178,11 +178,11 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
       : "border-zinc-200 text-zinc-700 bg-zinc-50";
 
   return (
-    <aside className="w-[92px] shrink-0 flex flex-col items-center gap-3 py-4 bg-black/20 border-r border-white/15">
-      {/* Logo */}
-      <div className="w-14 h-14 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center">
-        <div className="text-white font-extrabold tracking-tight">RTC</div>
-      </div>
+    <aside className="w-23 my-5 mx-2 border-2 border-gray-200 rounded-md flex flex-col 
+    items-center gap-3 py-8 bg-gray-400">
+
+      <h1> BRIDGE </h1>
+      
 
       {/* Add server */}
       <button
@@ -231,7 +231,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
             className="absolute inset-0 bg-black/60"
             onClick={() => setOpenSettings(false)}
           />
-          <div className="absolute left-1/2 top-1/2 w-[560px] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white dark:bg-[#1f2023] border border-white/10 shadow-xl overflow-hidden">
+          <div className="absolute left-1/2 top-1/2 w-140 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white dark:bg-[#1f2023] border border-white/10 shadow-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-black/10 dark:border-white/10 flex items-center">
               <div className="font-semibold">
                 Paramètres — {activeServer?.name ?? "Aucun serveur sélectionné"}

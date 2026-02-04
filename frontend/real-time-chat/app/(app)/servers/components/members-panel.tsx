@@ -52,7 +52,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const isOwner = server.ownerId === ME.id;
 
   return (
-    <aside className="w-64 border-l p-4">
+    <aside className="h-[95%] rounded-md my-5 mb-30 border-2 border-gray-200 w-64 border-l p-4">
       <h3 className="text-sm font-semibold mb-1">
         Membres ({server.members.length})
       </h3>

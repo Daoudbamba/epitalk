@@ -10,7 +10,7 @@ export default function ServersPage() {
   return (
     <ServersLoader>
       {({ refresh }) => (
-        <div className="h-full w-full flex overflow-hidden bg-linear-to-r from-orange-500 to-purple-700">
+        <div className="h-full w-full flex overflow-hidden">
           {/* Left rail (servers) */}
           <ServersRail onRefresh={refresh} />
 
