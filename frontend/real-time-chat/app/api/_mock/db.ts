@@ -1,4 +1,3 @@
-// frontend/real-time-chat/app/api/_mock/db.ts
 export type MockMember = { id: string; username: string };
 
 export type MockServer = {
@@ -33,7 +32,7 @@ export type MockInvite = {
 
 export const mockCurrentUser: MockMember = {
   id: "u_1",
-  username: "zakary",
+  username: "Moïse",
 };
 
 declare global {
