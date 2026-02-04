@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { channelsApi } from "@/lib/api";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { ME } from "@/lib/me";
+
+type Status = { type: "success" | "error" | "info"; text: string } | null;
 
 export function ChannelsSidebar() {
   const activeServerId = useServerStore((s) => s.activeServerId);
@@ -18,37 +20,50 @@ export function ChannelsSidebar() {
   const reset = useChannelStore((s) => s.reset);
 
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<Status>(null);
 
-  // ⚠️ Mock: notre "current user" côté API est u_1
-  const meId = ME.id;
+  const activeServer = useMemo(
+    () => servers.find((s) => s.id === activeServerId) ?? null,
+    [servers, activeServerId]
+  );
 
-  const activeServer = servers.find((s) => s.id === activeServerId) ?? null;
-  const isOwner = !!activeServer && activeServer.ownerId === meId;
+  const isOwner = !!activeServer && activeServer.ownerId === ME.id;
+
+  const setOk = (text: string) => setStatus({ type: "success", text });
+  const setErr = (text: string) => setStatus({ type: "error", text });
+  const setInfo = (text: string) => setStatus({ type: "info", text });
 
   const refresh = async () => {
     if (!activeServerId) {
       reset();
+      setStatus(null);
       return;
     }
 
     setLoading(true);
+    setStatus(null);
+
     try {
       const data = await channelsApi.listByServer(activeServerId);
       setChannels(data);
 
       // ✅ si aucun actif OU actif pas dans cette liste, on sélectionne le 1er
       const stillExists = data.some((c) => c.id === activeChannelId);
+
       if ((!activeChannelId || !stillExists) && data.length > 0) {
         setActiveChannel(data[0].id);
       }
       if (data.length === 0) setActiveChannel(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erreur chargement channels");
+      reset();
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // ✅ serveur a changé : on reset sélection channel + on recharge
+    // ✅ serveur changé : reset sélection + reload
     setActiveChannel(null);
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,19 +75,57 @@ export function ChannelsSidebar() {
     const name = prompt("Nom du channel ?");
     if (!name?.trim()) return;
 
-    await channelsApi.create(activeServerId, name.trim());
-    await refresh();
+    setStatus(null);
+    setLoading(true);
+    try {
+      await channelsApi.create(activeServerId, name.trim());
+      await refresh();
+      setOk("Channel créé.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erreur création channel");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onDelete = async (channelId: string) => {
     if (!activeServerId) return;
 
+    if (!isOwner) {
+      setInfo("Suppression réservée au créateur (mock).");
+      return;
+    }
+
     const ok = confirm("Supprimer ce channel ?");
     if (!ok) return;
 
-    await channelsApi.delete(activeServerId, channelId);
-    await refresh();
+    setStatus(null);
+    setLoading(true);
+
+    try {
+      await channelsApi.delete(activeServerId, channelId);
+
+      // ✅ Si on supprime le channel actif : on choisit un autre channel
+      const remaining = channels.filter((c) => c.id !== channelId);
+      if (activeChannelId === channelId) {
+        setActiveChannel(remaining[0]?.id ?? null);
+      }
+
+      await refresh();
+      setOk("Channel supprimé.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erreur suppression channel");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const statusClasses =
+    status?.type === "success"
+      ? "border-green-200 text-green-700 bg-green-50"
+      : status?.type === "error"
+      ? "border-red-200 text-red-700 bg-red-50"
+      : "border-zinc-200 text-zinc-700 bg-zinc-50";
 
   return (
     <div className="h-full flex flex-col">
@@ -80,7 +133,7 @@ export function ChannelsSidebar() {
         <div className="text-sm font-semibold">Channels</div>
 
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" onClick={onCreate} disabled={!activeServerId}>
+          <Button size="sm" onClick={onCreate} disabled={!activeServerId || loading}>
             + Nouveau
           </Button>
         </div>
@@ -96,6 +149,7 @@ export function ChannelsSidebar() {
         ) : (
           channels.map((c) => {
             const active = c.id === activeChannelId;
+
             return (
               <div key={c.id} className="flex items-center gap-2">
                 <button
@@ -103,26 +157,33 @@ export function ChannelsSidebar() {
                   className={`flex-1 text-left rounded-md px-2 py-1 text-sm border ${
                     active ? "bg-muted" : "hover:bg-muted/50"
                   }`}
+                  title={active ? "Channel actif" : "Sélectionner"}
                 >
                   # {c.name}
                 </button>
 
-                {/* ✅ Suppression visible seulement si owner (sinon l'API renvoie 403) */}
-                {isOwner && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onDelete(c.id)}
-                    title="Supprimer"
-                  >
-                    ×
-                  </Button>
-                )}
+                {/* ✅ Delete visible mais désactivé si pas owner */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onDelete(c.id)}
+                  disabled={!activeServerId || loading || (!isOwner && true)}
+                  title={isOwner ? "Supprimer" : "Réservé au créateur"}
+                >
+                  ×
+                </Button>
               </div>
             );
           })
         )}
       </div>
+
+      {/* ✅ Status */}
+      {status && (
+        <div className={`border-t px-4 py-3 text-xs ${statusClasses}`}>
+          {status.text}
+        </div>
+      )}
     </div>
   );
 }
