@@ -7,10 +7,11 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 
 const menuItems = [
-    { name: 'Features', href: '#link' },
+    { name: 'À Propos', href: '#link' },
+    { name: 'Fonctionnalités', href: '#link' },
     { name: 'Solution', href: '#link' },
-    { name: 'Pricing', href: '#link' },
-    { name: 'About', href: '#link' },
+    { name: 'Tarifs', href: '#link' },
+    
 ]
 
 export const HeroHeader = () => {
@@ -36,7 +37,7 @@ export const HeroHeader = () => {
                                 href="/"
                                 aria-label="home"
                                 className="flex items-center space-x-2">
-                                <Logo />
+                                <h1 className='font-semibold italic text-[20px]'> BRIDGE </h1>
                             </Link>
 
                             <button
@@ -82,24 +83,24 @@ export const HeroHeader = () => {
                                     variant="outline"
                                     size="sm"
                                     className={cn(isScrolled && 'lg:hidden')}>
-                                    <Link href="#">
-                                        <span>Login</span>
+                                    <Link href="/login">
+                                        <span>Connexion</span>
                                     </Link>
                                 </Button>
                                 <Button
                                     asChild
                                     size="sm"
                                     className={cn(isScrolled && 'lg:hidden')}>
-                                    <Link href="#">
-                                        <span>Sign Up</span>
+                                    <Link href="/register">
+                                        <span>Inscription</span>
                                     </Link>
                                 </Button>
                                 <Button
                                     asChild
                                     size="sm"
-                                    className={cn(isScrolled ? 'lg:inline-flex' : 'hidden')}>
-                                    <Link href="#">
-                                        <span>Get Started</span>
+                                    className={cn(isScrolled ? 'lg:inline-flex ' : 'hidden')}>
+                                    <Link href="/login">
+                                        <span>Créer un serveur</span>
                                     </Link>
                                 </Button>
                             </div>
