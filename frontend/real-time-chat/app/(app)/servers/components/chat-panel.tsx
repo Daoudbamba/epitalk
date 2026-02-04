@@ -83,7 +83,8 @@ export function ChatPanel() {
   };
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col h-full bg-white dark:bg-[#313338]">
+    <div className="h-[95%] rounded-md my-5 mx-2 mb-30 border-2 border-gray-200 flex-1 min-w-0 flex flex-col bg-white">
+      
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0">
         <span className="text-zinc-500 mr-2 text-2xl">#</span>

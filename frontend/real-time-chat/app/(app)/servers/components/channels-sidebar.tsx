@@ -128,7 +128,7 @@ export function ChannelsSidebar() {
         : "border-zinc-200 text-zinc-700 bg-zinc-50";
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-[95%] rounded-md my-5 mb-30 border-2 border-gray-200 flex flex-col">
       <div className="border-b px-4 py-3 flex items-center gap-2">
         <div className="text-sm font-semibold">
           {activeServer?.name ?? "Aucun serveur"}
