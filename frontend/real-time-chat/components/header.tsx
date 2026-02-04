@@ -100,7 +100,7 @@ export const HeroHeader = () => {
                                     size="sm"
                                     className={cn(isScrolled ? 'lg:inline-flex ' : 'hidden')}>
                                     <Link href="/login">
-                                        <span>Créer un serveur</span>
+                                        <span>Rejoindre un serveur</span>
                                     </Link>
                                 </Button>
                             </div>

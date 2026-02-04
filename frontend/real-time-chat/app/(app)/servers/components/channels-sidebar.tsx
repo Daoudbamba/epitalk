@@ -24,7 +24,7 @@ export function ChannelsSidebar() {
 
   const activeServer = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
-    [servers, activeServerId]
+    [servers, activeServerId],
   );
 
   const isOwner = !!activeServer && activeServer.ownerId === ME.id;
@@ -124,17 +124,23 @@ export function ChannelsSidebar() {
     status?.type === "success"
       ? "border-green-200 text-green-700 bg-green-50"
       : status?.type === "error"
-      ? "border-red-200 text-red-700 bg-red-50"
-      : "border-zinc-200 text-zinc-700 bg-zinc-50";
+        ? "border-red-200 text-red-700 bg-red-50"
+        : "border-zinc-200 text-zinc-700 bg-zinc-50";
 
   return (
     <div className="h-full flex flex-col">
       <div className="border-b px-4 py-3 flex items-center gap-2">
-        <div className="text-sm font-semibold">Channels</div>
+        <div className="text-sm font-semibold">
+          {activeServer?.name ?? "Aucun serveur"}
+        </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" onClick={onCreate} disabled={!activeServerId || loading}>
-            + Nouveau
+          <Button
+            size="sm"
+            onClick={onCreate}
+            disabled={!activeServerId || loading}
+          >
+            + Nouveau Channel
           </Button>
         </div>
       </div>
