@@ -70,12 +70,8 @@ export function LoginForm({
               </Field>
 
               <Field>
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="bg-linear-to-r from-purple-700 to-orange-500 w-full">
                   Se connecter
-                </Button>
-
-                <Button variant="outline" type="button">
-                  Se connecter avec Google
                 </Button>
 
                 <FieldDescription className="text-center">

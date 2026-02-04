@@ -57,13 +57,11 @@ export function RegisterForm({
                 <Input id="password" type="password" required />
               </Field>
               <Field>
-                <Button type="submit">Créer un compte</Button>
-                <Button variant="outline" type="button">
-                  Créer un compte avec Google
-                </Button>
+                <Button className="bg-linear-to-r from-purple-700 to-orange-500" type="submit">Créer un compte</Button>
+
                 <FieldDescription className="text-center">
                   Vous avez déjà un compte? 
-                  <Link href="/login">Se connecter</Link>
+                  <Link href="/login"> Se connecter</Link>
                 </FieldDescription>
               </Field>
             </FieldGroup>
