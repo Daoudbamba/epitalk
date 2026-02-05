@@ -43,7 +43,7 @@ export function ChatPanel() {
   // Get messages for current channel
   const messages = useMemo(() => {
     if (!activeChannelId) return [];
-    return wsMessages[activeChannelId] || [];
+    return wsMessages.get(activeChannelId) || [];
   }, [activeChannelId, wsMessages]);
 
   // Connect WebSocket on mount
