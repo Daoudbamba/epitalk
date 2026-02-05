@@ -9,6 +9,7 @@ import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
+import { messagesApi } from "@/lib/api";
 
 export function ChatPanel() {
   const activeServerId = useServerStore((s) => s.activeServerId);
@@ -27,6 +28,7 @@ export function ChatPanel() {
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
   const wsMessages = useWebSocketStore((s) => s.messages);
+  const setMessages = useWebSocketStore((s) => s.setMessages);
 
   const activeChannelName = useMemo(() => {
     return channels.find((c) => c.id === activeChannelId)?.name ?? null;
@@ -35,6 +37,7 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -53,12 +56,37 @@ export function ChatPanel() {
     }
   }, [token, isConnected, connect]);
 
-  // Join channel when it changes
+  // Load message history and join channel when it changes
   useEffect(() => {
+    const loadHistory = async () => {
+      if (!activeServerId || !activeChannelId) return;
+      
+      setLoadingHistory(true);
+      try {
+        const history = await messagesApi.list(activeServerId, activeChannelId);
+        // Convert API messages to WsMessage format
+        const wsFormattedMessages = history.map((msg) => ({
+          id: msg.id,
+          channel_id: msg.channel_id,
+          author_id: msg.author_id,
+          content: msg.content,
+          created_at: msg.created_at,
+        }));
+        setMessages(activeChannelId, wsFormattedMessages);
+      } catch (e) {
+        console.error("Failed to load message history:", e);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    loadHistory();
+
+    // Also join channel via WebSocket for real-time updates
     if (activeChannelId && isConnected) {
       joinChannel(activeChannelId);
     }
-  }, [activeChannelId, isConnected, joinChannel]);
+  }, [activeServerId, activeChannelId, isConnected, joinChannel, setMessages]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -151,6 +179,11 @@ export function ChatPanel() {
             </div>
             <p className="text-[#1A1A2E] font-semibold">Bienvenue !</p>
             <p className="text-sm text-[#6B7280] mt-2">Sélectionne un serveur et un channel pour commencer à discuter.</p>
+          </div>
+        ) : loadingHistory ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="w-12 h-12 rounded-full border-3 border-[#023BFC] border-t-transparent animate-spin mb-4" />
+            <p className="text-[#6B7280]">Chargement des messages...</p>
           </div>
         ) : !isConnected ? (
           <div className="flex flex-col items-center justify-center h-full">
