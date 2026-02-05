@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { channelsApi } from "@/lib/api";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
@@ -116,72 +115,129 @@ export function ChannelsSidebar() {
 
   const statusClasses =
     status?.type === "success"
-      ? "border-green-200 text-green-700 bg-green-50"
+      ? "border-emerald-200 text-emerald-700 bg-emerald-50/80"
       : status?.type === "error"
-        ? "border-red-200 text-red-700 bg-red-50"
-        : "border-zinc-200 text-zinc-700 bg-zinc-50";
+        ? "border-red-200 text-red-700 bg-red-50/80"
+        : "border-[#023BFC]/20 text-[#023BFC] bg-[#EBF0FF]";
 
   return (
-    <div className="h-[95%] rounded-md my-5 mb-30 border-2 border-gray-200 flex flex-col">
-      <div className="border-b px-4 py-3 flex items-center gap-2">
-        <div className="text-sm font-semibold">
-          {activeServer?.name ?? "Aucun serveur"}
+    <div className="h-[95%] rounded-2xl my-4 mr-2 flex flex-col bg-white/70 backdrop-blur-sm border border-[#E5E7EB] shadow-lg overflow-hidden">
+      {/* Header with server name */}
+      <div className="border-b border-[#E5E7EB]/50 px-5 py-4 flex items-center gap-3 bg-gradient-to-r from-white to-[#F7F8FA]">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC]/10 to-[#023BFC]/5 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#023BFC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-[#1A1A2E] truncate">
+            {activeServer?.name ?? "Aucun serveur"}
+          </div>
+          <div className="text-xs text-[#6B7280]">
+            {channels.length} channel{channels.length !== 1 ? "s" : ""}
+          </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={onCreate}
-            disabled={!activeServerId || loading}
-          >
-            + Nouveau Channel
-          </Button>
-        </div>
+        <button
+          onClick={onCreate}
+          disabled={!activeServerId || loading}
+          className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          title="Créer un channel"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 space-y-2">
+      {/* Channels list */}
+      <div className="flex-1 overflow-auto p-4 space-y-2 scrollbar-thin">
         {!activeServerId ? (
-          <p className="text-sm text-muted-foreground">Aucun serveur</p>
+          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+            <div className="w-16 h-16 rounded-2xl bg-[#F7F8FA] flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-[#9CA3AF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </div>
+            <p className="text-sm text-[#6B7280]">Sélectionne un serveur</p>
+            <p className="text-xs text-[#9CA3AF] mt-1">dans la barre de gauche</p>
+          </div>
         ) : loading ? (
-          <p className="text-sm text-muted-foreground">Chargement...</p>
+          <div className="flex flex-col items-center justify-center h-32">
+            <div className="w-8 h-8 rounded-full border-2 border-[#023BFC] border-t-transparent animate-spin"></div>
+            <p className="text-sm text-[#6B7280] mt-3">Chargement...</p>
+          </div>
         ) : channels.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucun channel</p>
+          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+            <div className="w-16 h-16 rounded-2xl bg-[#EBF0FF] flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-[#023BFC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+              </svg>
+            </div>
+            <p className="text-sm text-[#6B7280]">Aucun channel</p>
+            <p className="text-xs text-[#9CA3AF] mt-1">Crée le premier !</p>
+          </div>
         ) : (
           channels.map((c) => {
             const active = c.id === activeChannelId;
 
             return (
-              <div key={c.id} className="flex items-center gap-2">
+              <div key={c.id} className="flex items-center gap-2 group">
                 <button
                   onClick={() => setActiveChannel(c.id)}
-                  className={`flex-1 text-left rounded-md px-2 py-1 text-sm border ${
-                    active ? "bg-muted" : "hover:bg-muted/50"
-                  }`}
+                  className={[
+                    "flex-1 text-left rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-300",
+                    active
+                      ? "channel-active bg-gradient-to-r from-[#023BFC] to-[#3D6AFF] text-white shadow-lg"
+                      : "text-[#4B5563] hover:bg-[#F7F8FA] hover:text-[#023BFC] border border-transparent hover:border-[#E5E7EB]",
+                  ].join(" ")}
                   title={active ? "Channel actif" : "Sélectionner"}
                 >
-                  # {c.name}
+                  <span className="flex items-center gap-2">
+                    <span className={active ? "text-white/80" : "text-[#9CA3AF]"}>#</span>
+                    {c.name}
+                  </span>
                 </button>
 
-                {/* ✅ Delete visible mais désactivé si pas owner */}
-                <Button
-                  size="sm"
-                  variant="outline"
+                {/* Delete button - visible on hover */}
+                <button
                   onClick={() => onDelete(c.id)}
-                  disabled={!activeServerId || loading || (!isOwner && true)}
+                  disabled={!activeServerId || loading || !isOwner}
+                  className={[
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300",
+                    "opacity-0 group-hover:opacity-100",
+                    isOwner
+                      ? "text-[#9CA3AF] hover:text-red-500 hover:bg-red-50"
+                      : "text-[#D1D5DB] cursor-not-allowed",
+                  ].join(" ")}
                   title={isOwner ? "Supprimer" : "Réservé au créateur"}
                 >
-                  ×
-                </Button>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
               </div>
             );
           })
         )}
       </div>
 
-      {/* ✅ Status */}
+      {/* Status with premium styling */}
       {status && (
-        <div className={`border-t px-4 py-3 text-xs ${statusClasses}`}>
-          {status.text}
+        <div className={`border-t border-[#E5E7EB]/50 px-5 py-3 text-xs rounded-b-2xl ${statusClasses}`}>
+          <div className="flex items-center gap-2">
+            {status.type === "success" && (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {status.type === "error" && (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            {status.text}
+          </div>
         </div>
       )}
 
