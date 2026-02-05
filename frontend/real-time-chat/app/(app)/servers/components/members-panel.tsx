@@ -38,6 +38,8 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
       } catch (err) {
         console.error("Failed to load members:", err);
         setMembers([]);
+      } finally {
+        setMembersLoading(false);
       }
     };
 

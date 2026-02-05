@@ -1,4 +1,4 @@
-FROM rust:1.70 as builder
+FROM rust:1.83 AS builder
 WORKDIR /usr/src/backend
 
 # Cache dependencies
