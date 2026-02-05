@@ -50,6 +50,7 @@ type WebSocketState = {
   getMessages: (channelId: string) => WsMessage[];
   clearMessages: (channelId: string) => void;
   setCurrentChannel: (channelId: string | null) => void;
+  setMessages: (channelId: string, messages: WsMessage[]) => void;
 };
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
@@ -220,6 +221,15 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   setCurrentChannel: (channelId: string | null) => {
     set({ currentChannelId: channelId });
+  },
+
+  setMessages: (channelId: string, newMessages: WsMessage[]) => {
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [channelId]: newMessages,
+      },
+    }));
   },
 }));
 
