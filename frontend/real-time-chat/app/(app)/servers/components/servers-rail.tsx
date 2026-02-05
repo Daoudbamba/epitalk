@@ -245,6 +245,8 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
                 </div>
               </div>
               <button
+                title="Fermer les paramètres"
+                aria-label="Fermer les paramètres"
                 className="ml-auto w-9 h-9 rounded-xl bg-[#F7F8FA] hover:bg-[#E5E7EB] border border-[#E5E7EB] flex items-center justify-center transition-all duration-300"
                 onClick={() => setOpenSettings(false)}
               >
@@ -266,7 +268,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
                   <div className="text-sm font-bold text-[#1A1A2E]">Rejoindre un serveur</div>
                 </div>
                 <div className="text-xs text-[#6B7280] mb-4">
-                  Colle un code ou un lien complet d'invitation.
+                  Colle un code ou un lien complet d&apos;invitation.
                 </div>
 
                 <div className="flex gap-3">
@@ -293,7 +295,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
                   <div className="text-sm font-bold text-[#1A1A2E]">Inviter sur mon serveur</div>
                 </div>
                 <div className="text-xs text-[#6B7280] mb-4">
-                  Genere un lien d'invitation a partager.
+                  Génère un lien d&apos;invitation à partager.
                 </div>
 
                 <div className="flex gap-3 flex-wrap">
