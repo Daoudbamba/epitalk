@@ -193,3 +193,8 @@ export function UserSettings() {
     </>
   );
 }
+        </>
+      )}
+    </div>
+  );
+}

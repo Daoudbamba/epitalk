@@ -43,7 +43,7 @@ export function ChatPanel() {
   // Get messages for current channel
   const messages = useMemo(() => {
     if (!activeChannelId) return [];
-    return wsMessages[activeChannelId] || [];
+    return wsMessages.get(activeChannelId) || [];
   }, [activeChannelId, wsMessages]);
 
   // Connect WebSocket on mount
@@ -176,69 +176,45 @@ export function ChatPanel() {
 
       {/* --- INPUT --- */}
       <div className="p-4 mb-2 shrink-0">
-        <div className="relative flex items-center gap-2">
-          <div className="relative flex-1">
-            <button
-              type="button"
-              className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 bg-zinc-500 dark:bg-zinc-400 hover:bg-zinc-600 transition rounded-full p-1 flex items-center justify-center text-white"
-              disabled
-              title="Fonction à venir"
-            >
-              <Plus className="text-white dark:text-[#313338]" />
-            </button>
-
-            <Input
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={!canLoad || sending || !isConnected}
-              className="px-14 pr-32 py-6 bg-zinc-200/90 dark:bg-zinc-700/75 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-zinc-600 dark:text-zinc-200 placeholder:text-zinc-500"
-              placeholder={
-                !canLoad
-                  ? "Sélectionne un channel..."
-                  : !isConnected
-                  ? "Connexion en cours..."
-                  : `Envoyer un message dans #${activeChannelName ?? ""}`
-              }
-            />
-
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-x-3">
-              <span title="Fonction à venir">
-                <Gift className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
-              </span>
-
-              <span title="Fonction à venir">
-                <Sticker className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
-              </span>
-
-              <span title="Fonction à venir">
-                <Smile className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
-              </span>
-            </div>
-          </div>
-
-          {/* Bouton Envoyer */}
-          <Button
-            onClick={onSend}
-            disabled={!canLoad || sending || !isConnected || !value.trim()}
-            className="h-12 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Envoyer le message"
+        <div className="relative">
+          <button
+            type="button"
+            className="absolute left-4 top-3 h-6 w-6 bg-zinc-500 dark:bg-zinc-400 hover:bg-zinc-600 transition rounded-full p-1 flex items-center justify-center text-white"
+            disabled
+            title="Fonction à venir"
           >
-            {sending ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Send className="h-5 w-5" />
-            )}
-          </Button>
-        </div>
-        
-        {/* Connection status */}
-        {!isConnected && canLoad && (
-          <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Reconnexion en cours...
+            <Plus className="text-white dark:text-[#313338]" />
+          </button>
+
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onSend();
+            }}
+            disabled={!canLoad || sending}
+            className="px-14 py-6 bg-zinc-200/90 dark:bg-zinc-700/75 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-zinc-600 dark:text-zinc-200 placeholder:text-zinc-500"
+            placeholder={
+              !canLoad
+                ? "Sélectionne un channel..."
+                : `Envoyer un message dans #${activeChannelName ?? ""}`
+            }
+          />
+
+          <div className="absolute right-4 top-3 flex items-center gap-x-4">
+            <span title="Fonction à venir">
+              <Gift className="text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
+            </span>
+
+            <span title="Fonction à venir">
+              <Sticker className="text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
+            </span>
+
+            <span title="Fonction à venir">
+              <Smile className="text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
+            </span>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
