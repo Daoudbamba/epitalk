@@ -1,4 +1,4 @@
-# 🚀 RTC - Real-Time Chat
+# 🚀 EpiTalk - Real-Time Chat
 
 <div align="center">
 
@@ -116,8 +116,8 @@ docker-compose up -d
 Vérifier que les containers tournent :
 ```bash
 docker-compose ps
-# rtc-postgres   ✅ Running
-# rtc-mongodb    ✅ Running
+# epitalk-postgres   ✅ Running
+# epitalk-mongodb    ✅ Running
 ```
 
 ### 3. Configurer l'environnement backend
@@ -129,8 +129,8 @@ cp .env.example .env
 
 **Variables d'environnement :**
 ```env
-DATABASE_URL=postgres://rtc:rtc_password@localhost:5432/rtc
-MONGO_URL=mongodb://localhost:27017/rtc
+DATABASE_URL=postgres://epitalk:Epitalk94!@localhost:5432/epitalk
+MONGO_URL=mongodb://localhost:27017/epitalk
 JWT_SECRET=your-super-secret-key-at-least-32-chars
 JWT_EXPIRATION_HOURS=24
 PORT=8080
@@ -214,9 +214,9 @@ Les diagrammes sont disponibles dans `docs/uml/` :
 
 | Diagramme | Fichier |
 |-----------|---------|
-| Backend Components | `RTC_BACKEND.puml` |
-| Frontend Components | `RTC_FRONTEND.puml` |
-| Database ER | `RTC_DB.puml` |
+| Backend Components | `epitalk_backend.puml` |
+| Frontend Components | `EPITALK_FRONTEND.puml` |
+| Database ER | `EPITALK_DB.puml` |
 
 ---
 
@@ -467,8 +467,8 @@ Ce projet est développé dans le cadre du cursus **Epitech MSc Pro 2028**.
 
 <div align="center">
 
-**[⬆ Retour en haut](#-rtc---real-time-chat)**
+**[⬆ Retour en haut](#-epitalk---real-time-chat)**
 
-Made with ❤️ by the RTC Team
+Made with ❤️ by the EpiTalk Team
 
 </div>

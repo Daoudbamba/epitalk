@@ -1,4 +1,4 @@
-//! RTC Backend - Main entry point
+//! EpiTalk Backend - Main entry point
 //! REST API for authentication, RBAC, servers, channels, members & invites
 
 mod auth;
@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "rtc_backend=debug,tower_http=debug".into()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "epitalk_backend=debug,tower_http=debug".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -47,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
     let state = if let Ok(mongo_url) = std::env::var("MONGO_URL") {
         tracing::info!("Connecting to MongoDB...");
         let mongo_client = mongodb::Client::with_uri_str(&mongo_url).await?;
-        let mongo_db = mongo_client.database("rtc_messages");
+        let mongo_db = mongo_client.database("epitalk_messages");
         tracing::info!("MongoDB connected");
 
         let base_state = state::AppState::new(pg_pool, config.clone());

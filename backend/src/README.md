@@ -134,9 +134,9 @@ tracing = "0.1"
 Variables d'environnement (`.env`):
 
 ```bash
-DATABASE_URL=postgres://rtc:rtc_password@localhost:5432/rtc
+DATABASE_URL=postgres://epitalk:Epitalk94!@localhost:5432/epitalk
 PORT=3000
-RUST_LOG=rtc_backend=debug,tower_http=debug
+RUST_LOG=epitalk_backend=debug,tower_http=debug
 ```
 
 ## 🧪 Exécution
@@ -240,6 +240,6 @@ Content-Type: application/json
 
 ## 🔗 Liens
 
-- **UML Backend** : `docs/uml/RTC_BACKEND.puml`
+- **UML Backend** : `docs/uml/epitalk_backend.puml`
 - **Schema DB** : `feat/db-postgres-schema-migrations/james`
 - **Auth** : `feat/backend-auth-rbac/james`

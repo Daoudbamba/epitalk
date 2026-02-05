@@ -37,7 +37,7 @@ export const HeroHeader = () => {
                                 href="/"
                                 aria-label="home"
                                 className="flex items-center space-x-2">
-                                <h1 className='font-semibold italic text-[20px]'> BRIDGE </h1>
+                                <h1 className='font-semibold italic text-[20px]'> EpiTalk </h1>
                             </Link>
 
                             <button

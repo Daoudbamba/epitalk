@@ -4,7 +4,7 @@
 
 ## 📋 Objectif
 
-Mise en place du schéma PostgreSQL pour l'application RTC (Real Time Chat) :
+Mise en place du schéma PostgreSQL pour l'application EpiTalk (Real Time Chat) :
 - **5 tables** : users, servers, memberships, channels, invites
 - **Contraintes** : FK, UNIQUE, CHECK, indexes
 - **Migrations** : versionnées et transactionnelles
@@ -44,18 +44,18 @@ docker compose --profile dev up -d
 
 ```bash
 # Migration initiale
-psql -h localhost -U rtc -d rtc -f database/migrations/001_initial_schema.sql
+psql -h localhost -U EpiTalk -d EpiTalk -f database/migrations/001_initial_schema.sql
 
 # Données de test (dev uniquement)
-psql -h localhost -U rtc -d rtc -f database/migrations/002_seed_data.sql
+psql -h localhost -U EpiTalk -d EpiTalk -f database/migrations/002_seed_data.sql
 ```
 
 ### 3. Vérifier
 
 ```bash
 # Connexion psql
-psql -h localhost -U rtc -d rtc
-# Password: rtc_password
+psql -h localhost -U EpiTalk -d EpiTalk
+# Password: EpiTalk_password
 
 # Ou via Adminer
 open http://localhost:8080
@@ -163,8 +163,8 @@ cp .env.example .env
 
 | Variable | Description | Défaut |
 |----------|-------------|--------|
-| `DATABASE_URL` | PostgreSQL connection | `postgres://rtc:rtc_password@localhost:5432/rtc` |
-| `MONGO_URL` | MongoDB connection | `mongodb://rtc:rtc_password@localhost:27017/rtc` |
+| `DATABASE_URL` | PostgreSQL connection | `postgres://EpiTalk:EpiTalk_password@localhost:5432/EpiTalk` |
+| `MONGO_URL` | MongoDB connection | `mongodb://EpiTalk:EpiTalk_password@localhost:27017/EpiTalk` |
 | `JWT_SECRET` | Secret JWT | ⚠️ Changer en prod |
 | `JWT_EXPIRES_IN` | Durée token | `7d` |
 
@@ -190,7 +190,7 @@ La migration `002_seed_data.sql` crée :
 ⚠️ **ATTENTION** : Supprime TOUTES les données !
 
 ```bash
-psql -h localhost -U rtc -d rtc -f database/migrations/000_rollback_all.sql
+psql -h localhost -U EpiTalk -d EpiTalk -f database/migrations/000_rollback_all.sql
 ```
 
 ## 📝 Conventions
@@ -212,6 +212,6 @@ psql -h localhost -U rtc -d rtc -f database/migrations/000_rollback_all.sql
 
 ## 🔗 Liens
 
-- **UML** : `docs/uml/RTC_DB.puml`
+- **UML** : `docs/uml/EpiTalk_DB.puml`
 - **Cahier des charges** : `project.pdf`
 - **Branche suivante** : `feat/backend-auth-rbac/james`

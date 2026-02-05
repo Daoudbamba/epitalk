@@ -1,5 +1,5 @@
-@startuml RTC_FRONTEND
-title RTC — FRONTEND (NextJS 15 + App Router) — Component UML
+@startuml EPITALK_FRONTEND
+title EpiTalk — FRONTEND (NextJS 15 + App Router) — Component UML
 ' =====================================================================
 ' LÉGENDE: Les composants en gris sont PLANIFIÉS mais pas encore implémentés
 ' =====================================================================

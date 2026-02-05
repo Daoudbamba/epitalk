@@ -5,7 +5,7 @@ import Head from "next/head";
 
 export const metadata: Metadata = {
   title: "Real Time Chat",
-  description: "RTC",
+  description: "EpiTalk",
 };
 
 export default function RootLayout({

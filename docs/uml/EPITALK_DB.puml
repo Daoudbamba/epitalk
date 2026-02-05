@@ -1,5 +1,5 @@
-@startuml RTC_DB
-title RTC — DB (PostgreSQL + MongoDB) — UML (ER + Collections)\n(Gray = Not Yet Implemented)
+@startuml EPITALK_DB
+title EpiTalk — DB (PostgreSQL + MongoDB) — UML (ER + Collections)\n(Gray = Not Yet Implemented)
 hide circle
 skinparam shadowing false
 skinparam classAttributeIconSize 0
