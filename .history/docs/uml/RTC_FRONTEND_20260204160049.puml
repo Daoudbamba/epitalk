@@ -1,0 +1,113 @@
+@startuml RTC_FRONTEND
+title RTC — FRONTEND (NextJS) — Component UML
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "frontend/ (NextJS App Router)" {
+
+  package "Pages (app/)" {
+    component "ShellLayout\napp/(app)/layout.tsx" as ShellLayout
+    component "LoginPage\napp/(auth)/login" as LoginPage
+    component "RegisterPage\napp/(auth)/register" as RegisterPage
+    component "ServersPage\napp/(app)/servers" as ServersPage
+    component "ServerPage\napp/(app)/servers/{serverId}" as ServerPage
+    component "ChannelPage\napp/(app)/servers/{serverId}/channels/{channelId}" as ChannelPage
+  }
+
+  package "UI Components (src/components/)" {
+    component "ServersSidebar" as ServersSidebar
+    component "ChannelsSidebar" as ChannelsSidebar
+    component "MembersPanel" as MembersPanel
+    component "ChatMessageList" as ChatMessageList
+    component "ChatComposer" as ChatComposer
+    component "TypingIndicator" as TypingIndicator
+    component "OnlineBadges" as OnlineBadges
+    component "Dialogs\n(Create/Join/Delete/Leave)" as Dialogs
+  }
+
+  package "REST Client (src/lib/api/)" {
+    component "FetchClient" as FetchClient
+    component "AuthApi" as AuthApi
+    component "ServersApi" as ServersApi
+    component "ChannelsApi" as ChannelsApi
+    component "MessagesApi\n(history)" as MessagesApi
+  }
+
+  package "WebSocket Client (src/lib/ws/)" {
+    component "WSClient" as WSClient
+    component "EventRouter" as EventRouter
+    component "Reconnect/Backoff" as Reconnect
+  }
+
+  package "State (src/store/)" {
+    component "AuthStore" as AuthStore
+    component "ServersStore" as ServersStore
+    component "ChannelsStore" as ChannelsStore
+    component "ChatStore" as ChatStore
+    component "PresenceStore" as PresenceStore
+    component "TypingStore" as TypingStore
+  }
+
+  package "Validation (src/lib/validators/)" {
+    component "ZodSchemas\n(DTO validation)" as ZodSchemas
+  }
+
+  package "Tests (frontend/tests/)" {
+    component "Unit Tests\n(vitest/jest)" as FEUnit
+    component "E2E Tests\n(Playwright)" as FEE2E
+  }
+}
+
+cloud "Backend HTTP (REST)" as BE_HTTP
+cloud "Backend WS (/ws)" as BE_WS
+
+' UI composition
+ShellLayout --> ServersSidebar
+ShellLayout --> ChannelsSidebar
+ShellLayout --> MembersPanel
+
+ServersPage --> Dialogs
+ServerPage  --> Dialogs
+ChannelPage --> ChatMessageList
+ChannelPage --> ChatComposer
+ChannelPage --> TypingIndicator
+ServerPage  --> OnlineBadges
+
+' REST flow
+LoginPage --> AuthApi
+RegisterPage --> AuthApi
+ServersPage --> ServersApi
+ServerPage  --> ServersApi
+ServerPage  --> ChannelsApi
+ChannelPage --> MessagesApi
+
+AuthApi --> FetchClient
+ServersApi --> FetchClient
+ChannelsApi --> FetchClient
+MessagesApi --> FetchClient
+
+FetchClient --> ZodSchemas
+FetchClient --> BE_HTTP : HTTPS JSON
+
+' WS flow
+WSClient --> Reconnect
+WSClient --> ZodSchemas
+WSClient --> BE_WS : WebSocket events
+EventRouter <-- WSClient
+
+' Stores update
+AuthApi --> AuthStore
+ServersApi --> ServersStore
+ChannelsApi --> ChannelsStore
+MessagesApi --> ChatStore
+
+EventRouter --> ChatStore : message.created/deleted
+EventRouter --> PresenceStore : presence.updated
+EventRouter --> TypingStore : typing.started/stopped
+
+' Tests coverage
+FEUnit ..> FetchClient
+FEUnit ..> WSClient
+FEE2E ..> ShellLayout
+@enduml

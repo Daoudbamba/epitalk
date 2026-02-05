@@ -21,8 +21,9 @@ use crate::models::{
 };
 use crate::repositories::{ChannelRepository, MembershipRepository};
 use crate::state::AppState;
+use std::sync::Arc;
 
-pub fn router() -> Router<AppState> {
+pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_channels).post(create_channel))
         .route("/:channel_id", get(get_channel).patch(update_channel).delete(delete_channel))
@@ -42,7 +43,7 @@ pub struct ChannelPath {
 
 /// List all channels in a server
 async fn list_channels(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ServerPath>,
 ) -> AppResult<Json<Vec<ChannelResponse>>> {
@@ -61,7 +62,7 @@ async fn list_channels(
 
 /// Create a new channel (ADMIN+ only)
 async fn create_channel(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ServerPath>,
     Json(payload): Json<CreateChannelRequest>,
@@ -90,7 +91,7 @@ async fn create_channel(
 
 /// Get channel details
 async fn get_channel(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ChannelPath>,
 ) -> AppResult<Json<ChannelResponse>> {
@@ -115,7 +116,7 @@ async fn get_channel(
 
 /// Update channel (ADMIN+ only)
 async fn update_channel(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ChannelPath>,
     Json(payload): Json<UpdateChannelRequest>,
@@ -147,7 +148,7 @@ async fn update_channel(
 
 /// Delete channel (ADMIN+ only)
 async fn delete_channel(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ChannelPath>,
 ) -> AppResult<Json<serde_json::Value>> {

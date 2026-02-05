@@ -17,35 +17,57 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
+import { authApi } from "@/lib/api";
 import { useState } from "react";
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const login = useAuthStore((state) => state.login);
+  const setAuth = useAuthStore((state) => state.setAuth);
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const response = await authApi.login({ email, password });
+      setAuth(response);
+      router.push("/servers");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur de connexion");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle>Connectez-vous à votre compte</CardTitle>
+          <CardTitle>Connectez-vous a votre compte</CardTitle>
           <CardDescription>
-            Entrez vos informations de connexion pour accéder à votre compte.
+            Entrez vos informations de connexion pour acceder a votre compte.
           </CardDescription>
         </CardHeader>
 
         <CardContent>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              login({ id: "temp", email });
-            }}
-          >
+          <form onSubmit={handleSubmit}>
             <FieldGroup>
+              {error && (
+                <div className="text-red-500 text-sm text-center p-2 bg-red-50 rounded">
+                  {error}
+                </div>
+              )}
+
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
@@ -70,8 +92,12 @@ export function LoginForm({
               </Field>
 
               <Field>
-                <Button type="submit" className="bg-linear-to-r from-purple-700 to-orange-500 w-full">
-                  Se connecter
+                <Button 
+                  type="submit" 
+                  className="bg-linear-to-r from-purple-700 to-orange-500 w-full"
+                  disabled={loading}
+                >
+                  {loading ? "Connexion..." : "Se connecter"}
                 </Button>
 
                 <FieldDescription className="text-center">

@@ -18,8 +18,9 @@ use crate::error::{AppError, AppResult};
 use crate::models::{MemberResponse, MemberRole, UpdateMemberRoleRequest};
 use crate::repositories::MembershipRepository;
 use crate::state::AppState;
+use std::sync::Arc;
 
-pub fn router() -> Router<AppState> {
+pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_members))
         .route("/:user_id", get(get_member).delete(kick_member))
@@ -40,7 +41,7 @@ pub struct MemberPath {
 
 /// List all members of a server
 async fn list_members(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ServerPath>,
 ) -> AppResult<Json<Vec<MemberResponse>>> {
@@ -58,7 +59,7 @@ async fn list_members(
 
 /// Get member details
 async fn get_member(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<MemberPath>,
 ) -> AppResult<Json<MemberResponse>> {
@@ -80,7 +81,7 @@ async fn get_member(
 
 /// Update member role (OWNER only)
 async fn update_member_role(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<MemberPath>,
     Json(payload): Json<UpdateMemberRoleRequest>,
@@ -115,7 +116,7 @@ async fn update_member_role(
     }
 
     // Update role
-    let membership = MembershipRepository::update_role(
+    let _membership = MembershipRepository::update_role(
         &state.db,
         params.user_id,
         params.server_id,
@@ -135,7 +136,7 @@ async fn update_member_role(
 
 /// Kick member (ADMIN+, cannot kick OWNER or higher/equal role)
 async fn kick_member(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<MemberPath>,
 ) -> AppResult<Json<serde_json::Value>> {

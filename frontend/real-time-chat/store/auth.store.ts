@@ -1,18 +1,57 @@
 import { create } from "zustand";
-
-type User = {
-  id: string;
-  email: string;
-};
+import { persist } from "zustand/middleware";
+import type { User, AuthResponse } from "@/lib/api/schemas/auth.schema";
 
 type AuthState = {
   user: User | null;
-  login: (user: User) => void;
+  token: string | null;
+  isAuthenticated: boolean;
+
+  // Actions
+  setAuth: (response: AuthResponse) => void;
   logout: () => void;
+  setUser: (user: User) => void;
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  login: (user) => set({ user }),
-  logout: () => set({ user: null }),
-}));
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      token: null,
+      isAuthenticated: false,
+
+      setAuth: (response: AuthResponse) => {
+        // Stocker le token dans localStorage pour fetchClient
+        if (typeof window !== "undefined") {
+          localStorage.setItem("token", response.token);
+        }
+        set({
+          user: response.user,
+          token: response.token,
+          isAuthenticated: true,
+        });
+      },
+
+      logout: () => {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("token");
+        }
+        set({
+          user: null,
+          token: null,
+          isAuthenticated: false,
+        });
+      },
+
+      setUser: (user: User) => set({ user }),
+    }),
+    {
+      name: "auth-storage",
+      partialize: (state) => ({
+        user: state.user,
+        token: state.token,
+        isAuthenticated: state.isAuthenticated,
+      }),
+    }
+  )
+);
