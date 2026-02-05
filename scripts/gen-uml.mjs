@@ -5,7 +5,7 @@ const outDir = join(process.cwd(), "docs", "uml");
 mkdirSync(outDir, { recursive: true });
 
 const FRONTEND = `@startuml
-title RTC — FRONTEND (NextJS) — Component UML
+title EpiTalk — FRONTEND (NextJS) — Component UML
 skinparam componentStyle rectangle
 skinparam shadowing false
 skinparam packageStyle rectangle
@@ -120,7 +120,7 @@ FEE2E ..> ShellLayout
 `;
 
 const BACKEND = `@startuml
-title RTC — BACKEND (Rust + Axum) — Component UML
+title EpiTalk — BACKEND (Rust + Axum) — Component UML
 skinparam componentStyle rectangle
 skinparam shadowing false
 skinparam packageStyle rectangle
@@ -257,7 +257,7 @@ TWs ..> WsUpgrade
 `;
 
 const DB = `@startuml
-title RTC — DB (PostgreSQL + MongoDB) — UML (ER + Collections)
+title EpiTalk — DB (PostgreSQL + MongoDB) — UML (ER + Collections)
 hide circle
 skinparam shadowing false
 skinparam classAttributeIconSize 0
@@ -338,11 +338,11 @@ servers ..> messages : server_id
 @enduml
 `;
 
-writeFileSync(join(outDir, "RTC_FRONTEND.puml"), FRONTEND, "utf8");
-writeFileSync(join(outDir, "RTC_BACKEND.puml"), BACKEND, "utf8");
-writeFileSync(join(outDir, "RTC_DB.puml"), DB, "utf8");
+writeFileSync(join(outDir, "EPITALK_FRONTEND.puml"), FRONTEND, "utf8");
+writeFileSync(join(outDir, "EPITALK_BACKEND.puml"), BACKEND, "utf8");
+writeFileSync(join(outDir, "EPITALK_DB.puml"), DB, "utf8");
 
 console.log("✅ Generated PlantUML files in:", outDir);
-console.log(" - RTC_FRONTEND.puml");
-console.log(" - RTC_BACKEND.puml");
-console.log(" - RTC_DB.puml");
+console.log(" - EPITALK_FRONTEND.puml");
+console.log(" - EPITALK_BACKEND.puml");
+console.log(" - EPITALK_DB.puml");

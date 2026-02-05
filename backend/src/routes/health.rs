@@ -12,7 +12,7 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn health_check() -> Json<Value> {
     Json(json!({
         "status": "ok",
-        "service": "rtc-backend",
+        "service": "epitalk-backend",
         "version": env!("CARGO_PKG_VERSION")
     }))
 }

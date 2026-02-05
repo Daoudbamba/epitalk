@@ -17,7 +17,7 @@ impl Config {
 
         Ok(Self {
             database_url: std::env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://rtc:rtc_password@localhost:5432/rtc".into()),
+                .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".into()),
             jwt_secret: std::env::var("JWT_SECRET")
                 .unwrap_or_else(|_| "super_secret_jwt_key_change_in_production_min_32_chars".into()),
             jwt_expiration_hours,

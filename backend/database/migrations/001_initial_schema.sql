@@ -1,8 +1,8 @@
 -- =============================================================================
 -- Migration 001: Initial Schema
 -- =============================================================================
--- Creates the base tables for RTC application
--- Run: psql -d rtc -f 001_initial_schema.sql
+-- Creates the base tables for EpiTalk application
+-- Run: psql -d EpiTalk -f 001_initial_schema.sql
 -- =============================================================================
 
 BEGIN;

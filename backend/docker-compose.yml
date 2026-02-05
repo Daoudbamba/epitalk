@@ -6,8 +6,8 @@ services:
   # =============================================================================
   backend:
     build: .
-    image: rtc-backend:latest
-    container_name: rtc-backend
+    image: epitalk-backend:latest
+    container_name: epitalk-backend
     env_file: .env
     ports:
       - "3000:3000"
@@ -18,52 +18,52 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - rtc-network
+      - epitalk-network
 
   # =============================================================================
   # PostgreSQL Database (Users, Servers, Channels, Memberships)
   # =============================================================================
   postgres:
     image: postgres:16-alpine
-    container_name: rtc-postgres
+    container_name: epitalk-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: rtc
-      POSTGRES_PASSWORD: rtc_password
-      POSTGRES_DB: rtc
+      POSTGRES_USER: epitalk
+      POSTGRES_PASSWORD: Epitalk94!
+      POSTGRES_DB: epitalk
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rtc -d rtc"]
+      test: ["CMD-SHELL", "pg_isready -U epitalk -d epitalk"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - rtc-network
+      - epitalk-network
 
   # =============================================================================
   # MongoDB (Messages, Real-time data)
   # =============================================================================
   mongo:
     image: mongo:6.0
-    container_name: rtc-mongo
+    container_name: epitalk-mongo
     restart: unless-stopped
     volumes:
       - mongo_data:/data/db
     ports:
       - "27017:27017"
     networks:
-      - rtc-network
+      - epitalk-network
 
   # =============================================================================
   # Adminer (Database GUI - Development only)
   # =============================================================================
   adminer:
     image: adminer:latest
-    container_name: rtc-adminer
+    container_name: epitalk-adminer
     restart: unless-stopped
     ports:
       - "8081:8080"
@@ -72,7 +72,7 @@ services:
     depends_on:
       - postgres
     networks:
-      - rtc-network
+      - epitalk-network
     profiles:
       - dev
 
@@ -81,5 +81,5 @@ volumes:
   mongo_data:
 
 networks:
-  rtc-network:
+  epitalk-network:
     driver: bridge

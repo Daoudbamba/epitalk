@@ -1,4 +1,4 @@
-# RTC Backend Database
+# EpiTalk Backend Database
 
 ## Structure
 
@@ -37,19 +37,19 @@ docker compose ps
 
 ```bash
 # Using psql
-psql -h localhost -U rtc -d rtc
+psql -h localhost -U epitalk -d epitalk
 
-# Password: rtc_password
+# Password: Epitalk94!
 ```
 
 ### 4. Run migrations manually (if needed)
 
 ```bash
 # Apply initial schema
-psql -h localhost -U rtc -d rtc -f database/migrations/001_initial_schema.sql
+psql -h localhost -U epitalk -d epitalk -f database/migrations/001_initial_schema.sql
 
 # Apply seed data (development only)
-psql -h localhost -U rtc -d rtc -f database/migrations/002_seed_data.sql
+psql -h localhost -U epitalk -d epitalk -f database/migrations/002_seed_data.sql
 ```
 
 ### 5. Access Adminer GUI
@@ -57,9 +57,9 @@ psql -h localhost -U rtc -d rtc -f database/migrations/002_seed_data.sql
 Open http://localhost:8080 in your browser:
 - **System**: PostgreSQL
 - **Server**: postgres
-- **Username**: rtc
-- **Password**: rtc_password
-- **Database**: rtc
+- **Username: epitalk
+- **Password**: Epitalk94!
+- **Database: epitalk
 
 ## Database Schema
 
@@ -118,8 +118,8 @@ Key variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgres://rtc:rtc_password@localhost:5432/rtc` |
-| `MONGO_URL` | MongoDB connection string | `mongodb://rtc:rtc_password@localhost:27017/rtc` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgres://epitalk:Epitalk94!@localhost:5432/epitalk` |
+| `MONGO_URL` | MongoDB connection string | `mongodb://epitalk:Epitalk94!@localhost:27017/epitalk` |
 | `JWT_SECRET` | Secret for JWT signing | (change in production!) |
 
 ## Rollback
@@ -127,7 +127,7 @@ Key variables:
 ⚠️ **WARNING**: This will delete ALL data!
 
 ```bash
-psql -h localhost -U rtc -d rtc -f database/migrations/000_rollback_all.sql
+psql -h localhost -U epitalk -d epitalk -f database/migrations/000_rollback_all.sql
 ```
 
 ## MongoDB (Messages)

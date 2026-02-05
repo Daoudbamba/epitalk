@@ -1,5 +1,5 @@
 -- =============================================================================
--- RTC (Real Time Chat) - PostgreSQL Schema
+-- EpiTalk (Real Time Chat) - PostgreSQL Schema
 -- =============================================================================
 -- Tables: users, servers, memberships, channels, invites
 -- Roles: OWNER, ADMIN, MODERATOR, MEMBER
@@ -177,7 +177,7 @@ CREATE TRIGGER trg_channels_updated_at
 -- COMMENTS (Documentation)
 -- =============================================================================
 
-COMMENT ON TABLE users IS 'Utilisateurs de l''application RTC';
+COMMENT ON TABLE users IS 'Utilisateurs de l''application EpiTalk';
 COMMENT ON TABLE servers IS 'Serveurs/communautés de chat';
 COMMENT ON TABLE memberships IS 'Appartenance des utilisateurs aux serveurs avec rôle';
 COMMENT ON TABLE channels IS 'Channels de discussion au sein des serveurs';

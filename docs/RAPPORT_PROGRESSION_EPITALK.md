@@ -1,4 +1,4 @@
-# 📊 RAPPORT DE PROGRESSION - RTC (Real-Time Chat)
+# 📊 RAPPORT DE PROGRESSION - EpiTalk (Real-Time Chat)
 
 **Projet** : T-JSF-600-PAR_20  
 **Date** : 3 Février 2026  

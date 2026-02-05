@@ -51,7 +51,7 @@ export default function HeroSection() {
                 as="p"
                 className="mx-auto mt-6 max-w-2xl text-pretty text-lg"
               >
-                BRIDGE est une plateforme de discussion en temps réel pensée
+                EpiTalk est une plateforme de discussion en temps réel pensée
                 pour créer, organiser et faire grandir des communautés modernes.
               </TextEffect>
 
@@ -130,7 +130,7 @@ const AppComponent = () => {
       </div>
       <div className="space-y-3">
         <div className="text-foreground border-b border-white/10 pb-3 text-sm font-medium">
-          Cette année, les échanges sur BRIDGE sont plus actifs que l’an dernier.
+          Cette année, les échanges sur EpiTalk sont plus actifs que l’an dernier.
         </div>
         <div className="space-y-3">
           <div className="space-y-1">
