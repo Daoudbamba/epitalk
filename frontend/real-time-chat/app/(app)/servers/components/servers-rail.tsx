@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -86,11 +86,11 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const onInvite = async () => {
     if (!activeServerId) {
-      setErr("Sélectionne un serveur.");
+      setErr("Selectionne un serveur.");
       return;
     }
     if (!isOwner) {
-      setErr("Seul le créateur peut générer une invitation.");
+      setErr("Seul le createur peut generer une invitation.");
       return;
     }
 
@@ -104,7 +104,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
       setInviteLink(link);
 
       await navigator.clipboard.writeText(link).catch(() => {});
-      setOk("Invitation générée (lien copié).");
+      setOk("Invitation generee (lien copie).");
     } catch (err) {
       setErr(err instanceof Error ? err.message : "Erreur invitation");
     } finally {
@@ -115,12 +115,12 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const onCopyInvite = async () => {
     if (!inviteLink) return;
     await navigator.clipboard.writeText(inviteLink).catch(() => {});
-    setInfo("Lien copié.");
+    setInfo("Lien copie.");
   };
 
   const onLeaveOrDelete = async () => {
     if (!activeServerId || !activeServer) {
-      setErr("Sélectionne un serveur.");
+      setErr("Selectionne un serveur.");
       return;
     }
 
@@ -129,15 +129,15 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
     try {
       if (isOwner) {
-        const ok = confirm("Tu es le créateur. Supprimer le serveur ?");
+        const ok = confirm("Tu es le createur. Supprimer le serveur ?");
         if (!ok) return;
         await serversApi.delete(activeServerId);
-        setInfo("Serveur supprimé.");
+        setInfo("Serveur supprime.");
       } else {
         const ok = confirm("Quitter ce serveur ?");
         if (!ok) return;
         await serversApi.leave(activeServerId);
-        setInfo("Serveur quitté.");
+        setInfo("Serveur quitte.");
       }
 
       await onRefresh();
@@ -155,29 +155,34 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const statusClasses =
     status?.type === "success"
-      ? "border-green-200 text-green-700 bg-green-50"
+      ? "border-emerald-200 text-emerald-700 bg-emerald-50"
       : status?.type === "error"
       ? "border-red-200 text-red-700 bg-red-50"
-      : "border-zinc-200 text-zinc-700 bg-zinc-50";
+      : "border-[#023BFC]/20 text-[#023BFC] bg-[#EBF0FF]";
 
   return (
-    <aside className="w-23 my-5 mx-2 border-2 border-gray-200 rounded-md flex flex-col 
-    items-center gap-3 py-8 bg-gray-400">
+    <aside className="w-[88px] my-4 ml-3 rounded-2xl flex flex-col items-center gap-4 py-6 bg-gradient-to-b from-[#F7F8FA] to-white border border-[#E5E7EB] shadow-lg">
 
-      <h1> BRIDGE </h1>
+      {/* Logo */}
+      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg glow-blue-sm">
+        <span className="text-white font-bold text-lg">B</span>
+      </div>
       
+      <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
 
       {/* Add server */}
       <button
         onClick={onCreateServer}
-        className="w-14 h-14 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xl flex items-center justify-center transition"
-        title="Ajouter un serveur"
+        className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border-2 border-dashed border-[#023BFC]/30 hover:border-[#023BFC] text-[#023BFC] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105"
+        title="Creer un serveur"
       >
-        +
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
       </button>
 
       {/* Servers list */}
-      <div className="flex-1 w-full flex flex-col items-center gap-3 overflow-auto px-2">
+      <div className="flex-1 w-full flex flex-col items-center gap-3 overflow-auto px-3 py-2">
         {servers.map((s) => {
           const active = s.id === activeServerId;
           return (
@@ -185,10 +190,10 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
               key={s.id}
               onClick={() => setActiveServer(s.id)}
               className={[
-                "w-14 h-14 rounded-2xl border transition flex items-center justify-center font-semibold",
+                "w-12 h-12 transition-all duration-300 flex items-center justify-center font-semibold text-sm",
                 active
-                  ? "bg-white text-black border-white shadow"
-                  : "bg-white/10 text-white border-white/20 hover:bg-white/20",
+                  ? "server-icon-active bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white rounded-2xl"
+                  : "server-icon bg-white text-[#1A1D26] border border-[#E5E7EB] hover:border-[#023BFC]/50 hover:text-[#023BFC]",
               ].join(" ")}
               title={s.name}
             >
@@ -198,6 +203,8 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
         })}
       </div>
 
+      <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
+
       {/* User Settings (Profile / Logout) */}
       <div className="mt-auto">
         <UserSettings />
@@ -206,76 +213,106 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
       {/* Settings button (bottom) - Server settings */}
       <button
         onClick={() => setOpenSettings(true)}
-        className="w-14 h-14 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center transition"
-        title="Paramètres serveur"
+        className="w-12 h-12 server-icon bg-white hover:bg-[#F7F8FA] border border-[#E5E7EB] text-[#6B7280] hover:text-[#023BFC] flex items-center justify-center transition-all duration-300"
+        title="Parametres serveur"
       >
-        ⚙
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
       </button>
 
-      {/* Modal settings */}
+      {/* Modal settings - Premium glassmorphism */}
       {openSettings && (
         <div className="fixed inset-0 z-50">
           <div
-            className="absolute inset-0 bg-black/60"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setOpenSettings(false)}
           />
-          <div className="absolute left-1/2 top-1/2 w-140 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white dark:bg-[#1f2023] border border-white/10 shadow-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-black/10 dark:border-white/10 flex items-center">
-              <div className="font-semibold">
-                Paramètres — {activeServer?.name ?? "Aucun serveur sélectionné"}
+          <div className="absolute left-1/2 top-1/2 w-140 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-3xl glass border border-white/30 shadow-2xl overflow-hidden">
+            {/* Header with gradient */}
+            <div className="px-6 py-5 border-b border-[#E5E7EB]/50 flex items-center bg-gradient-to-r from-[#023BFC]/5 to-transparent">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#0066FF] flex items-center justify-center shadow-lg">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="font-bold text-[#1A1A2E]">Parametres</div>
+                  <div className="text-xs text-[#6B7280]">{activeServer?.name ?? "Aucun serveur selectionne"}</div>
+                </div>
               </div>
               <button
-                className="ml-auto text-sm px-3 py-1 rounded-md border border-black/10 dark:border-white/10"
+                className="ml-auto w-9 h-9 rounded-xl bg-[#F7F8FA] hover:bg-[#E5E7EB] border border-[#E5E7EB] flex items-center justify-center transition-all duration-300"
                 onClick={() => setOpenSettings(false)}
               >
-                Fermer
+                <svg className="w-4 h-4 text-[#6B7280]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-6 space-y-5">
               {/* Join */}
-              <div className="rounded-xl border border-black/10 dark:border-white/10 p-4">
-                <div className="text-sm font-semibold mb-2">Rejoindre un serveur</div>
-                <div className="text-xs text-muted-foreground mb-3">
-                  Colle un code ou un lien complet d’invite.
+              <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                    </svg>
+                  </div>
+                  <div className="text-sm font-bold text-[#1A1A2E]">Rejoindre un serveur</div>
+                </div>
+                <div className="text-xs text-[#6B7280] mb-4">
+                  Colle un code ou un lien complet d'invitation.
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <input
                     value={inviteInput}
                     onChange={(e) => setInviteInput(e.target.value)}
-                    placeholder="Lien d’invite ou code..."
-                    className="h-10 flex-1 rounded-md border px-3 text-sm bg-background"
+                    placeholder="Lien d'invite ou code..."
+                    className="h-11 flex-1 rounded-xl border border-[#E5E7EB] px-4 text-sm bg-white/80 focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 outline-none transition-all duration-300"
                   />
-                  <Button onClick={onJoin} disabled={loadingJoin || !inviteInput.trim()}>
+                  <Button onClick={onJoin} disabled={loadingJoin || !inviteInput.trim()} className="btn-premium h-11 px-5">
                     {loadingJoin ? "..." : "Rejoindre"}
                   </Button>
                 </div>
               </div>
 
               {/* Invite */}
-              <div className="rounded-xl border border-black/10 dark:border-white/10 p-4">
-                <div className="text-sm font-semibold mb-2">Inviter sur mon serveur</div>
-                <div className="text-xs text-muted-foreground mb-3">
-                  Disponible uniquement pour le créateur (mock).
+              <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#023BFC] to-[#0066FF] flex items-center justify-center">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                  </div>
+                  <div className="text-sm font-bold text-[#1A1A2E]">Inviter sur mon serveur</div>
+                </div>
+                <div className="text-xs text-[#6B7280] mb-4">
+                  Genere un lien d'invitation a partager.
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-3 flex-wrap">
                   <Button
                     variant="outline"
                     onClick={onInvite}
                     disabled={loadingInvite || !activeServerId}
-                    title={isOwner ? "Générer" : "Réservé au créateur"}
+                    title={isOwner ? "Generer" : "Reserve au createur"}
+                    className="h-11 px-5 rounded-xl border-[#E5E7EB] hover:border-[#023BFC] hover:bg-[#023BFC]/5 transition-all duration-300"
                   >
-                    {loadingInvite ? "..." : "Générer une invitation"}
+                    {loadingInvite ? "..." : "Generer une invitation"}
                   </Button>
 
                   {inviteLink && (
                     <>
-                      <div className="flex-1 text-xs rounded-md border px-3 py-2 bg-background font-mono overflow-hidden text-ellipsis">
+                      <div className="flex-1 min-w-[200px] text-xs rounded-xl border border-[#E5E7EB] px-4 py-3 bg-[#F7F8FA] font-mono overflow-hidden text-ellipsis text-[#1A1A2E]">
                         {inviteLink}
                       </div>
-                      <Button variant="outline" onClick={onCopyInvite}>
+                      <Button variant="outline" onClick={onCopyInvite} className="h-11 px-4 rounded-xl border-[#023BFC] text-[#023BFC] hover:bg-[#023BFC] hover:text-white transition-all duration-300">
                         Copier
                       </Button>
                     </>
@@ -284,27 +321,35 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
               </div>
 
               {/* Danger */}
-              <div className="rounded-xl border border-black/10 dark:border-white/10 p-4">
-                <div className="text-sm font-semibold mb-2">
-                  {isOwner ? "Supprimer le serveur" : "Quitter le serveur"}
+              <div className="rounded-2xl border border-red-200/50 p-5 bg-red-50/30 hover:bg-red-50/50 transition-all duration-300">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div className="text-sm font-bold text-red-700">
+                    {isOwner ? "Zone dangereuse" : "Quitter le serveur"}
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground mb-3">
+                <div className="text-xs text-red-600/80 mb-4">
                   {isOwner
-                    ? "Si tu es créateur, tu peux supprimer le serveur."
-                    : "Si tu es membre, tu peux quitter le serveur."}
+                    ? "La suppression est definitive et irreversible."
+                    : "Tu peux quitter ce serveur a tout moment."}
                 </div>
 
                 <Button
                   variant={isOwner ? "destructive" : "outline"}
                   onClick={onLeaveOrDelete}
                   disabled={loadingDanger || !activeServerId}
+                  className={isOwner ? "h-11 px-5 rounded-xl bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 border-0 shadow-lg" : "h-11 px-5 rounded-xl border-red-300 text-red-600 hover:bg-red-50"}
                 >
-                  {loadingDanger ? "..." : isOwner ? "Supprimer" : "Quitter"}
+                  {loadingDanger ? "..." : isOwner ? "Supprimer definitivement" : "Quitter"}
                 </Button>
               </div>
 
               {status && (
-                <div className={`text-xs border rounded-md px-3 py-2 ${statusClasses}`}>
+                <div className={`text-xs border rounded-xl px-4 py-3 ${statusClasses}`}>
                   {status.text}
                 </div>
               )}
@@ -313,7 +358,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
         </div>
       )}
 
-      {/* Modal création serveur */}
+      {/* Modal creation serveur */}
       <CreateServerModal
         open={openCreateServer}
         onOpenChange={setOpenCreateServer}

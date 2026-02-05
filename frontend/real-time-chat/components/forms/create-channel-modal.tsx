@@ -71,23 +71,30 @@ export function CreateChannelModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Hash className="h-5 w-5 text-indigo-500" />
+      <DialogContent className="sm:max-w-[425px] bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl border-0 overflow-hidden p-0">
+        {/* Decorative header bar */}
+        <div className="h-1.5 bg-gradient-to-r from-[#023BFC] via-[#3D6AFF] to-[#023BFC]" />
+        
+        <form onSubmit={handleSubmit} className="p-6">
+          <DialogHeader className="mb-6">
+            <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-[#1A1A2E]">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg">
+                <Hash className="h-5 w-5 text-white" />
+              </div>
               Créer un channel
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-[#6B7280] mt-2">
               Les channels sont des espaces de discussion au sein de votre serveur.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="channel-name">Nom du channel</Label>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="channel-name" className="text-sm font-medium text-[#1A1A2E]">
+                Nom du channel
+              </Label>
               <div className="flex items-center gap-2">
-                <span className="text-zinc-500">#</span>
+                <span className="text-[#023BFC] font-bold text-lg">#</span>
                 <Input
                   id="channel-name"
                   value={name}
@@ -95,36 +102,46 @@ export function CreateChannelModal({
                   placeholder="général"
                   disabled={loading}
                   autoFocus
-                  className="flex-1"
+                  className="flex-1 h-12 px-4 rounded-xl border-[#E5E7EB] focus:border-[#023BFC] focus:ring-[#023BFC]/20 transition-all duration-200 bg-[#F7F8FA]"
                 />
               </div>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-[#6B7280]">
                 Utilisez des lettres minuscules et des tirets
               </p>
             </div>
 
             {error && (
-              <p className="text-sm text-red-500">{error}</p>
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+                <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center">
+                  <span className="text-red-500 text-xs">!</span>
+                </div>
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="mt-6 gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={loading}
+              className="h-11 px-6 rounded-xl border-[#E5E7EB] hover:bg-[#F7F8FA] transition-all duration-200"
             >
               Annuler
             </Button>
-            <Button type="submit" disabled={loading || !name.trim() || !serverId}>
+            <Button 
+              type="submit" 
+              disabled={loading || !name.trim() || !serverId}
+              className="h-11 px-6 rounded-xl bg-gradient-to-r from-[#023BFC] to-[#3D6AFF] hover:from-[#0235E0] hover:to-[#3560E8] text-white shadow-lg shadow-[#023BFC]/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Création...
                 </>
               ) : (
-                "Créer"
+                "Créer le channel"
               )}
             </Button>
           </DialogFooter>

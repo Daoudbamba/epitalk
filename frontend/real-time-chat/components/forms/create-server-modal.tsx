@@ -60,21 +60,28 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] border-0 bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl overflow-hidden">
+        {/* Decorative gradient header */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#023BFC] via-[#3D6AFF] to-[#023BFC]" />
+        
         <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-indigo-500" />
-              Créer un serveur
+          <DialogHeader className="pt-6">
+            <DialogTitle className="flex items-center gap-3 text-xl">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg">
+                <Plus className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-[#1A1A2E]">Créer un serveur</span>
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-[#6B7280] mt-2">
               Donnez un nom à votre serveur. Vous pourrez le modifier plus tard.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-6">
             <div className="grid gap-2">
-              <Label htmlFor="server-name">Nom du serveur</Label>
+              <Label htmlFor="server-name" className="text-[#4B5563] font-medium">
+                Nom du serveur
+              </Label>
               <Input
                 id="server-name"
                 value={name}
@@ -82,25 +89,35 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
                 placeholder="Mon super serveur"
                 disabled={loading}
                 autoFocus
-                className="col-span-3"
+                className="h-12 px-4 rounded-xl border-[#E5E7EB] focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all duration-300 bg-[#F7F8FA]"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-500">{error}</p>
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                {error}
+              </div>
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-3">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
               disabled={loading}
+              className="h-11 px-6 rounded-xl border-[#E5E7EB] text-[#4B5563] hover:bg-[#F7F8FA] hover:border-[#D1D5DB] transition-all duration-300"
             >
               Annuler
             </Button>
-            <Button type="submit" disabled={loading || !name.trim()}>
+            <Button 
+              type="submit" 
+              disabled={loading || !name.trim()}
+              className="h-11 px-6 rounded-xl bg-gradient-to-r from-[#023BFC] to-[#3D6AFF] text-white shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
+            >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
