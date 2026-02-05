@@ -312,13 +312,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
           </div>
         </div>
       )}
-
-      {/* Modal création serveur */}
-      <CreateServerModal
-        open={openCreateServer}
-        onOpenChange={setOpenCreateServer}
-        onSuccess={onRefresh}
-      />
     </aside>
   );
 }

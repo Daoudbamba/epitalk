@@ -184,14 +184,6 @@ export function ChannelsSidebar() {
           {status.text}
         </div>
       )}
-
-      {/* Modal création channel */}
-      <CreateChannelModal
-        open={openCreateChannel}
-        onOpenChange={setOpenCreateChannel}
-        serverId={activeServerId}
-        onSuccess={handleChannelCreated}
-      />
     </div>
   );
 }

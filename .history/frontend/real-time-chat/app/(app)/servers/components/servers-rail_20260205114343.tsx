@@ -46,7 +46,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const isOwner = !!activeServer && !!currentUser && activeServer.owner_id === currentUser.id;
 
   const [openSettings, setOpenSettings] = useState(false);
-  const [openCreateServer, setOpenCreateServer] = useState(false);
   const [inviteInput, setInviteInput] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [loadingJoin, setLoadingJoin] = useState(false);
@@ -58,8 +57,14 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const setErr = (text: string) => setStatus({ type: "error", text });
   const setInfo = (text: string) => setStatus({ type: "info", text });
 
-  const onCreateServer = () => {
-    setOpenCreateServer(true);
+  const onCreateServer = async () => {
+    const name = prompt("Nom du serveur ?");
+    if (!name?.trim()) return;
+
+    setStatus(null);
+    await serversApi.create(name.trim());
+    await onRefresh();
+    setOk("Serveur créé.");
   };
 
   const onJoin = async () => {
@@ -312,13 +317,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
           </div>
         </div>
       )}
-
-      {/* Modal création serveur */}
-      <CreateServerModal
-        open={openCreateServer}
-        onOpenChange={setOpenCreateServer}
-        onSuccess={onRefresh}
-      />
     </aside>
   );
 }

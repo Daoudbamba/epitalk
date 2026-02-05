@@ -58,8 +58,14 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const setErr = (text: string) => setStatus({ type: "error", text });
   const setInfo = (text: string) => setStatus({ type: "info", text });
 
-  const onCreateServer = () => {
-    setOpenCreateServer(true);
+  const onCreateServer = async () => {
+    const name = prompt("Nom du serveur ?");
+    if (!name?.trim()) return;
+
+    setStatus(null);
+    await serversApi.create(name.trim());
+    await onRefresh();
+    setOk("Serveur créé.");
   };
 
   const onJoin = async () => {
@@ -312,13 +318,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
           </div>
         </div>
       )}
-
-      {/* Modal création serveur */}
-      <CreateServerModal
-        open={openCreateServer}
-        onOpenChange={setOpenCreateServer}
-        onSuccess={onRefresh}
-      />
     </aside>
   );
 }

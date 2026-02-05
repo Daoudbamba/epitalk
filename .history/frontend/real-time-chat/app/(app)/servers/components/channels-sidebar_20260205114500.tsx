@@ -72,14 +72,23 @@ export function ChannelsSidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeServerId]);
 
-  const onCreate = () => {
+  const onCreate = async () => {
     if (!activeServerId) return;
-    setOpenCreateChannel(true);
-  };
 
-  const handleChannelCreated = async () => {
-    await refresh();
-    setOk("Channel créé.");
+    const name = prompt("Nom du channel ?");
+    if (!name?.trim()) return;
+
+    setStatus(null);
+    setLoading(true);
+    try {
+      await channelsApi.create(activeServerId, name.trim());
+      await refresh();
+      setOk("Channel créé.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erreur création channel");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onDelete = async (channelId: string) => {
@@ -184,14 +193,6 @@ export function ChannelsSidebar() {
           {status.text}
         </div>
       )}
-
-      {/* Modal création channel */}
-      <CreateChannelModal
-        open={openCreateChannel}
-        onOpenChange={setOpenCreateChannel}
-        serverId={activeServerId}
-        onSuccess={handleChannelCreated}
-      />
     </div>
   );
 }

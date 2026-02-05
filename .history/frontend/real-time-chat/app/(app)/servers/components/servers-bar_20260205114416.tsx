@@ -36,7 +36,6 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const isOwner = !!activeServer && !!currentUser && activeServer.owner_id === currentUser.id;
 
-  const [openCreateServer, setOpenCreateServer] = useState(false);
   const [inviteInput, setInviteInput] = useState("");
   const [joinLoading, setJoinLoading] = useState(false);
 
@@ -49,8 +48,14 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const setErr = (text: string) => setStatus({ type: "error", text });
   const setInfo = (text: string) => setStatus({ type: "info", text });
 
-  const onCreateServer = () => {
-    setOpenCreateServer(true);
+  const onCreateServer = async () => {
+    const name = prompt("Nom du serveur ?");
+    if (!name?.trim()) return;
+
+    setStatus(null);
+    await serversApi.create(name.trim());
+    await onRefresh();
+    setOk("Serveur créé.");
   };
 
   const onInvite = async () => {
@@ -232,13 +237,6 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
           )}
         </div>
       )}
-
-      {/* Modal création serveur */}
-      <CreateServerModal
-        open={openCreateServer}
-        onOpenChange={setOpenCreateServer}
-        onSuccess={onRefresh}
-      />
     </div>
   );
 }
