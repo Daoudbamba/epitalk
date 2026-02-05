@@ -232,13 +232,6 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
           )}
         </div>
       )}
-
-      {/* Modal création serveur */}
-      <CreateServerModal
-        open={openCreateServer}
-        onOpenChange={setOpenCreateServer}
-        onSuccess={onRefresh}
-      />
     </div>
   );
 }
