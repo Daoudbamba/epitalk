@@ -1,0 +1,80 @@
+@startuml RTC_DB
+title RTC — DB (PostgreSQL + MongoDB) — UML (ER + Collections)
+hide circle
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+package "PostgreSQL (organisation / RBAC)" {
+
+  class users <<table>> {
+    +id: UUID (PK)
+    email: CITEXT (UNIQUE)
+    password_hash: TEXT
+    created_at: TIMESTAMP
+  }
+
+  class servers <<table>> {
+    +id: UUID (PK)
+    name: TEXT
+    owner_id: UUID (FK -> users.id)
+    created_at: TIMESTAMP
+  }
+
+  class memberships <<table>> {
+    +server_id: UUID (PK, FK -> servers.id)
+    +user_id: UUID (PK, FK -> users.id)
+    role: ENUM('OWNER','ADMIN','MEMBER')
+    joined_at: TIMESTAMP
+  }
+
+  class channels <<table>> {
+    +id: UUID (PK)
+    server_id: UUID (FK -> servers.id)
+    name: TEXT
+    kind: ENUM('TEXT')
+    created_at: TIMESTAMP
+  }
+
+  class invites <<table>> {
+    +code: TEXT (PK)
+    server_id: UUID (FK -> servers.id)
+    created_by: UUID (FK -> users.id)
+    expires_at: TIMESTAMP?
+    max_uses: INT?
+    uses: INT
+    created_at: TIMESTAMP
+  }
+
+  users "1" -- "many" servers : owns >
+  servers "1" -- "many" channels
+  users "1" -- "many" memberships
+  servers "1" -- "many" memberships
+  servers "1" -- "many" invites
+  users "1" -- "many" invites : creates >
+}
+
+package "MongoDB (messages / history)" {
+
+  class messages <<collection>> {
+    +_id: ObjectId (PK)
+    channel_id: UUID (string)
+    server_id: UUID (string)
+    author_id: UUID (string)
+    content: string
+    created_at: datetime
+    deleted_at: datetime?
+  }
+
+  note right of messages
+    Indexes (recommended):
+      - { channel_id: 1, created_at: -1 }
+      - { server_id: 1, created_at: -1 } (optional)
+      - { author_id: 1, created_at: -1 } (optional)
+  end note
+}
+
+' Logical references across DBs (not enforced)
+channels ..> messages : channel_id
+users ..> messages : author_id
+servers ..> messages : server_id
+@enduml

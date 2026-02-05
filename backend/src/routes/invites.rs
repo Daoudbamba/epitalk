@@ -25,8 +25,9 @@ use crate::repositories::{
     InviteRepository, MembershipRepository, ServerRepository,
 };
 use crate::state::AppState;
+use std::sync::Arc;
 
-pub fn router() -> Router<AppState> {
+pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_invites).post(create_invite))
         .route("/active", get(list_active_invites))
@@ -34,7 +35,7 @@ pub fn router() -> Router<AppState> {
 }
 
 /// Join server router (mounted at /api/join)
-pub fn join_router() -> Router<AppState> {
+pub fn join_router() -> Router<Arc<AppState>> {
     Router::new().route("/", post(join_server))
 }
 
@@ -52,7 +53,7 @@ pub struct InvitePath {
 
 /// List all invites for a server (ADMIN+ only)
 async fn list_invites(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ServerPath>,
 ) -> AppResult<Json<Vec<InviteResponse>>> {
@@ -75,7 +76,7 @@ async fn list_invites(
 
 /// List only ACTIVE invites for a server (not expired, not at max uses) - ADMIN+ only
 async fn list_active_invites(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ServerPath>,
 ) -> AppResult<Json<Vec<InviteResponse>>> {
@@ -98,7 +99,7 @@ async fn list_active_invites(
 
 /// Create a new invite (ADMIN+ only)
 async fn create_invite(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ServerPath>,
     Json(payload): Json<CreateInviteRequest>,
@@ -128,7 +129,7 @@ async fn create_invite(
 
 /// Delete an invite (ADMIN+ only)
 async fn delete_invite(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<InvitePath>,
 ) -> AppResult<Json<serde_json::Value>> {
@@ -159,7 +160,7 @@ async fn delete_invite(
 
 /// Join a server using an invite code
 async fn join_server(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Json(payload): Json<JoinServerRequest>,
 ) -> AppResult<Json<ServerResponse>> {

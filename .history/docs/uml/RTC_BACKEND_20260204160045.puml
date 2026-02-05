@@ -1,0 +1,135 @@
+@startuml RTC_BACKEND
+title RTC — BACKEND (Rust + Axum) — Component UML
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "backend/ (Rust + Axum)" {
+
+  package "App (src/app/)" {
+    component "Router (Axum)" as Router
+    component "AppState" as AppState
+    component "Layers\n(CORS/Trace/RateLimit)" as Layers
+  }
+
+  package "Middlewares (src/middlewares/)" {
+    component "AuthMiddleware" as AuthMiddleware
+    component "RateLimitMiddleware" as RateLimitMiddleware
+  }
+
+  package "REST Routes (src/routes/)" {
+    component "auth.rs" as AuthRoutes
+    component "servers.rs" as ServerRoutes
+    component "channels.rs" as ChannelRoutes
+    component "messages.rs" as MessageRoutes
+  }
+
+  package "WS (src/ws/)" {
+    component "ws_upgrade\n(/ws)" as WsUpgrade
+    component "protocol\n(typed events)" as WsProtocol
+    component "hub\n(rooms/presence/typing)" as WsHub
+  }
+
+  package "Services (src/services/)" {
+    component "AuthService" as AuthService
+    component "ServerService" as ServerService
+    component "ChannelService" as ChannelService
+    component "MessageService" as MessageService
+    component "PresenceService" as PresenceService
+  }
+
+  package "Policies (src/policies/)" {
+    component "RBAC Policy\n(Owner/Admin/Member)" as RbacPolicy
+  }
+
+  package "Repos (src/repos/)" {
+    package "postgres/" {
+      component "UserRepo" as UserRepo
+      component "ServerRepo" as ServerRepo
+      component "ChannelRepo" as ChannelRepo
+      component "MembershipRepo" as MembershipRepo
+      component "InviteRepo" as InviteRepo
+    }
+    package "mongo/" {
+      component "MessageRepo (Mongo)" as MongoMessageRepo
+    }
+  }
+
+  package "Infra (config/error/telemetry)" {
+    component "Config (env validation)" as Config
+    component "Error (uniform API/WS errors)" as Error
+    component "Telemetry (logs/trace)" as Telemetry
+  }
+
+  package "Tests (backend/tests/)" {
+    component "integration_auth" as TAuth
+    component "integration_servers" as TServers
+    component "integration_channels" as TChannels
+    component "integration_ws" as TWs
+  }
+}
+
+cloud "Frontend (NextJS)" as FE
+database "PostgreSQL" as PG
+database "MongoDB" as MG
+
+' Entry points
+FE --> Router : REST JSON
+FE --> WsUpgrade : WebSocket connect
+
+' App wiring
+Router --> Layers
+Layers --> AuthMiddleware
+Layers --> RateLimitMiddleware
+
+Router --> AuthRoutes
+Router --> ServerRoutes
+Router --> ChannelRoutes
+Router --> MessageRoutes
+
+' REST -> Services -> Repos
+AuthRoutes --> AuthService
+ServerRoutes --> ServerService
+ChannelRoutes --> ChannelService
+MessageRoutes --> MessageService
+
+AuthService --> RbacPolicy
+ServerService --> RbacPolicy
+ChannelService --> RbacPolicy
+MessageService --> RbacPolicy
+
+AuthService --> UserRepo
+ServerService --> ServerRepo
+ServerService --> MembershipRepo
+ServerService --> InviteRepo
+ChannelService --> ChannelRepo
+MessageService --> MongoMessageRepo
+
+UserRepo --> PG
+ServerRepo --> PG
+MembershipRepo --> PG
+InviteRepo --> PG
+ChannelRepo --> PG
+
+MongoMessageRepo --> MG
+
+' WS wiring
+WsUpgrade --> WsProtocol
+WsUpgrade --> WsHub
+WsHub --> PresenceService
+WsHub --> MessageService
+PresenceService --> MembershipRepo : validate membership
+MessageService --> MongoMessageRepo
+
+' Cross-cutting infra
+Router ..> Config
+Router ..> Telemetry
+AuthRoutes ..> Error
+WsHub ..> Error
+
+' Tests
+TAuth ..> AuthRoutes
+TServers ..> ServerRoutes
+TChannels ..> ChannelRoutes
+TWs ..> WsUpgrade
+@enduml

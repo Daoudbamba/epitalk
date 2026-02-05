@@ -1,7 +1,14 @@
-//les règles de connexion tout ce qui concerne login, logout
-
 import { FetchClient } from "./fetchClient";
-import { LoginSchema, type LoginInput, UserSchema, type User } from "./schemas/auth.schema";
+import {
+  LoginSchema,
+  type LoginInput,
+  RegisterSchema,
+  type RegisterInput,
+  UserSchema,
+  type User,
+  AuthResponseSchema,
+  type AuthResponse,
+} from "./schemas/auth.schema";
 
 export class AuthAPI {
   private client: FetchClient;
@@ -10,19 +17,32 @@ export class AuthAPI {
     this.client = client;
   }
 
-  async login(data: LoginInput): Promise<void> {
-    // Vérifie les données AVANT d’envoyer au backend
-    const validData = LoginSchema.parse(data);
+  async register(data: RegisterInput): Promise<AuthResponse> {
+    const validData = RegisterSchema.parse(data);
+    const response = await this.client.post<AuthResponse>("/auth/register", validData);
+    return AuthResponseSchema.parse(response);
+  }
 
-    await this.client.post("/auth/login", validData);
+  async login(data: LoginInput): Promise<AuthResponse> {
+    const validData = LoginSchema.parse(data);
+    const response = await this.client.post<AuthResponse>("/auth/login", validData);
+    return AuthResponseSchema.parse(response);
   }
 
   async me(): Promise<User> {
-    const response = await this.client.get<User>("/api/auth/me");
+    const response = await this.client.get<User>("/auth/me");
     return UserSchema.parse(response);
   }
 
+  async refresh(): Promise<AuthResponse> {
+    const response = await this.client.post<AuthResponse>("/auth/refresh");
+    return AuthResponseSchema.parse(response);
+  }
+
   async logout(): Promise<void> {
-    await this.client.post("/auth/logout");
+    // Logout cote client - supprimer le token du localStorage
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token");
+    }
   }
 }
