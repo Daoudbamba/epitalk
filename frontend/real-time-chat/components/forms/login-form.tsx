@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { authApi } from "@/lib/api";
 import { useState } from "react";
+import { getErrorMessage } from "@/lib/api/errors";
 
 export function LoginForm({
   className,
@@ -36,6 +37,12 @@ export function LoginForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!email.trim() || !password.trim()) {
+      setError("Veuillez remplir tous les champs.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -43,7 +50,7 @@ export function LoginForm({
       setAuth(response);
       router.push("/servers");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur de connexion");
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }

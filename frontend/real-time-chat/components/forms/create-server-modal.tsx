@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { serversApi } from "@/lib/api";
+import { getErrorMessage } from "@/lib/api/errors";
 
 interface CreateServerModalProps {
   open: boolean;
@@ -44,7 +45,7 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
       setName("");
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de la création");
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }

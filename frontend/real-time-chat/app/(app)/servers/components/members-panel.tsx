@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { serversApi } from "@/lib/api";
+import { getErrorMessage } from "@/lib/api/errors";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
 const ROLE_LABELS: Record<string, string> = {
@@ -34,6 +35,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const isMemberOfActiveServer = !!server;
   const [loadingKick, setLoadingKick] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeServerId || !isMemberOfActiveServer) {
@@ -60,6 +62,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
     const ok = confirm("Expulser ce membre ?");
     if (!ok) return;
     setLoadingKick(memberId);
+    setActionError(null);
     try {
       await serversApi.kickMember(server.id, memberId);
       const data = await serversApi.listMembers(server.id);
@@ -67,7 +70,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
       await onRefresh();
     } catch (err) {
       console.error("Kick error:", err);
-      alert("Erreur lors de l'expulsion");
+      setActionError(getErrorMessage(err));
     } finally {
       setLoadingKick(null);
     }
@@ -76,13 +79,14 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const onChangeRole = async (memberId: string, newRole: string) => {
     if (!server) return;
     setLoadingRole(memberId);
+    setActionError(null);
     try {
       await serversApi.updateMemberRole(server.id, memberId, newRole);
       const data = await serversApi.listMembers(server.id);
       setMembers(data);
     } catch (err) {
       console.error("Role update error:", err);
-      alert("Erreur lors du changement de rôle");
+      setActionError(getErrorMessage(err));
     } finally {
       setLoadingRole(null);
     }
@@ -119,6 +123,14 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
         <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />
         {onlineCount} en ligne
       </p>
+
+      {actionError && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <span className="shrink-0">&#9888;</span>
+          <span className="flex-1">{actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 ml-1">&times;</button>
+        </div>
+      )}
 
       {membersLoading ? (
         <p className="text-sm text-muted-foreground">Chargement...</p>

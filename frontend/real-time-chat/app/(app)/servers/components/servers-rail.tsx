@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { serversApi } from "@/lib/api";
+import { getErrorMessage } from "@/lib/api/errors";
 import { UserSettings } from "./user-settings";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
 
@@ -78,7 +79,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
       await onRefresh();
       setOk("Serveur rejoint.");
     } catch (err) {
-      setErr(err instanceof Error ? err.message : "Invite invalide");
+      setErr(getErrorMessage(err));
     } finally {
       setLoadingJoin(false);
     }
@@ -106,7 +107,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
       await navigator.clipboard.writeText(link).catch(() => {});
       setOk("Invitation generee (lien copie).");
     } catch (err) {
-      setErr(err instanceof Error ? err.message : "Erreur invitation");
+      setErr(getErrorMessage(err));
     } finally {
       setLoadingInvite(false);
     }
