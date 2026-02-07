@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Send, Loader2 } from "lucide-react";
+import { Plus, Smile, Gift, Sticker, Send, Loader2 } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
-import { messagesApi } from "@/lib/api";
 
 export function ChatPanel() {
   const activeServerId = useServerStore((s) => s.activeServerId);
@@ -28,7 +27,9 @@ export function ChatPanel() {
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
   const wsMessages = useWebSocketStore((s) => s.messages);
-  const setMessages = useWebSocketStore((s) => s.setMessages);
+  const startTyping = useWebSocketStore((s) => s.startTyping);
+  const stopTyping = useWebSocketStore((s) => s.stopTyping);
+  const typingUsers = useWebSocketStore((s) => s.typingUsers);
 
   const activeChannelName = useMemo(() => {
     return channels.find((c) => c.id === activeChannelId)?.name ?? null;
@@ -37,7 +38,6 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
-  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -56,45 +56,22 @@ export function ChatPanel() {
     }
   }, [token, isConnected, connect]);
 
-  // Load message history and join channel when it changes
+  // Join channel when it changes
   useEffect(() => {
-    const loadHistory = async () => {
-      if (!activeServerId || !activeChannelId) return;
-      
-      setLoadingHistory(true);
-      try {
-        const history = await messagesApi.list(activeServerId, activeChannelId);
-        // Convert API messages to WsMessage format
-        const wsFormattedMessages = history.map((msg) => ({
-          id: msg.id,
-          channel_id: msg.channel_id,
-          author_id: msg.author_id,
-          content: msg.content,
-          created_at: msg.created_at,
-        }));
-        setMessages(activeChannelId, wsFormattedMessages);
-      } catch (e) {
-        console.error("Failed to load message history:", e);
-      } finally {
-        setLoadingHistory(false);
-      }
-    };
-
-    loadHistory();
-
-    // Also join channel via WebSocket for real-time updates
     if (activeChannelId && isConnected) {
       joinChannel(activeChannelId);
     }
-  }, [activeServerId, activeChannelId, isConnected, joinChannel, setMessages]);
+  }, [activeChannelId, isConnected, joinChannel]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Get username from members or fallback to author_id
-  const getUsernameById = (authorId: string): string => {
+  // Get username from message, members or fallback to author_id
+  const getUsernameById = (authorId: string, msgUsername?: string): string => {
+    // Check if username is provided in the message itself
+    if (msgUsername) return msgUsername;
     // Check if it's the current user
     if (user && user.id === authorId) {
       return user.username;
@@ -125,12 +102,55 @@ export function ChatPanel() {
     try {
       sendMessage(activeChannelId, content);
       setValue("");
+      // Stop typing when message sent
+      if (activeChannelId) stopTyping(activeChannelId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur envoi message");
     } finally {
       setSending(false);
     }
   };
+
+  // Typing indicator: track when user is typing
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue = e.target.value;
+      setValue(newValue);
+
+      if (!activeChannelId || !isConnected) return;
+
+      if (newValue.trim()) {
+        startTyping(activeChannelId);
+        // Clear previous timeout
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        // Stop typing after 2 seconds of inactivity
+        typingTimeoutRef.current = setTimeout(() => {
+          if (activeChannelId) stopTyping(activeChannelId);
+        }, 2000);
+      } else {
+        stopTyping(activeChannelId);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      }
+    },
+    [activeChannelId, isConnected, startTyping, stopTyping],
+  );
+
+  // Get typing users for current channel (exclude self)
+  const currentTypingUsers = useMemo(() => {
+    if (!activeChannelId) return [];
+    const users = typingUsers[activeChannelId] || [];
+    return users.filter((uid) => uid !== user?.id);
+  }, [activeChannelId, typingUsers, user?.id]);
+
+  const typingDisplay = useMemo(() => {
+    if (currentTypingUsers.length === 0) return null;
+    const names = currentTypingUsers.map((uid) => getUsernameById(uid));
+    if (names.length === 1) return `${names[0]} est en train d'écrire...`;
+    if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
+    return `${names.length} personnes écrivent...`;
+  }, [currentTypingUsers]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -140,184 +160,141 @@ export function ChatPanel() {
   };
 
   return (
-    <div className="h-[95%] rounded-2xl my-4 mx-2 flex-1 min-w-0 flex flex-col bg-white/80 backdrop-blur-sm border border-[#E5E7EB] shadow-lg overflow-hidden relative">
-      
-      {/* Wave pattern background */}
-      <div className="absolute inset-0 wave-pattern opacity-30 pointer-events-none" />
+    <div className="h-[95%] rounded-md my-5 mx-2 mb-30 border-2 border-gray-200 flex-1 min-w-0 flex flex-col bg-white">
       
       {/* --- HEADER --- */}
-      <div className="h-16 px-6 flex items-center border-b border-[#E5E7EB]/50 bg-gradient-to-r from-white to-[#F7F8FA] relative z-10 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC]/10 to-[#023BFC]/5 flex items-center justify-center">
-            <span className="text-[#023BFC] text-lg font-bold">#</span>
-          </div>
-          <div>
-            <h2 className="font-bold text-[#1A1A2E]">
-              {activeChannelName ?? "aucun-channel"}
-            </h2>
-            <p className="text-xs text-[#6B7280]">
-              {isConnected ? "Connecté" : "Déconnecté"} • {messages.length} message{messages.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-        </div>
-        
-        {/* Connection indicator */}
-        <div className="ml-auto flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
-          <span className="text-xs text-[#6B7280]">{isConnected ? "En ligne" : "Hors ligne"}</span>
-        </div>
+      <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0">
+        <span className="text-zinc-500 mr-2 text-2xl">#</span>
+        <h2 className="font-bold text-md text-zinc-800 dark:text-zinc-100">
+          {activeChannelName ?? "aucun-channel"}
+        </h2>
       </div>
 
       {/* --- MESSAGES --- */}
-      <div className="flex-1 overflow-y-auto flex flex-col py-4 relative z-10 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto flex flex-col py-4">
         {!canLoad ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#EBF0FF] to-[#F7F8FA] flex items-center justify-center mb-6 shadow-lg">
-              <svg className="w-10 h-10 text-[#023BFC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-            </div>
-            <p className="text-[#1A1A2E] font-semibold">Bienvenue !</p>
-            <p className="text-sm text-[#6B7280] mt-2">Sélectionne un serveur et un channel pour commencer à discuter.</p>
-          </div>
-        ) : loadingHistory ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="w-12 h-12 rounded-full border-3 border-[#023BFC] border-t-transparent animate-spin mb-4" />
-            <p className="text-[#6B7280]">Chargement des messages...</p>
+          <div className="px-4 text-sm text-muted-foreground">
+            Sélectionne un serveur et un channel.
           </div>
         ) : !isConnected ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="w-12 h-12 rounded-full border-3 border-[#023BFC] border-t-transparent animate-spin mb-4" />
-            <p className="text-[#6B7280]">Connexion au serveur...</p>
+          <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Connexion au serveur...
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#EBF0FF] to-white flex items-center justify-center mb-6 shadow-lg">
-              <svg className="w-10 h-10 text-[#023BFC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-              </svg>
-            </div>
-            <p className="text-[#1A1A2E] font-semibold">Aucun message</p>
-            <p className="text-sm text-[#6B7280] mt-2">Soyez le premier à écrire dans #{activeChannelName} !</p>
+          <div className="px-4 text-sm text-muted-foreground">
+            Aucun message dans ce channel. Soyez le premier à écrire !
           </div>
         ) : (
-          <div className="flex flex-col mt-auto px-4">
-            {messages.map((msg: { id: string; channel_id: string; author_id: string; content: string; created_at: string }, index: number) => {
-              const isOwn = user && user.id === msg.author_id;
-              const showAvatar = index === 0 || messages[index - 1]?.author_id !== msg.author_id;
-              
-              return (
-                <div
-                  key={msg.id}
-                  className={`group flex items-start py-2 px-4 hover:bg-[#023BFC]/5 rounded-2xl transition-all duration-200 ${!showAvatar ? "pt-1" : "mt-3"}`}
-                >
-                  {showAvatar ? (
-                    <div className="mr-4 shrink-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-md ${
-                        isOwn 
-                          ? "bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white" 
-                          : "bg-gradient-to-br from-[#F7F8FA] to-[#E5E7EB] text-[#1A1A2E]"
-                      }`}>
-                        {getUsernameById(msg.author_id).slice(0, 2).toUpperCase()}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="w-10 mr-4 shrink-0" />
-                  )}
-
-                  <div className="flex flex-col flex-1 min-w-0">
-                    {showAvatar && (
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`font-semibold text-sm ${isOwn ? "text-[#023BFC]" : "text-[#1A1A2E]"}`}>
-                          {getUsernameById(msg.author_id)}
-                        </span>
-                        <span className="text-xs text-[#9CA3AF]">
-                          {new Date(msg.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                    )}
-
-                    <p className="text-sm text-[#4B5563] whitespace-pre-wrap break-words">
-                      {msg.content}
-                    </p>
+          <div className="flex flex-col mt-auto">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
+              >
+                <div className="mr-4">
+                  <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
+                    {getUsernameById(msg.author_id, msg.username).slice(0, 2).toUpperCase()}
                   </div>
                 </div>
-              );
-            })}
+
+                <div className="flex flex-col w-full">
+                  <div className="flex items-center gap-x-2">
+                    <span className="font-semibold text-sm text-zinc-800 dark:text-zinc-100">
+                      {getUsernameById(msg.author_id, msg.username)}
+                    </span>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {new Date(msg.created_at).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
+                    {msg.content}
+                  </p>
+                </div>
+              </div>
+            ))}
 
             <div ref={bottomRef} />
           </div>
         )}
 
-        {error && (
-          <div className="mx-4 mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2 flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            {error}
-          </div>
-        )}
+        {error && <div className="px-4 mt-2 text-xs text-red-500">{error}</div>}
       </div>
 
-      {/* --- INPUT - Glassmorphism floating bar --- */}
-      <div className="p-4 relative z-10 shrink-0">
-        <div className="input-floating relative flex items-center gap-3 p-2">
-          {/* Attachment button */}
-          <button
-            type="button"
-            className="w-10 h-10 rounded-xl bg-[#F7F8FA] hover:bg-[#EBF0FF] border border-[#E5E7EB] text-[#6B7280] hover:text-[#023BFC] flex items-center justify-center transition-all duration-300"
-            disabled
-            title="Joindre un fichier (bientôt disponible)"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-
-          {/* Input field */}
-          <Input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={!canLoad || sending || !isConnected}
-            className="flex-1 h-12 px-5 rounded-xl bg-white/80 border border-[#E5E7EB] focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 text-[#1A1A2E] placeholder:text-[#9CA3AF] transition-all duration-300"
-            placeholder={
-              !canLoad
-                ? "Sélectionne un channel..."
-                : !isConnected
-                ? "Connexion en cours..."
-                : `Écrire dans #${activeChannelName ?? ""}...`
-            }
-          />
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-2">
+      {/* --- INPUT --- */}
+      <div className="p-4 mb-2 shrink-0">
+        <div className="relative flex items-center gap-2">
+          <div className="relative flex-1">
             <button
               type="button"
-              className="w-10 h-10 rounded-xl hover:bg-[#F7F8FA] text-[#9CA3AF] hover:text-[#6B7280] flex items-center justify-center transition-all duration-300"
+              className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 bg-zinc-500 dark:bg-zinc-400 hover:bg-zinc-600 transition rounded-full p-1 flex items-center justify-center text-white"
               disabled
-              title="Emoji (bientôt disponible)"
+              title="Fonction à venir"
             >
-              <Smile className="w-5 h-5" />
+              <Plus className="text-white dark:text-[#313338]" />
             </button>
 
-            {/* Send button */}
-            <Button
-              onClick={onSend}
-              disabled={!canLoad || sending || !isConnected || !value.trim()}
-              className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] hover:from-[#0230D0] hover:to-[#023BFC] text-white shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
-              title="Envoyer"
-            >
-              {sending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Send className="h-5 w-5" />
-              )}
-            </Button>
+            <Input
+              value={value}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              disabled={!canLoad || sending || !isConnected}
+              className="px-14 pr-32 py-6 bg-zinc-200/90 dark:bg-zinc-700/75 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-zinc-600 dark:text-zinc-200 placeholder:text-zinc-500"
+              placeholder={
+                !canLoad
+                  ? "Sélectionne un channel..."
+                  : !isConnected
+                  ? "Connexion en cours..."
+                  : `Envoyer un message dans #${activeChannelName ?? ""}`
+              }
+            />
+
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-x-3">
+              <span title="Fonction à venir">
+                <Gift className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
+              </span>
+
+              <span title="Fonction à venir">
+                <Sticker className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
+              </span>
+
+              <span title="Fonction à venir">
+                <Smile className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
+              </span>
+            </div>
           </div>
+
+          {/* Bouton Envoyer */}
+          <Button
+            onClick={onSend}
+            disabled={!canLoad || sending || !isConnected || !value.trim()}
+            className="h-12 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Envoyer le message"
+          >
+            {sending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
+          </Button>
         </div>
+        
+        {/* Typing indicator */}
+        {typingDisplay && (
+          <div className="mt-1 px-1 text-xs text-indigo-500 flex items-center gap-1 animate-pulse">
+            <span className="flex gap-0.5">
+              <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+            {typingDisplay}
+          </div>
+        )}
         
         {/* Connection status */}
         {!isConnected && canLoad && (
-          <div className="mt-3 text-xs text-amber-600 flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2">
+          <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
             <Loader2 className="h-3 w-3 animate-spin" />
             Reconnexion en cours...
           </div>
