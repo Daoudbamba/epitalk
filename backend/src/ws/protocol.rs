@@ -35,6 +35,7 @@ pub enum ServerEvent {
         id: String,
         channel_id: String,
         author_id: String,
+        username: String,
         content: String,
         created_at: String,
     },
