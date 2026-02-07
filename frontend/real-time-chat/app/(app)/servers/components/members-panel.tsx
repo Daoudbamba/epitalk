@@ -90,7 +90,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
 
   if (!server) {
     return (
-      <aside className="w-64 border-l p-4">
+      <aside className="w-full border-l p-4">
         <h3 className="text-sm font-semibold mb-4">Membres</h3>
         <p className="text-sm text-muted-foreground">Aucun serveur sélectionné</p>
       </aside>
@@ -111,7 +111,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const onlineCount = members.filter((m) => onlineUsers.includes(m.user_id)).length;
 
   return (
-    <aside className="h-[95%] rounded-md my-5 mb-30 border-2 border-gray-200 w-64 border-l p-4 overflow-auto">
+    <aside className="h-[95%] rounded-2xl my-4 ml-2 border border-[#E5E7EB] w-full p-4 overflow-auto shadow-lg">
       <h3 className="text-sm font-semibold mb-1">
         Membres ({membersLoading ? "..." : members.length})
       </h3>

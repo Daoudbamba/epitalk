@@ -34,15 +34,15 @@ export default function ServersPage() {
           </div>
 
           {/* Left rail (servers) - hidden on mobile, shown on md+ */}
-          <div className="hidden md:block">
+          <div className="hidden md:flex md:h-full">
             <ServersRail onRefresh={refresh} />
           </div>
 
           {/* Channels sidebar - responsive overlay on mobile */}
           <div className={`
             ${showChannels ? 'fixed inset-0 z-20 pt-12 bg-white dark:bg-[#2b2d31]' : 'hidden'}
-            md:relative md:block md:pt-0 md:z-auto
-            md:w-60 lg:w-80 shrink-0 bg-white/90 dark:bg-[#2b2d31] border-r border-white/20 overflow-hidden
+            md:relative md:block md:pt-0 md:z-auto md:h-full
+            md:w-60 lg:w-72 shrink-0 bg-white/90 dark:bg-[#2b2d31] border-r border-white/20 overflow-hidden
           `}>
             {/* Mobile: show servers rail inline */}
             <div className="md:hidden border-b p-2">
@@ -52,15 +52,15 @@ export default function ServersPage() {
           </div>
 
           {/* Chat - takes remaining space */}
-          <div className={`flex-1 min-w-0 bg-white dark:bg-[#313338] overflow-hidden ${showChannels || showMembers ? 'hidden md:block' : ''} md:pt-0 pt-12`}>
+          <div className={`flex-1 min-w-0 h-full bg-white dark:bg-[#313338] overflow-hidden ${showChannels || showMembers ? 'hidden md:block' : ''} md:pt-0 pt-12`}>
             <ChatPanel />
           </div>
 
           {/* Members panel - responsive overlay on mobile */}
           <div className={`
             ${showMembers ? 'fixed inset-0 z-20 pt-12 bg-white dark:bg-[#2b2d31]' : 'hidden'}
-            md:relative md:block md:pt-0 md:z-auto
-            md:w-56 lg:w-72 shrink-0 bg-white/90 dark:bg-[#2b2d31] border-l border-white/20 overflow-hidden
+            md:relative md:block md:pt-0 md:z-auto md:h-full
+            md:w-60 lg:w-72 shrink-0 bg-white/90 dark:bg-[#2b2d31] border-l border-white/20 overflow-hidden
           `}>
             <MembersPanel onRefresh={refresh} />
           </div>
