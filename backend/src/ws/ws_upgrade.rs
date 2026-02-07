@@ -6,9 +6,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::auth::jwt::validate_token;
 use crate::state::AppState;
 use crate::ws::connection::handle_connection;
-use crate::auth::jwt::validate_token;
 
 #[derive(Deserialize)]
 pub struct WsQuery {
@@ -30,6 +30,8 @@ pub async fn ws_handler(
     let hub = state.hub.clone();
     let message_service = state.message_service.clone();
     let presence = state.presence.clone();
+    let typing_service = state.typing_service.clone();
+    let pg_pool = state.db.clone();
 
     ws.on_upgrade(move |socket| async move {
         let conn_id = Uuid::new_v4();
@@ -38,6 +40,22 @@ pub async fn ws_handler(
         // Mark user online
         presence.set_online(&user_id_str);
 
-        handle_connection(socket, hub, message_service, presence, user_id_str, conn_id).await;
+        // Broadcast UserOnline to all connected clients
+        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
+            user_id: user_id_str.clone(),
+        };
+        hub.broadcast_all(online_event).await;
+
+        handle_connection(
+            socket,
+            hub,
+            message_service,
+            presence,
+            typing_service,
+            pg_pool,
+            user_id_str,
+            conn_id,
+        )
+        .await;
     })
 }
