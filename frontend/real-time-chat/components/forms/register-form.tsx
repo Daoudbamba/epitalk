@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { authApi } from "@/lib/api";
 import { useState } from "react";
+import { getErrorMessage } from "@/lib/api/errors";
 
 export function RegisterForm({
   className,
@@ -37,6 +38,17 @@ export function RegisterForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Validation côté client
+    if (username.trim().length < 3) {
+      setError("Le nom d'utilisateur doit contenir au moins 3 caractères.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Le mot de passe doit contenir au moins 8 caractères.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -44,7 +56,7 @@ export function RegisterForm({
       setAuth(response);
       router.push("/servers");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de l inscription");
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }

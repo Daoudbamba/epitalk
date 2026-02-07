@@ -1,3 +1,5 @@
+import { ApiError, parseApiError } from "./errors";
+
 export class FetchClient {
   constructor(private baseUrl: string = "") {}
 
@@ -21,15 +23,26 @@ export class FetchClient {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch {
+      throw new ApiError(0, "Impossible de contacter le serveur. Vérifiez votre connexion.");
+    }
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(text || `HTTP ${res.status}`);
+      let payload: unknown = null;
+      try {
+        payload = await res.json();
+      } catch {
+        const text = await res.text().catch(() => "");
+        payload = text || null;
+      }
+      throw parseApiError(res.status, payload);
     }
 
     if (res.status === 204) return undefined as T;

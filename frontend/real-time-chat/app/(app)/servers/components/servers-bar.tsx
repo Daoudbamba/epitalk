@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { serversApi } from "@/lib/api";
+import { getErrorMessage } from "@/lib/api/errors";
 import { useMemo, useState } from "react";
 import { UserSettings } from "./user-settings";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
@@ -73,7 +74,7 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       await navigator.clipboard.writeText(link).catch(() => {});
       setOk("Invitation générée (lien copié).");
     } catch (err) {
-      setErr(err instanceof Error ? err.message : "Erreur invitation");
+      setErr(getErrorMessage(err));
     } finally {
       setInviteLoading(false);
     }
@@ -101,7 +102,7 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       await onRefresh();
       setOk("Serveur rejoint.");
     } catch (err) {
-      setErr(err instanceof Error ? err.message : "Invite invalide");
+      setErr(getErrorMessage(err));
     } finally {
       setJoinLoading(false);
     }

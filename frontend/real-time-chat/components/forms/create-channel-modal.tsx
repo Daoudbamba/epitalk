@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { channelsApi } from "@/lib/api";
+import { getErrorMessage } from "@/lib/api/errors";
 
 interface CreateChannelModalProps {
   open: boolean;
@@ -55,7 +56,7 @@ export function CreateChannelModal({
       setName("");
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de la création");
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
