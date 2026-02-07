@@ -21,7 +21,7 @@ type ClientEvent =
 
 // SERVER → CLIENT events
 type ServerEvent =
-  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; content: string; created_at: string } }
+  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string } }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
   | { type: "UserLeft"; payload: { user_id: string; channel_id: string } }
   | { type: "TypingStart"; payload: { user_id: string; channel_id: string } }
@@ -242,11 +242,12 @@ function handleServerEvent(
   
   switch (event.type) {
     case "MessageNew": {
-      const { id, channel_id, author_id, content, created_at } = event.payload;
+      const { id, channel_id, author_id, username, content, created_at } = event.payload;
       const newMessage: WsMessage = {
         id,
         channel_id,
         author_id,
+        username,
         content,
         created_at,
       };

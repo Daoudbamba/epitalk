@@ -5,9 +5,9 @@ import { z } from "zod";
 export const MessageSchema = z.object({
   id: z.string(), // MongoDB ObjectId as string
   channel_id: z.string(),
-  server_id: z.string(),
+  server_id: z.string().optional(),
   author_id: z.string(),
-  username: z.string(), // Denormalized for display
+  username: z.string().optional(), // Denormalized for display
   content: z.string(),
   created_at: z.string(),
   deleted_at: z.string().nullable().optional(),
