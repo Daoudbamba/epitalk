@@ -1,5 +1,15 @@
 use serde::{Deserialize, Serialize};
 
+/// Maximum size (in bytes) of a single WebSocket text frame.
+pub const MAX_FRAME_BYTES: usize = 16_384; // 16 KiB
+
+/// Maximum length (in characters) of a chat message body.
+pub const MAX_CONTENT_LEN: usize = 4_000;
+
+/// Minimum throttle interval between consecutive `TypingStart` events
+/// from the same user (in milliseconds).
+pub const TYPING_THROTTLE_MS: u64 = 800;
+
 //
 // CLIENT → SERVER
 //
@@ -62,6 +72,12 @@ pub enum ServerEvent {
 
     Pong,
 
+    /// Structured error sent to the client.
+    Error {
+        code: String,
+        message: String,
+    },
+
     UserOnline {
         user_id: String,
     },
@@ -69,4 +85,31 @@ pub enum ServerEvent {
     UserOffline {
         user_id: String,
     },
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Validation helpers
+// ─────────────────────────────────────────────────────────────────
+
+pub fn validate_channel_id(id: &str) -> Result<(), &'static str> {
+    if id.is_empty() {
+        return Err("channel_id must not be empty");
+    }
+    if id.len() > 128 {
+        return Err("channel_id too long");
+    }
+    if id.chars().any(|c| c.is_control()) {
+        return Err("channel_id contains control characters");
+    }
+    Ok(())
+}
+
+pub fn validate_content(content: &str) -> Result<(), &'static str> {
+    if content.is_empty() {
+        return Err("message content must not be empty");
+    }
+    if content.len() > MAX_CONTENT_LEN {
+        return Err("message content exceeds maximum length");
+    }
+    Ok(())
 }

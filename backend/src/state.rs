@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::db::message_repo::MessageRepo;
 use crate::services::message_service::MessageService;
 use crate::services::presence_service::PresenceService;
+use crate::services::typing_service::TypingService;
 use crate::ws::hub::Hub;
 use mongodb::Database;
 use sqlx::PgPool;
@@ -24,6 +25,8 @@ pub struct AppState {
     pub message_service: Arc<MessageService>,
     // Presence service
     pub presence: Arc<PresenceService>,
+    // Typing service
+    pub typing_service: Arc<TypingService>,
 }
 
 impl AppState {
@@ -35,6 +38,9 @@ impl AppState {
 
         // Create presence service
         let presence = Arc::new(PresenceService::new());
+
+        // Create typing service
+        let typing_service = Arc::new(TypingService::new());
 
         // Message service with a dummy repo (will be replaced when MongoDB is connected)
         // For now, create a placeholder that won't be used until MongoDB is configured
@@ -48,6 +54,7 @@ impl AppState {
             hub,
             message_service,
             presence,
+            typing_service,
         }
     }
 
