@@ -255,16 +255,15 @@ async fn get_messages(
     let messages = state
         .message_service
         .get_history(
-            &params.server_id.to_string(),
             &params.channel_id.to_string(),
             query.page,
             query.per_page,
         )
         .await
-        .map_err(|e| {
+        .map_err(|_| {
             tracing::error!(
                 channel_id = %params.channel_id,
-                "Failed to fetch messages: {e}"
+                "Failed to fetch messages"
             );
             AppError::Internal("Failed to fetch messages".to_string())
         })?;
@@ -287,7 +286,7 @@ async fn get_messages(
                     .id
                     .map(|oid: mongodb::bson::oid::ObjectId| oid.to_hex())
                     .unwrap_or_default(),
-                server_id: m.server_id,
+                server_id: params.server_id.to_string(),
                 channel_id: m.channel_id,
                 author_id: m.author_id,
                 username,

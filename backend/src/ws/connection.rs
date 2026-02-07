@@ -238,51 +238,34 @@ pub async fn handle_connection(
                     );
                     let created_at = chrono::Utc::now().to_rfc3339();
 
-                    match message_service_recv
+                    let id = message_service_recv
                         .create_message(
-                            server_id,
                             channel_id.clone(),
                             user_id_recv.clone(),
                             content.clone(),
                             created_at.clone(),
                         )
-                        .await
-                    {
-                        Ok(id) => {
-                            tracing::info!("💾 Message saved to MongoDB with id={}", id.to_hex());
+                        .await;
 
-                            let username = resolve_username(
-                                &user_id_recv,
-                                &pg_pool_recv,
-                                &mut username_cache,
-                            )
-                            .await;
+                    tracing::info!("💾 Message saved to MongoDB with id={}", id.to_hex());
 
-                            let event = ServerEvent::MessageNew {
-                                id: id.to_hex(),
-                                channel_id: channel_id.clone(),
-                                author_id: user_id_recv.clone(),
-                                username,
-                                content,
-                                created_at,
-                            };
+                    let username = resolve_username(
+                        &user_id_recv,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
 
-                            hub_recv.broadcast_room(&channel_id, event).await;
-                        },
-                        Err(e) => {
-                            tracing::error!(
-                                channel = %channel_id,
-                                user = %user_id_recv,
-                                "❌ Failed to save message: {e}"
-                            );
-                            send_error(
-                                &hub_recv,
-                                &conn_id,
-                                "INTERNAL_ERROR",
-                                "failed to save message",
-                            );
-                        },
-                    }
+                    let event = ServerEvent::MessageNew {
+                        id: id.to_hex(),
+                        channel_id: channel_id.clone(),
+                        author_id: user_id_recv.clone(),
+                        username,
+                        content,
+                        created_at,
+                    };
+
+                    hub_recv.broadcast_room(&channel_id, event).await;
                 },
 
                 // ======================================================
@@ -316,7 +299,7 @@ pub async fn handle_connection(
                     hub_recv.join_room(&channel_id, conn_id);
 
                     if let Ok(history) = message_service_recv
-                        .get_history(&server_id, &channel_id, 1, 50)
+                        .get_history(&channel_id, 1, 50)
                         .await
                     {
                         tracing::info!(
