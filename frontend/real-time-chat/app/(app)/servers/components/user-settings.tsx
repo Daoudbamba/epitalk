@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
+import { useWebSocketStore } from "@/store/websocket.store";
 import { Button } from "@/components/ui/button";
 import { Copy, Check } from "lucide-react";
 
@@ -10,11 +11,13 @@ export function UserSettings() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const disconnect = useWebSocketStore((s) => s.disconnect);
 
   const [isOpen, setIsOpen] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const handleLogout = () => {
+    disconnect();
     logout();
     setIsOpen(false);
     router.push("/login");

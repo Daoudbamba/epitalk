@@ -33,7 +33,7 @@ export function createServersApi(client: FetchClient) {
     getMember: (serverId: string, memberId: string) =>
       client.get<Member>(`/servers/${serverId}/members/${memberId}`),
     updateMemberRole: (serverId: string, memberId: string, role: string) =>
-      client.patch<Member>(`/servers/${serverId}/members/${memberId}`, { role }),
+      client.patch<Member>(`/servers/${serverId}/members/${memberId}/role`, { role }),
     kickMember: (serverId: string, memberId: string) =>
       client.delete<void>(`/servers/${serverId}/members/${memberId}`),
 
