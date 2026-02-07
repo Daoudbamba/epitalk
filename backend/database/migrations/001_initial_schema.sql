@@ -27,6 +27,8 @@ CREATE TABLE users (
     email CITEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     username TEXT NOT NULL,
+    display_name VARCHAR(100),
+    avatar_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
