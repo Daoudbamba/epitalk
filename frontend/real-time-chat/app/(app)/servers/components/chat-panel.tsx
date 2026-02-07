@@ -160,7 +160,7 @@ export function ChatPanel() {
   };
 
   return (
-    <div className="h-[95%] rounded-md my-5 mx-2 mb-30 border-2 border-gray-200 flex-1 min-w-0 flex flex-col bg-white">
+    <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden">
       
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0">

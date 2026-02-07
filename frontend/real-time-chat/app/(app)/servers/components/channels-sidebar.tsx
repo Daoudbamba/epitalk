@@ -121,7 +121,7 @@ export function ChannelsSidebar() {
         : "border-[#023BFC]/20 text-[#023BFC] bg-[#EBF0FF]";
 
   return (
-    <div className="h-[95%] rounded-2xl my-4 mr-2 flex flex-col bg-white/70 backdrop-blur-sm border border-[#E5E7EB] shadow-lg overflow-hidden">
+    <div className="h-[95%] rounded-2xl my-4 mx-2 flex flex-col bg-white/70 backdrop-blur-sm border border-[#E5E7EB] shadow-lg overflow-hidden">
       {/* Header with server name */}
       <div className="border-b border-[#E5E7EB]/50 px-5 py-4 flex items-center gap-3 bg-gradient-to-r from-white to-[#F7F8FA]">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC]/10 to-[#023BFC]/5 flex items-center justify-center">
