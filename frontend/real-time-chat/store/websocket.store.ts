@@ -24,8 +24,8 @@ type ServerEvent =
   | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string } }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
   | { type: "UserLeft"; payload: { user_id: string; channel_id: string } }
-  | { type: "TypingStart"; payload: { user_id: string; channel_id: string } }
-  | { type: "TypingStop"; payload: { user_id: string; channel_id: string } }
+  | { type: "TypingStart"; payload: { user_id: string; username: string; channel_id: string } }
+  | { type: "TypingStop"; payload: { user_id: string; username: string; channel_id: string } }
   | { type: "Pong" }
   | { type: "UserOnline"; payload: { user_id: string } }
   | { type: "UserOffline"; payload: { user_id: string } };
@@ -283,16 +283,16 @@ function handleServerEvent(
     }
 
     case "TypingStart": {
-      const { user_id, channel_id } = event.payload;
+      const { username, channel_id } = event.payload;
       set((state) => {
         const channelTyping = state.typingUsers[channel_id] || [];
-        if (channelTyping.includes(user_id)) {
+        if (channelTyping.includes(username)) {
           return state;
         }
         return {
           typingUsers: {
             ...state.typingUsers,
-            [channel_id]: [...channelTyping, user_id],
+            [channel_id]: [...channelTyping, username],
           },
         };
       });
@@ -300,13 +300,13 @@ function handleServerEvent(
     }
 
     case "TypingStop": {
-      const { user_id, channel_id } = event.payload;
+      const { username, channel_id } = event.payload;
       set((state) => {
         const channelTyping = state.typingUsers[channel_id] || [];
         return {
           typingUsers: {
             ...state.typingUsers,
-            [channel_id]: channelTyping.filter((id) => id !== user_id),
+            [channel_id]: channelTyping.filter((name) => name !== username),
           },
         };
       });
