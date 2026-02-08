@@ -62,11 +62,13 @@ pub enum ServerEvent {
 
     TypingStart {
         user_id: String,
+        username: String,
         channel_id: String,
     },
 
     TypingStop {
         user_id: String,
+        username: String,
         channel_id: String,
     },
 

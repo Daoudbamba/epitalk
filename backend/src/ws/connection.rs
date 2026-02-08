@@ -377,8 +377,16 @@ pub async fn handle_connection(
                     // Track in TypingService (shared state)
                     typing_recv.start_typing(&channel_id, &user_id_recv);
 
+                    let username = resolve_username(
+                        &user_id_recv,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
+
                     let event = ServerEvent::TypingStart {
                         user_id: user_id_recv.clone(),
+                        username,
                         channel_id: channel_id.clone(),
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
@@ -399,8 +407,16 @@ pub async fn handle_connection(
                     // Remove from TypingService (shared state)
                     typing_recv.stop_typing(&channel_id, &user_id_recv);
 
+                    let username = resolve_username(
+                        &user_id_recv,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
+
                     let event = ServerEvent::TypingStop {
                         user_id: user_id_recv.clone(),
+                        username,
                         channel_id: channel_id.clone(),
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
