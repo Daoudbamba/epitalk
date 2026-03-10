@@ -83,3 +83,44 @@ impl Default for TypingService {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration as ChronoDuration;
+
+    #[test]
+    fn start_and_stop_typing_updates_state() {
+        let service = TypingService::new();
+
+        service.start_typing("channel-1", "user-1");
+        assert!(service.is_typing("channel-1", "user-1"));
+        assert!(!service.is_typing("channel-1", "user-2"));
+
+        let typing_users = service.list_typing("channel-1");
+        assert_eq!(typing_users, vec!["user-1".to_string()]);
+
+        service.stop_typing("channel-1", "user-1");
+        assert!(!service.is_typing("channel-1", "user-1"));
+        assert!(service.list_typing("channel-1").is_empty());
+    }
+
+    #[test]
+    fn cleanup_removes_expired_entries() {
+        let service = TypingService::new();
+
+        // Insère une entrée plus vieille que le timeout pour forcer le nettoyage
+        let past = Utc::now() - ChronoDuration::seconds(10);
+        service
+            .typing
+            .insert(("channel-1".to_string(), "user-1".to_string()), past);
+
+        assert_eq!(service.list_typing("channel-1").len(), 0);
+
+        service.cleanup();
+
+        // L'entrée doit avoir été supprimée
+        assert!(service.list_typing("channel-1").is_empty());
+        assert!(!service.is_typing("channel-1", "user-1"));
+    }
+}

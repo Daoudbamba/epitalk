@@ -43,3 +43,34 @@ impl Default for PresenceService {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_service_starts_empty() {
+        let service = PresenceService::new();
+        assert!(service.list_online().is_empty());
+    }
+
+    #[test]
+    fn set_online_and_offline_updates_state() {
+        let service = PresenceService::new();
+
+        service.set_online("user-1");
+        service.set_online("user-2");
+
+        let mut online = service.list_online();
+        online.sort();
+
+        assert_eq!(online, vec!["user-1".to_string(), "user-2".to_string()]);
+        assert!(service.is_online("user-1"));
+        assert!(service.is_online("user-2"));
+        assert!(!service.is_online("user-3"));
+
+        service.set_offline("user-1");
+        assert!(!service.is_online("user-1"));
+        assert!(service.is_online("user-2"));
+    }
+}

@@ -112,3 +112,30 @@ impl MessageRepo {
         messages
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn insert_on_placeholder_repo_returns_error() {
+        let repo = MessageRepo::new_placeholder();
+        let msg = MessageDb {
+            id: None,
+            channel_id: "chan".into(),
+            author_id: "user".into(),
+            content: "hello".into(),
+            created_at: "now".into(),
+        };
+
+        let res = repo.insert(msg).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn find_by_channel_on_placeholder_returns_empty() {
+        let repo = MessageRepo::new_placeholder();
+        let res = repo.find_by_channel("chan", 1, 20).await;
+        assert!(res.is_empty());
+    }
+}

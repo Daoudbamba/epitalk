@@ -16,3 +16,17 @@ async fn health_check() -> Json<Value> {
         "version": env!("CARGO_PKG_VERSION")
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn health_check_returns_expected_payload() {
+        let Json(body) = health_check().await;
+
+        assert_eq!(body["status"], "ok");
+        assert_eq!(body["service"], "epitalk-backend");
+        assert!(body["version"].is_string());
+    }
+}

@@ -81,3 +81,46 @@ pub struct CreateInviteRequest {
 pub struct JoinServerRequest {
     pub code: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    fn base_invite() -> Invite {
+        Invite {
+            code: "ABC123".into(),
+            server_id: Uuid::new_v4(),
+            created_by: Uuid::new_v4(),
+            expires_at: None,
+            max_uses: None,
+            uses: 0,
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn invite_without_limits_is_valid() {
+        let invite = base_invite();
+        assert!(invite.is_valid());
+    }
+
+    #[test]
+    fn expired_invite_is_invalid() {
+        let mut invite = base_invite();
+        invite.expires_at = Some(Utc::now() - Duration::hours(1));
+        assert!(!invite.is_valid());
+    }
+
+    #[test]
+    fn invite_with_max_uses_respects_limit() {
+        let mut invite = base_invite();
+        invite.max_uses = Some(3);
+
+        invite.uses = 2;
+        assert!(invite.is_valid());
+
+        invite.uses = 3;
+        assert!(!invite.is_valid());
+    }
+}

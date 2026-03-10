@@ -1,4 +1,4 @@
-FROM rust:1.83 AS builder
+FROM rust:1.84-slim AS builder
 WORKDIR /usr/src/backend
 
 # Cache dependencies
@@ -12,7 +12,8 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/src/backend/target/release/backend /usr/local/bin/backend
+# The compiled binary is named after the package: epitalk-backend
+COPY --from=builder /usr/src/backend/target/release/epitalk-backend /usr/local/bin/backend
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

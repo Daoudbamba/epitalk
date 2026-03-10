@@ -115,3 +115,59 @@ pub fn validate_content(content: &str) -> Result<(), &'static str> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_channel_id_rejects_empty_and_too_long() {
+        assert!(validate_channel_id("").is_err());
+
+        let long_id = "a".repeat(129);
+        assert!(validate_channel_id(&long_id).is_err());
+    }
+
+    #[test]
+    fn validate_channel_id_rejects_control_chars() {
+        let id = "chan\nnel";
+        assert!(validate_channel_id(id).is_err());
+    }
+
+    #[test]
+    fn validate_channel_id_accepts_normal_strings() {
+        assert!(validate_channel_id("general").is_ok());
+        assert!(validate_channel_id("channel-123").is_ok());
+    }
+
+    #[test]
+    fn validate_content_rejects_empty_and_too_long() {
+        assert!(validate_content("").is_err());
+
+        let long = "x".repeat(MAX_CONTENT_LEN + 1);
+        assert!(validate_content(&long).is_err());
+    }
+
+    #[test]
+    fn validate_content_accepts_valid_message() {
+        assert!(validate_content("hello world").is_ok());
+    }
+
+    #[test]
+    fn server_event_serialization_roundtrip() {
+        let event = ServerEvent::MessageNew {
+            id: "1".into(),
+            channel_id: "chan".into(),
+            author_id: "user".into(),
+            username: "alice".into(),
+            content: "hello".into(),
+            created_at: "2024-01-01T00:00:00Z".into(),
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(value["type"], "MessageNew");
+        assert_eq!(value["payload"]["content"], "hello");
+    }
+}

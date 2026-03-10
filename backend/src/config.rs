@@ -27,3 +27,39 @@ impl Config {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_env_uses_defaults_when_vars_missing() {
+        // Nettoie les variables d’environnement pour forcer les valeurs par défaut
+        std::env::remove_var("DATABASE_URL");
+        std::env::remove_var("JWT_SECRET");
+        std::env::remove_var("JWT_EXPIRES_IN");
+        std::env::remove_var("PORT");
+
+        let cfg = Config::from_env().expect("config should load");
+
+        assert_eq!(cfg.database_url, "postgres://epitalk:Epitalk94!@localhost:5432/epitalk");
+        assert_eq!(cfg.jwt_secret, "super_secret_jwt_key_change_in_production_min_32_chars");
+        assert_eq!(cfg.jwt_expiration_hours, 168);
+        assert_eq!(cfg.port, 3000);
+    }
+
+    #[test]
+    fn from_env_reads_custom_values() {
+        std::env::set_var("DATABASE_URL", "postgres://custom");
+        std::env::set_var("JWT_SECRET", "my-secret");
+        std::env::set_var("JWT_EXPIRES_IN", "24");
+        std::env::set_var("PORT", "4000");
+
+        let cfg = Config::from_env().expect("config should load");
+
+        assert_eq!(cfg.database_url, "postgres://custom");
+        assert_eq!(cfg.jwt_secret, "my-secret");
+        assert_eq!(cfg.jwt_expiration_hours, 24);
+        assert_eq!(cfg.port, 4000);
+    }
+}
