@@ -73,3 +73,36 @@ impl FromRef<Arc<AppState>> for AppState {
         app_state.as_ref().clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    #[tokio::test]
+    async fn app_state_new_initializes_services_without_mongo() {
+        // crée un pool PostgreSQL paresseux (ne se connecte pas réellement)
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://epitalk:Epitalk94!@localhost:5432/epitalk")
+            .expect("lazy pool");
+
+        let cfg = Config {
+            database_url: "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".into(),
+            jwt_secret: "test-secret-min-32-chars--------------".into(),
+            jwt_expiration_hours: 24,
+            port: 3000,
+        };
+
+        let state = AppState::new(pool, cfg.clone());
+
+        assert!(state.mongo_db.is_none());
+        assert_eq!(state.config.port, 3000);
+        assert_eq!(state.config.jwt_expiration_hours, 24);
+
+        // FromRef doit renvoyer un clone équivalent
+        let arc = Arc::new(state);
+        let recovered = AppState::from_ref(&arc);
+        assert_eq!(recovered.config.port, 3000);
+        assert_eq!(recovered.config.jwt_secret, cfg.jwt_secret);
+    }
+}

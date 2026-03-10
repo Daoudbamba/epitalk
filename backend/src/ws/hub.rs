@@ -123,3 +123,45 @@ impl Default for Hub {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc::unbounded_channel;
+
+    #[tokio::test]
+    async fn join_leave_and_broadcast_room_sends_messages() {
+        let hub = Hub::new();
+        let (tx, mut rx) = unbounded_channel();
+        let user_id = "user-1".to_string();
+        let conn_id = Uuid::new_v4();
+        let room_id = "room-1".to_string();
+
+        hub.register_connection(&user_id, conn_id, tx);
+        hub.join_room(&room_id, conn_id);
+
+        let event = ServerEvent::Pong;
+        hub.broadcast_room(&room_id, event).await;
+
+        // On doit recevoir au moins un message texte
+        let msg = rx.try_recv().expect("expected a message");
+        match msg {
+            Message::Text(text) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(v["type"], "Pong");
+            }
+            other => panic!("unexpected message: {:?}", other),
+        }
+
+        hub.leave_room(&room_id, &conn_id);
+
+        // Après avoir quitté la room, la room peut encore exister mais ne doit plus contenir la connexion
+        let is_still_in_room = hub
+            .rooms
+            .get(&room_id)
+            .map(|room| room.contains(&conn_id))
+            .unwrap_or(false);
+
+        assert!(!is_still_in_room);
+    }
+}

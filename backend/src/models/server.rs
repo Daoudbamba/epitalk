@@ -50,3 +50,24 @@ pub struct UpdateServerRequest {
     #[validate(length(min = 1, max = 100, message = "Server name must be between 1 and 100 characters"))]
     pub name: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use validator::Validate;
+
+    #[test]
+    fn create_server_request_name_validation() {
+        let ok = CreateServerRequest {
+            name: "My Server".into(),
+        };
+        assert!(ok.validate().is_ok());
+
+        let empty = CreateServerRequest { name: "".into() };
+        assert!(empty.validate().is_err());
+
+        let long_name = "x".repeat(101);
+        let too_long = CreateServerRequest { name: long_name };
+        assert!(too_long.validate().is_err());
+    }
+}

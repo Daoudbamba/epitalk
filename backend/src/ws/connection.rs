@@ -458,3 +458,69 @@ pub async fn handle_connection(
         hub.broadcast_all(event).await;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc::unbounded_channel;
+    use sqlx::postgres::PgPoolOptions;
+
+    #[tokio::test]
+    async fn send_error_sends_error_event_on_socket() {
+        let hub = Hub::new();
+        let (tx, mut rx) = unbounded_channel();
+        let conn_id = Uuid::new_v4();
+        hub.sockets.insert(conn_id, tx);
+
+        send_error(&hub, &conn_id, "TEST_CODE", "Something went wrong");
+
+        let msg = rx.try_recv().expect("expected a message");
+        match msg {
+            Message::Text(text) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(v["type"], "Error");
+                assert_eq!(v["payload"]["code"], "TEST_CODE");
+                assert_eq!(v["payload"]["message"], "Something went wrong");
+            }
+            other => panic!("unexpected message: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_username_falls_back_to_prefix_for_invalid_uuid() {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://epitalk:Epitalk94!@localhost:5432/epitalk")
+            .expect("lazy pool");
+        let mut cache = HashMap::new();
+
+        let user_id = "not-a-uuid-but-long";
+        let name = resolve_username(user_id, &pool, &mut cache).await;
+
+        assert_eq!(name, user_id.chars().take(8).collect::<String>());
+    }
+
+    #[tokio::test]
+    async fn resolve_server_id_invalid_uuid_sends_error_and_returns_none() {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://epitalk:Epitalk94!@localhost:5432/epitalk")
+            .expect("lazy pool");
+        let hub = Hub::new();
+        let (tx, mut rx) = unbounded_channel();
+        let conn_id = Uuid::new_v4();
+        hub.sockets.insert(conn_id, tx);
+        let mut cache = HashMap::new();
+
+        let result = resolve_server_id("not-a-uuid", &pool, &mut cache, &hub, &conn_id).await;
+        assert!(result.is_none());
+
+        let msg = rx.try_recv().expect("expected an error message");
+        match msg {
+            Message::Text(text) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(v["type"], "Error");
+                assert_eq!(v["payload"]["code"], "INVALID_CHANNEL_ID");
+            }
+            other => panic!("unexpected message: {:?}", other),
+        }
+    }
+}

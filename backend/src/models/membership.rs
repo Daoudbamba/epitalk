@@ -118,3 +118,52 @@ pub struct MemberResponse {
 pub struct UpdateMemberRoleRequest {
     pub role: MemberRole,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn role_permissions_and_priority_are_consistent() {
+        let owner = MemberRole::Owner;
+        let admin = MemberRole::Admin;
+        let moderator = MemberRole::Moderator;
+        let member = MemberRole::Member;
+
+        assert!(owner.can_manage_members());
+        assert!(owner.can_manage_channels());
+        assert!(owner.can_create_invites());
+        assert!(owner.can_delete_others_messages());
+
+        assert!(!member.can_manage_members());
+        assert!(!member.can_manage_channels());
+        assert!(!member.can_delete_others_messages());
+
+        assert!(moderator.can_create_invites());
+        assert!(moderator.can_delete_others_messages());
+
+        assert!(owner.can_kick(&admin));
+        assert!(admin.can_kick(&moderator));
+        assert!(moderator.can_kick(&member));
+        assert!(!member.can_kick(&moderator));
+
+        assert!(owner.can_mute(&admin));
+        assert!(admin.can_mute(&member));
+
+        assert!(owner.is_higher_or_equal(&member));
+        assert!(admin.is_higher_or_equal(&moderator));
+        assert!(!moderator.is_higher_or_equal(&admin));
+
+        assert!(owner.priority() > admin.priority());
+        assert!(admin.priority() > moderator.priority());
+        assert!(moderator.priority() > member.priority());
+    }
+
+    #[test]
+    fn display_outputs_uppercase_role() {
+        assert_eq!(MemberRole::Owner.to_string(), "OWNER");
+        assert_eq!(MemberRole::Admin.to_string(), "ADMIN");
+        assert_eq!(MemberRole::Moderator.to_string(), "MODERATOR");
+        assert_eq!(MemberRole::Member.to_string(), "MEMBER");
+    }
+}

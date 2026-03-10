@@ -72,3 +72,36 @@ pub struct UpdateChannelRequest {
     #[validate(length(min = 1, max = 100, message = "Channel name must be between 1 and 100 characters"))]
     pub name: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use validator::Validate;
+
+    #[test]
+    fn default_kind_is_text() {
+        assert!(matches!(default_channel_kind(), ChannelKind::Text));
+    }
+
+    #[test]
+    fn create_channel_request_validation_on_name() {
+        let ok = CreateChannelRequest {
+            name: "general".into(),
+            kind: ChannelKind::Text,
+        };
+        assert!(ok.validate().is_ok());
+
+        let empty = CreateChannelRequest {
+            name: "".into(),
+            kind: ChannelKind::Text,
+        };
+        assert!(empty.validate().is_err());
+
+        let long_name = "x".repeat(101);
+        let too_long = CreateChannelRequest {
+            name: long_name,
+            kind: ChannelKind::Text,
+        };
+        assert!(too_long.validate().is_err());
+    }
+}

@@ -81,6 +81,80 @@ impl From<User> for UserResponse {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn register_request_validation_rules() {
+        // valide
+        let ok = RegisterRequest {
+            email: "user@example.com".into(),
+            username: "user123".into(),
+            password: "strongpass123".into(),
+        };
+        assert!(ok.validate().is_ok());
+
+        // email invalide
+        let bad_email = RegisterRequest {
+            email: "not-an-email".into(),
+            username: "user123".into(),
+            password: "strongpass123".into(),
+        };
+        assert!(bad_email.validate().is_err());
+
+        // username trop court
+        let short_username = RegisterRequest {
+            email: "user@example.com".into(),
+            username: "ab".into(),
+            password: "strongpass123".into(),
+        };
+        assert!(short_username.validate().is_err());
+
+        // mot de passe trop court
+        let short_password = RegisterRequest {
+            email: "user@example.com".into(),
+            username: "user123".into(),
+            password: "short".into(),
+        };
+        assert!(short_password.validate().is_err());
+    }
+
+    #[test]
+    fn login_request_validation_rules() {
+        let ok = LoginRequest {
+            email: "user@example.com".into(),
+            password: "pass".into(),
+        };
+        assert!(ok.validate().is_ok());
+
+        let bad_email = LoginRequest {
+            email: "not-an-email".into(),
+            password: "pass".into(),
+        };
+        assert!(bad_email.validate().is_err());
+    }
+
+    #[test]
+    fn user_to_user_response_mapping() {
+        let user = User {
+            id: Uuid::new_v4(),
+            email: "user@example.com".into(),
+            password_hash: "hash".into(),
+            username: "user123".into(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let resp: UserResponse = user.clone().into();
+        assert_eq!(resp.id, user.id);
+        assert_eq!(resp.email, user.email);
+        assert_eq!(resp.username, user.username);
+        assert_eq!(resp.created_at, user.created_at);
+    }
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
