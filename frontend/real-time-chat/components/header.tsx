@@ -1,52 +1,83 @@
-'use client'
-import Link from 'next/link'
-import { Logo } from '@/components/logo'
-import { Menu, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import React from 'react'
-import { cn } from '@/lib/utils'
+"use client";
 
-const menuItems = [
-    { name: 'À Propos', href: '#link' },
-    { name: 'Fonctionnalités', href: '#link' },
-    { name: 'Solution', href: '#link' },
-    { name: 'Tarifs', href: '#link' },
-    
-]
+import Link from "next/link";
+import { Menu, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import React from "react";
+import { cn } from "@/lib/utils";
+import { useLanguage } from "@/components/language-provider";
 
 export const HeroHeader = () => {
-    const [menuState, setMenuState] = React.useState(false)
-    const [isScrolled, setIsScrolled] = React.useState(false)
+    const [menuState, setMenuState] = React.useState(false);
+    const [isScrolled, setIsScrolled] = React.useState(false);
+    const { language, setLanguage, translations } = useLanguage();
+
+    const { nav } = translations;
+
+    const menuItems = [
+        { name: nav.about, href: "#link" },
+        { name: nav.features, href: "#link" },
+        { name: nav.solution, href: "#link" },
+        { name: nav.pricing, href: "#link" },
+    ];
 
     React.useEffect(() => {
         const handleScroll = () => {
-            setIsScrolled(window.scrollY > 50)
-        }
-        window.addEventListener('scroll', handleScroll)
-        return () => window.removeEventListener('scroll', handleScroll)
-    }, [])
+            setIsScrolled(window.scrollY > 50);
+        };
+        window.addEventListener("scroll", handleScroll);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
+
+    const toggleLanguage = () => {
+        setLanguage(language === "fr" ? "en" : "fr");
+    };
+
     return (
         <header>
             <nav
-                data-state={menuState && 'active'}
-                className="fixed z-20 w-full px-2">
-                <div className={cn('mx-auto mt-2 max-w-6xl px-6 transition-all duration-300 lg:px-12', isScrolled && 'bg-background/50 max-w-4xl rounded-2xl border backdrop-blur-lg lg:px-5')}>
+                data-state={menuState && "active"}
+                className="fixed z-20 w-full px-2"
+            >
+                <div
+                    className={cn(
+                        "mx-auto mt-2 max-w-6xl px-6 transition-all duration-300 lg:px-12",
+                        isScrolled &&
+                            "bg-background/50 max-w-4xl rounded-2xl border backdrop-blur-lg lg:px-5",
+                    )}
+                >
                     <div className="relative flex flex-wrap items-center justify-between gap-6 py-3 lg:gap-0 lg:py-4">
                         <div className="flex w-full justify-between lg:w-auto">
                             <Link
                                 href="/"
                                 aria-label="home"
-                                className="flex items-center space-x-2">
-                                <h1 className='font-semibold italic text-[20px]'> EpiTalk </h1>
+                                className="flex items-center space-x-2"
+                            >
+                                <h1 className="font-semibold italic text-[20px]"> EpiTalk </h1>
                             </Link>
 
-                            <button
-                                onClick={() => setMenuState(!menuState)}
-                                aria-label={menuState == true ? 'Close Menu' : 'Open Menu'}
-                                className="relative z-20 -m-2.5 -mr-4 block cursor-pointer p-2.5 lg:hidden">
-                                <Menu className="in-data-[state=active]:rotate-180 in-data-[state=active]:scale-0 in-data-[state=active]:opacity-0 m-auto size-6 duration-200" />
-                                <X className="in-data-[state=active]:rotate-0 in-data-[state=active]:scale-100 in-data-[state=active]:opacity-100 absolute inset-0 m-auto size-6 -rotate-180 scale-0 opacity-0 duration-200" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={toggleLanguage}
+                                    aria-label={
+                                        language === "fr" ? "Switch to English" : "Passer en français"
+                                    }
+                                    className="hidden text-xs font-medium sm:inline-flex"
+                                >
+                                    {language === "fr" ? "FR" : "EN"}
+                                </Button>
+
+                                <button
+                                    onClick={() => setMenuState(!menuState)}
+                                    aria-label={menuState === true ? "Close Menu" : "Open Menu"}
+                                    className="relative z-20 -m-2.5 -mr-4 block cursor-pointer p-2.5 lg:hidden"
+                                >
+                                    <Menu className="in-data-[state=active]:rotate-180 in-data-[state=active]:scale-0 in-data-[state=active]:opacity-0 m-auto size-6 duration-200" />
+                                    <X className="in-data-[state=active]:rotate-0 in-data-[state=active]:scale-100 in-data-[state=active]:opacity-100 absolute inset-0 m-auto size-6 -rotate-180 scale-0 opacity-0 duration-200" />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="absolute inset-0 m-auto hidden size-fit lg:block">
@@ -55,7 +86,8 @@ export const HeroHeader = () => {
                                     <li key={index}>
                                         <Link
                                             href={item.href}
-                                            className="text-muted-foreground hover:text-accent-foreground block duration-150">
+                                            className="text-muted-foreground hover:text-accent-foreground block duration-150"
+                                        >
                                             <span>{item.name}</span>
                                         </Link>
                                     </li>
@@ -70,7 +102,8 @@ export const HeroHeader = () => {
                                         <li key={index}>
                                             <Link
                                                 href={item.href}
-                                                className="text-muted-foreground hover:text-accent-foreground block duration-150">
+                                                className="text-muted-foreground hover:text-accent-foreground block duration-150"
+                                            >
                                                 <span>{item.name}</span>
                                             </Link>
                                         </li>
@@ -82,25 +115,28 @@ export const HeroHeader = () => {
                                     asChild
                                     variant="outline"
                                     size="sm"
-                                    className={cn(isScrolled && 'lg:hidden')}>
+                                    className={cn(isScrolled && "lg:hidden")}
+                                >
                                     <Link href="/login">
-                                        <span>Connexion</span>
+                                        <span>{nav.signIn}</span>
                                     </Link>
                                 </Button>
                                 <Button
                                     asChild
                                     size="sm"
-                                    className={cn(isScrolled && 'lg:hidden')}>
+                                    className={cn(isScrolled && "lg:hidden")}
+                                >
                                     <Link href="/register">
-                                        <span>Inscription</span>
+                                        <span>{nav.signUp}</span>
                                     </Link>
                                 </Button>
                                 <Button
                                     asChild
                                     size="sm"
-                                    className={cn(isScrolled ? 'lg:inline-flex ' : 'hidden')}>
+                                    className={cn(isScrolled ? "lg:inline-flex " : "hidden")}
+                                >
                                     <Link href="/login">
-                                        <span>Rejoindre un serveur</span>
+                                        <span>{nav.joinServer}</span>
                                     </Link>
                                 </Button>
                             </div>
@@ -109,5 +145,5 @@ export const HeroHeader = () => {
                 </div>
             </nav>
         </header>
-    )
-}
+    );
+};
