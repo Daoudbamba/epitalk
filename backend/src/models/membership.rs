@@ -119,6 +119,39 @@ pub struct UpdateMemberRoleRequest {
     pub role: MemberRole,
 }
 
+/// Ban record matching the `bans` table.
+/// `expires_at = None` means permanent ban.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BanRecord {
+    pub id: Uuid,
+    pub server_id: Uuid,
+    pub user_id: Uuid,
+    pub banned_by: Uuid,
+    pub reason: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Ban response returned to API clients
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BanResponse {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub banned_by: Uuid,
+    pub reason: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request body for banning a member.
+/// `expires_at = None` = permanent ban.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BanMemberRequest {
+    pub reason: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
