@@ -1,3 +1,4 @@
+const path = require("node:path");
 const { app, BrowserWindow, Menu } = require("electron");
 const { getWebAppUrl } = require("./src/config");
 const { buildMenuTemplate } = require("./src/menu");
@@ -6,6 +7,7 @@ function createMainWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: path.join(__dirname, "assets", "icon.svg"),
     webPreferences: {
       contextIsolation: true,
     },
