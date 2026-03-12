@@ -1,5 +1,6 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, Menu } = require("electron");
 const { getWebAppUrl } = require("./src/config");
+const { buildMenuTemplate } = require("./src/menu");
 
 function createMainWindow() {
   const win = new BrowserWindow({
@@ -16,6 +17,9 @@ function createMainWindow() {
 
 app.whenReady().then(() => {
   createMainWindow();
+
+  const menu = Menu.buildFromTemplate(buildMenuTemplate());
+  Menu.setApplicationMenu(menu);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
