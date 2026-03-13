@@ -368,7 +368,7 @@ export function ChatPanel() {
                                     );
                                   }}
                                   // responsive: use left alignment on small screens, limit width to 90vw
-                                  className="absolute -top-44 right-0 md:right-0 left-0 md:left-auto z-40 w-[min(90vw,14rem)] md:w-56 bg-white dark:bg-zinc-900 border rounded-lg px-3 py-2 text-xs shadow-lg"
+                                  className="absolute -top-20 right-0 md:right-0 left-0 md:left-auto z-40 w-[min(90vw,14rem)] md:w-56 bg-white dark:bg-zinc-900 border rounded-lg px-3 py-2 text-xs shadow-lg"
                                 >
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="font-semibold">
@@ -380,7 +380,7 @@ export function ChatPanel() {
                                       </div>
                                     )}
                                   </div>
-                                  <div className="flex flex-col gap-2 max-h-40 overflow-auto pr-1">
+                                  <div className="flex flex-col gap-2 max-h-40 overflow-auto">
                                     {shown.map((u) => (
                                       <div
                                         key={u.id}
@@ -462,7 +462,7 @@ export function ChatPanel() {
                               }
                             }}
                             title={emo.t}
-                            className="px-2 py-1 text-sm rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                            className="px-2 py-1 text-sm rounded hover:bg-green-500 dark:hover:bg-zinc-800 transition"
                           >
                             {emo.k}
                           </button>

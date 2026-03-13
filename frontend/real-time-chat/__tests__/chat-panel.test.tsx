@@ -3,19 +3,40 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 // note: avoid importing jest-dom to keep compatibility with Vitest globals
 import { vi, describe, it, expect } from "vitest";
 
+// Minimal slice types for selectors used in tests (avoid `any` in signatures)
+type AuthSlice = { user: { id: string; username: string }; token: string };
+type MemberSlice = { members: Array<{ user_id: string; username: string }> };
+type ServerSlice = { activeServerId: string | null };
+type ChannelSlice = {
+  channels: { id: string; name: string }[];
+  activeChannelId: string | null;
+};
+type WebSocketSlice = {
+  socket: { readyState: number; send: (...args: unknown[]) => void } | null;
+  isConnected: boolean;
+  messages: Record<string, unknown[]>;
+  connect: () => void;
+  sendMessage: () => void;
+  joinChannel: () => void;
+  startTyping: () => void;
+  stopTyping: () => void;
+  typingUsers: Record<string, string[]>;
+};
+
 // Mock Zustand hooks used by ChatPanel: implement as selector functions
 vi.mock("@/store/auth.store", () => ({
-  useAuthStore: (sel: any) =>
+  useAuthStore: (sel: (s: AuthSlice) => unknown) =>
     sel({ user: { id: "user1", username: "Alice" }, token: "tok" }),
 }));
 vi.mock("@/store/member.store", () => ({
-  useMemberStore: (sel: any) => sel({ members: [] }),
+  useMemberStore: (sel: (s: MemberSlice) => unknown) => sel({ members: [] }),
 }));
 vi.mock("@/store/server.store", () => ({
-  useServerStore: (sel: any) => sel({ activeServerId: "server1" }),
+  useServerStore: (sel: (s: ServerSlice) => unknown) =>
+    sel({ activeServerId: "server1" }),
 }));
 vi.mock("@/store/channel.store", () => ({
-  useChannelStore: (sel: any) =>
+  useChannelStore: (sel: (s: ChannelSlice) => unknown) =>
     sel({
       channels: [{ id: "chan1", name: "general" }],
       activeChannelId: "chan1",
@@ -24,7 +45,7 @@ vi.mock("@/store/channel.store", () => ({
 
 const mockSend = vi.fn();
 vi.mock("@/store/websocket.store", () => ({
-  useWebSocketStore: (sel: any) =>
+  useWebSocketStore: (sel: (s: WebSocketSlice) => unknown) =>
     sel({
       socket: { readyState: 1, send: mockSend },
       isConnected: true,
@@ -55,18 +76,18 @@ vi.mock("@/store/websocket.store", () => ({
 
 // Mock UI components and icons used by ChatPanel
 vi.mock("@/components/ui/input", () => ({
-  Input: (props: any) => <input {...props} />,
+  Input: (props: React.ComponentProps<"input">) => <input {...props} />,
 }));
 vi.mock("@/components/ui/button", () => ({
-  Button: (props: any) => <button {...props} />,
+  Button: (props: React.ComponentProps<"button">) => <button {...props} />,
 }));
 vi.mock("lucide-react", () => ({
-  Plus: (p: any) => <span {...p} />,
-  Smile: (p: any) => <span {...p} />,
-  Gift: (p: any) => <span {...p} />,
-  Sticker: (p: any) => <span {...p} />,
-  Send: (p: any) => <span {...p} />,
-  Loader2: (p: any) => <span {...p} />,
+  Plus: (p: React.ComponentProps<"span">) => <span {...p} />,
+  Smile: (p: React.ComponentProps<"span">) => <span {...p} />,
+  Gift: (p: React.ComponentProps<"span">) => <span {...p} />,
+  Sticker: (p: React.ComponentProps<"span">) => <span {...p} />,
+  Send: (p: React.ComponentProps<"span">) => <span {...p} />,
+  Loader2: (p: React.ComponentProps<"span">) => <span {...p} />,
 }));
 
 // Import the component (relative path)

@@ -294,7 +294,7 @@ function handleServerEvent(
         content,
         created_at,
         reactions,
-      } = event.payload as any;
+      } = event.payload;
       const newMessage: WsMessage = {
         id,
         channel_id,
@@ -326,7 +326,7 @@ function handleServerEvent(
     }
 
     case "ReactionAdded": {
-      const { message_id, emoji, user_id, username } = event.payload as any;
+      const { message_id, emoji, user_id, username } = event.payload;
       set((state) => {
         const newMessages = { ...state.messages } as Record<
           string,
@@ -365,7 +365,7 @@ function handleServerEvent(
     }
 
     case "ReactionRemoved": {
-      const { message_id, emoji, user_id } = event.payload as any;
+      const { message_id, emoji, user_id } = event.payload;
       set((state) => {
         const newMessages = { ...state.messages } as Record<
           string,
