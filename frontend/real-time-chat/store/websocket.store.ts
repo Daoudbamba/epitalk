@@ -8,6 +8,7 @@ export interface WsMessage {
   username?: string;
   content: string;
   created_at: string;
+  reactions?: { emoji: string; user_id: string; username?: string }[];
 }
 
 // CLIENT → SERVER events
@@ -21,14 +22,40 @@ type ClientEvent =
 
 // SERVER → CLIENT events
 type ServerEvent =
-  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string } }
+  | {
+      type: "MessageNew";
+      payload: {
+        id: string;
+        channel_id: string;
+        author_id: string;
+        username?: string;
+        content: string;
+        created_at: string;
+        reactions?: { emoji: string; user_id: string; username?: string }[];
+      };
+    }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
   | { type: "UserLeft"; payload: { user_id: string; channel_id: string } }
-  | { type: "TypingStart"; payload: { user_id: string; username: string; channel_id: string } }
-  | { type: "TypingStop"; payload: { user_id: string; username: string; channel_id: string } }
+  | {
+      type: "TypingStart";
+      payload: { user_id: string; username: string; channel_id: string };
+    }
+  | {
+      type: "TypingStop";
+      payload: { user_id: string; username: string; channel_id: string };
+    }
   | { type: "Pong" }
   | { type: "UserOnline"; payload: { user_id: string } }
-  | { type: "UserOffline"; payload: { user_id: string } };
+  | { type: "UserOffline"; payload: { user_id: string } }
+  | {
+      type: "ReactionAdded";
+      payload: {
+        message_id: string;
+        emoji: string;
+        user_id: string;
+        username?: string;
+      };
+    };
 
 type WebSocketState = {
   socket: WebSocket | null;
@@ -138,8 +165,12 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   sendMessage: (channelId: string, content: string) => {
     const { socket } = get();
-    console.log("📤 Sending message:", { channelId, content, socketState: socket?.readyState });
-    
+    console.log("📤 Sending message:", {
+      channelId,
+      content,
+      socketState: socket?.readyState,
+    });
+
     if (socket && socket.readyState === WebSocket.OPEN) {
       const event: ClientEvent = {
         type: "MessageSend",
@@ -155,9 +186,9 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   joinChannel: (channelId: string) => {
     const { socket, currentChannelId } = get();
-    
+
     console.log("🚪 Joining channel:", channelId);
-    
+
     // Leave previous channel
     if (currentChannelId && currentChannelId !== channelId) {
       get().leaveChannel(currentChannelId);
@@ -236,13 +267,25 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 // Handle incoming server events
 function handleServerEvent(
   event: ServerEvent,
-  set: (partial: Partial<WebSocketState> | ((state: WebSocketState) => Partial<WebSocketState>)) => void
+  set: (
+    partial:
+      | Partial<WebSocketState>
+      | ((state: WebSocketState) => Partial<WebSocketState>),
+  ) => void,
 ) {
   console.log("🔔 Handling server event:", event.type, event);
-  
+
   switch (event.type) {
     case "MessageNew": {
-      const { id, channel_id, author_id, username, content, created_at } = event.payload;
+      const {
+        id,
+        channel_id,
+        author_id,
+        username,
+        content,
+        created_at,
+        reactions,
+      } = event.payload as any;
       const newMessage: WsMessage = {
         id,
         channel_id,
@@ -250,18 +293,19 @@ function handleServerEvent(
         username,
         content,
         created_at,
+        reactions: reactions || [],
       };
 
       console.log("💬 New message received:", newMessage);
 
       set((state) => {
         const channelMessages = state.messages[channel_id] || [];
-        
+
         // Avoid duplicates
         if (channelMessages.some((m) => m.id === id)) {
           return state;
         }
-        
+
         return {
           messages: {
             ...state.messages,
@@ -272,13 +316,56 @@ function handleServerEvent(
       break;
     }
 
+    case "ReactionAdded": {
+      const { message_id, emoji, user_id, username } = event.payload as any;
+      set((state) => {
+        const newMessages = { ...state.messages } as Record<
+          string,
+          WsMessage[]
+        >;
+
+        // Try to find the message across all channels
+        for (const [chanId, msgs] of Object.entries(newMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+
+            // Prevent duplicates: same user + same emoji
+            const already = existing.some(
+              (r) => r.user_id === user_id && r.emoji === emoji,
+            );
+            if (already) return state;
+
+            const updated: WsMessage = {
+              ...target,
+              reactions: [...existing, { emoji, user_id, username }],
+            };
+
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newMessages[chanId] = updatedList;
+
+            return { messages: newMessages };
+          }
+        }
+
+        return state;
+      });
+      break;
+    }
+
     case "UserJoined": {
-      console.log(`👋 User ${event.payload.user_id} joined channel ${event.payload.channel_id}`);
+      console.log(
+        `👋 User ${event.payload.user_id} joined channel ${event.payload.channel_id}`,
+      );
       break;
     }
 
     case "UserLeft": {
-      console.log(`👋 User ${event.payload.user_id} left channel ${event.payload.channel_id}`);
+      console.log(
+        `👋 User ${event.payload.user_id} left channel ${event.payload.channel_id}`,
+      );
       break;
     }
 
@@ -327,7 +414,9 @@ function handleServerEvent(
 
     case "UserOffline": {
       set((state) => ({
-        onlineUsers: state.onlineUsers.filter((id) => id !== event.payload.user_id),
+        onlineUsers: state.onlineUsers.filter(
+          (id) => id !== event.payload.user_id,
+        ),
       }));
       break;
     }

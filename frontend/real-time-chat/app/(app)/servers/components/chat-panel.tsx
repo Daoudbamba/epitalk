@@ -27,6 +27,7 @@ export function ChatPanel() {
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
   const wsMessages = useWebSocketStore((s) => s.messages);
+  const socket = useWebSocketStore((s) => s.socket);
   const startTyping = useWebSocketStore((s) => s.startTyping);
   const stopTyping = useWebSocketStore((s) => s.stopTyping);
   const typingUsers = useWebSocketStore((s) => s.typingUsers);
@@ -38,6 +39,7 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
+  const [openReactionFor, setOpenReactionFor] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -69,21 +71,24 @@ export function ChatPanel() {
   }, [messages]);
 
   // Get username from message, members or fallback to author_id
-  const getUsernameById = (authorId: string, msgUsername?: string): string => {
-    // Check if username is provided in the message itself
-    if (msgUsername) return msgUsername;
-    // Check if it's the current user
-    if (user && user.id === authorId) {
-      return user.username;
-    }
-    // Check members
-    const member = members.find((m) => m.user_id === authorId);
-    if (member) {
-      return member.username;
-    }
-    // Fallback: use first part of UUID
-    return authorId.slice(0, 8);
-  };
+  const getUsernameById = useCallback(
+    (authorId: string, msgUsername?: string): string => {
+      // Check if username is provided in the message itself
+      if (msgUsername) return msgUsername;
+      // Check if it's the current user
+      if (user && user.id === authorId) {
+        return user.username;
+      }
+      // Check members
+      const member = members.find((m) => m.user_id === authorId);
+      if (member) {
+        return member.username;
+      }
+      // Fallback: use first part of UUID
+      return authorId.slice(0, 8);
+    },
+    [user, members],
+  );
 
   const onSend = async () => {
     if (!activeChannelId || !canLoad) return;
@@ -150,7 +155,7 @@ export function ChatPanel() {
     if (names.length === 1) return `${names[0]} est en train d'écrire...`;
     if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
     return `${names.length} personnes écrivent...`;
-  }, [currentTypingUsers]);
+  }, [currentTypingUsers, getUsernameById]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -161,7 +166,6 @@ export function ChatPanel() {
 
   return (
     <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden">
-      
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0">
         <span className="text-zinc-500 mr-2 text-2xl">#</span>
@@ -190,11 +194,13 @@ export function ChatPanel() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
+                className="group relative flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
               >
                 <div className="mr-4">
                   <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
-                    {getUsernameById(msg.author_id, msg.username).slice(0, 2).toUpperCase()}
+                    {getUsernameById(msg.author_id, msg.username)
+                      .slice(0, 2)
+                      .toUpperCase()}
                   </div>
                 </div>
 
@@ -211,6 +217,132 @@ export function ChatPanel() {
                   <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
                     {msg.content}
                   </p>
+                  {/* Reactions display */}
+                  {msg.reactions && msg.reactions.length > 0 && (
+                    <div className="mt-2 flex gap-2 flex-wrap">
+                      {/** Aggregate by emoji */}
+                      {(() => {
+                        const map: Record<
+                          string,
+                          { count: number; users: string[] }
+                        > = {};
+                        for (const r of msg.reactions || []) {
+                          if (!map[r.emoji])
+                            map[r.emoji] = { count: 0, users: [] };
+                          map[r.emoji].count += 1;
+                          map[r.emoji].users.push(r.user_id);
+                        }
+                        return Object.entries(map).map(([emoji, data]) => {
+                          const reactedByMe = user
+                            ? data.users.includes(user.id)
+                            : false;
+                          return (
+                            <button
+                              key={emoji}
+                              title={`${data.count} réaction(s)`}
+                              className={`px-2 py-0.5 rounded-full text-sm flex items-center gap-2 ${reactedByMe ? "bg-indigo-100 text-indigo-700" : "bg-zinc-100 text-zinc-700"}`}
+                              onClick={() => {
+                                // clicking a reaction will send the same ReactionAdd event (backend may toggle later)
+                                try {
+                                  if (
+                                    socket &&
+                                    socket.readyState === WebSocket.OPEN
+                                  ) {
+                                    const ev = {
+                                      type: "ReactionAdd",
+                                      payload: { message_id: msg.id, emoji },
+                                    };
+                                    socket.send(JSON.stringify(ev));
+                                  } else {
+                                    setError(
+                                      "Impossible d'envoyer la réaction (non connecté)",
+                                    );
+                                  }
+                                } catch (e) {
+                                  console.error("Failed to send reaction", e);
+                                  setError(
+                                    "Erreur lors de l'envoi de la réaction",
+                                  );
+                                }
+                              }}
+                            >
+                              <span className="text-lg leading-none">
+                                {emoji}
+                              </span>
+                              <span className="text-xs">{data.count}</span>
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+                  )}
+                  {/* Reaction button (visible on hover) */}
+                  <div className="absolute right-2 top-2 hidden group-hover:flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="h-7 w-7 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 hover:bg-zinc-200 transition"
+                      onClick={() =>
+                        setOpenReactionFor(
+                          openReactionFor === msg.id ? null : msg.id,
+                        )
+                      }
+                      title="Réagir"
+                    >
+                      <Smile className="h-4 w-4" />
+                    </button>
+
+                    {/* Emoji picker simple menu */}
+                    {openReactionFor === msg.id && (
+                      <div className="absolute right-10 top-0 z-20 bg-white dark:bg-zinc-900 border rounded-lg shadow-md p-2 flex gap-2">
+                        {[
+                          { k: "😂", t: "rire" },
+                          { k: "❤️", t: "coeur" },
+                          { k: "😮", t: "surpris" },
+                          { k: "👍", t: "like" },
+                        ].map((emo) => (
+                          <button
+                            key={emo.k}
+                            onClick={() => {
+                              // send simple reaction event over WS
+                              try {
+                                if (
+                                  socket &&
+                                  socket.readyState === WebSocket.OPEN
+                                ) {
+                                  const ev = {
+                                    type: "ReactionAdd",
+                                    payload: {
+                                      message_id: msg.id,
+                                      emoji: emo.k,
+                                    },
+                                  };
+                                  socket.send(JSON.stringify(ev));
+                                } else {
+                                  console.warn(
+                                    "WebSocket not connected: cannot send reaction",
+                                  );
+                                  setError(
+                                    "Impossible d'envoyer la réaction (non connecté)",
+                                  );
+                                }
+                              } catch (e) {
+                                console.error("Failed to send reaction", e);
+                                setError(
+                                  "Erreur lors de l'envoi de la réaction",
+                                );
+                              } finally {
+                                setOpenReactionFor(null);
+                              }
+                            }}
+                            title={emo.t}
+                            className="px-2 py-1 text-sm rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                          >
+                            {emo.k}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -245,8 +377,8 @@ export function ChatPanel() {
                 !canLoad
                   ? "Sélectionne un channel..."
                   : !isConnected
-                  ? "Connexion en cours..."
-                  : `Envoyer un message dans #${activeChannelName ?? ""}`
+                    ? "Connexion en cours..."
+                    : `Envoyer un message dans #${activeChannelName ?? ""}`
               }
             />
 
@@ -279,19 +411,28 @@ export function ChatPanel() {
             )}
           </Button>
         </div>
-        
+
         {/* Typing indicator */}
         {typingDisplay && (
           <div className="mt-1 px-1 text-xs text-indigo-500 flex items-center gap-1 animate-pulse">
             <span className="flex gap-0.5">
-              <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span
+                className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"
+                style={{ animationDelay: "0ms" }}
+              />
+              <span
+                className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"
+                style={{ animationDelay: "150ms" }}
+              />
+              <span
+                className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"
+                style={{ animationDelay: "300ms" }}
+              />
             </span>
             {typingDisplay}
           </div>
         )}
-        
+
         {/* Connection status */}
         {!isConnected && canLoad && (
           <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
