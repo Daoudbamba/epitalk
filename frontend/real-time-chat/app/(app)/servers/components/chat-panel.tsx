@@ -40,6 +40,10 @@ export function ChatPanel() {
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
   const [openReactionFor, setOpenReactionFor] = useState<string | null>(null);
+  const [hoveredReaction, setHoveredReaction] = useState<{
+    msgId: string;
+    emoji: string;
+  } | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -224,56 +228,112 @@ export function ChatPanel() {
                       {(() => {
                         const map: Record<
                           string,
-                          { count: number; users: string[]; usernames: string[] }
+                          {
+                            count: number;
+                            users: string[];
+                            usernames: string[];
+                          }
                         > = {};
                         for (const r of msg.reactions || []) {
                           if (!map[r.emoji])
-                            map[r.emoji] = { count: 0, users: [], usernames: [] };
+                            map[r.emoji] = {
+                              count: 0,
+                              users: [],
+                              usernames: [],
+                            };
                           map[r.emoji].count += 1;
                           map[r.emoji].users.push(r.user_id);
-                          const displayName = r.username ? r.username : getUsernameById(r.user_id);
+                          const displayName = r.username
+                            ? r.username
+                            : getUsernameById(r.user_id);
                           map[r.emoji].usernames.push(displayName);
                         }
                         return Object.entries(map).map(([emoji, data]) => {
-                          const reactedByMe = user ? data.users.includes(user.id) : false;
+                          const reactedByMe = user
+                            ? data.users.includes(user.id)
+                            : false;
                           const title = `${data.count} réaction(s): ${data.usernames.join(", ")}`;
                           return (
-                            <button
-                              key={emoji}
-                              title={title}
-                              className={`px-2 py-0.5 rounded-full text-sm flex items-center gap-2 ${reactedByMe ? "bg-indigo-100 text-indigo-700" : "bg-zinc-100 text-zinc-700"}`}
-                              onClick={() => {
-                                // clicking a reaction will add my reaction (backend enforces per-user uniqueness)
-                                try {
-                                  if (socket && socket.readyState === WebSocket.OPEN) {
-                                    const ev = { type: "ReactionAdd", payload: { message_id: msg.id, emoji } };
-                                    socket.send(JSON.stringify(ev));
-                                  } else {
-                                    setError("Impossible d'envoyer la réaction (non connecté)");
-                                  }
-                                } catch (e) {
-                                  console.error("Failed to send reaction", e);
-                                  setError("Erreur lors de l'envoi de la réaction");
+                            <div key={emoji} className="relative">
+                              <button
+                                title={title}
+                                className={`px-2 py-0.5 rounded-full text-sm flex items-center gap-2 ${reactedByMe ? "bg-indigo-100 text-indigo-700" : "bg-zinc-100 text-zinc-700"}`}
+                                onMouseEnter={() =>
+                                  setHoveredReaction({ msgId: msg.id, emoji })
                                 }
-                              }}
-                              onDoubleClick={() => {
-                                // double-click removes my reaction (send ReactionRemove)
-                                try {
-                                  if (socket && socket.readyState === WebSocket.OPEN) {
-                                    const ev = { type: "ReactionRemove", payload: { message_id: msg.id, emoji } };
-                                    socket.send(JSON.stringify(ev));
-                                  } else {
-                                    setError("Impossible de supprimer la réaction (non connecté)");
+                                onMouseLeave={() => setHoveredReaction(null)}
+                                onClick={() => {
+                                  // clicking a reaction will add my reaction (backend enforces per-user uniqueness)
+                                  try {
+                                    if (
+                                      socket &&
+                                      socket.readyState === WebSocket.OPEN
+                                    ) {
+                                      const ev = {
+                                        type: "ReactionAdd",
+                                        payload: { message_id: msg.id, emoji },
+                                      };
+                                      socket.send(JSON.stringify(ev));
+                                    } else {
+                                      setError(
+                                        "Impossible d'envoyer la réaction (non connecté)",
+                                      );
+                                    }
+                                  } catch (e) {
+                                    console.error("Failed to send reaction", e);
+                                    setError(
+                                      "Erreur lors de l'envoi de la réaction",
+                                    );
                                   }
-                                } catch (e) {
-                                  console.error("Failed to remove reaction", e);
-                                  setError("Erreur lors de la suppression de la réaction");
-                                }
-                              }}
-                            >
-                              <span className="text-lg leading-none">{emoji}</span>
-                              <span className="text-xs">{data.count}</span>
-                            </button>
+                                }}
+                                onDoubleClick={() => {
+                                  // double-click removes my reaction (send ReactionRemove)
+                                  try {
+                                    if (
+                                      socket &&
+                                      socket.readyState === WebSocket.OPEN
+                                    ) {
+                                      const ev = {
+                                        type: "ReactionRemove",
+                                        payload: { message_id: msg.id, emoji },
+                                      };
+                                      socket.send(JSON.stringify(ev));
+                                    } else {
+                                      setError(
+                                        "Impossible de supprimer la réaction (non connecté)",
+                                      );
+                                    }
+                                  } catch (e) {
+                                    console.error(
+                                      "Failed to remove reaction",
+                                      e,
+                                    );
+                                    setError(
+                                      "Erreur lors de la suppression de la réaction",
+                                    );
+                                  }
+                                }}
+                              >
+                                <span className="text-lg leading-none">
+                                  {emoji}
+                                </span>
+                                <span className="text-xs">{data.count}</span>
+                              </button>
+
+                              {/* Tooltip shown on hover listing usernames */}
+                              {hoveredReaction &&
+                                hoveredReaction.msgId === msg.id &&
+                                hoveredReaction.emoji === emoji && (
+                                  <div className="absolute -top-10 right-0 z-30 bg-white dark:bg-zinc-900 border rounded px-2 py-1 text-xs shadow">
+                                    <div className="font-semibold text-xs mb-1">
+                                      {data.count} réaction(s)
+                                    </div>
+                                    <div className="whitespace-nowrap">
+                                      {data.usernames.join(", ")}
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
                           );
                         });
                       })()}
