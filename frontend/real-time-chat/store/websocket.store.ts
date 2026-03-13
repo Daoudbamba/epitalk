@@ -55,6 +55,15 @@ type ServerEvent =
         user_id: string;
         username?: string;
       };
+    }
+  | {
+      type: "ReactionRemoved";
+      payload: {
+        message_id: string;
+        emoji: string;
+        user_id: string;
+        username?: string;
+      };
     };
 
 type WebSocketState = {
@@ -340,6 +349,42 @@ function handleServerEvent(
             const updated: WsMessage = {
               ...target,
               reactions: [...existing, { emoji, user_id, username }],
+            };
+
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newMessages[chanId] = updatedList;
+
+            return { messages: newMessages };
+          }
+        }
+
+        return state;
+      });
+      break;
+    }
+
+    case "ReactionRemoved": {
+      const { message_id, emoji, user_id } = event.payload as any;
+      set((state) => {
+        const newMessages = { ...state.messages } as Record<
+          string,
+          WsMessage[]
+        >;
+
+        for (const [chanId, msgs] of Object.entries(newMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+
+            const updatedReactions = existing.filter(
+              (r) => !(r.user_id === user_id && r.emoji === emoji),
+            );
+
+            const updated: WsMessage = {
+              ...target,
+              reactions: updatedReactions,
             };
 
             const updatedList = [...msgs];
