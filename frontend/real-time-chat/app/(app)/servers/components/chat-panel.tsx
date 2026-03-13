@@ -44,6 +44,7 @@ export function ChatPanel() {
     msgId: string;
     emoji: string;
   } | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -71,7 +72,10 @@ export function ChatPanel() {
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = bottomRef.current as HTMLElement | null;
+    if (el && typeof (el as any).scrollIntoView === "function") {
+      (el as any).scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   // Get username from message, members or fallback to author_id
@@ -252,27 +256,70 @@ export function ChatPanel() {
                           const reactedByMe = user
                             ? data.users.includes(user.id)
                             : false;
-                          const title = `${data.count} réaction(s): ${data.usernames.join(", ")}`;
+
+                          // Build a list of users with ids & names
+                          const usersList = data.users.map((id, idx) => ({
+                            id,
+                            username: data.usernames[idx] || id.slice(0, 8),
+                          }));
+
+                          const visible =
+                            hoveredReaction &&
+                            hoveredReaction.msgId === msg.id &&
+                            hoveredReaction.emoji === emoji;
+
+                          // Show up to 6 users in the card, then +N
+                          const SHOW_MAX = 6;
+                          const shown = usersList.slice(0, SHOW_MAX);
+                          const remaining = Math.max(
+                            0,
+                            usersList.length - SHOW_MAX,
+                          );
+
                           return (
                             <div key={emoji} className="relative">
                               <button
-                                title={title}
                                 className={`px-2 py-0.5 rounded-full text-sm flex items-center gap-2 ${reactedByMe ? "bg-indigo-100 text-indigo-700" : "bg-zinc-100 text-zinc-700"}`}
-                                onMouseEnter={() =>
-                                  setHoveredReaction({ msgId: msg.id, emoji })
-                                }
-                                onMouseLeave={() => setHoveredReaction(null)}
+                                onMouseEnter={() => {
+                                  if (hoverTimeoutRef.current) {
+                                    clearTimeout(hoverTimeoutRef.current);
+                                    hoverTimeoutRef.current = null;
+                                  }
+                                  setHoveredReaction({ msgId: msg.id, emoji });
+                                }}
+                                onMouseLeave={() => {
+                                  if (hoverTimeoutRef.current)
+                                    clearTimeout(hoverTimeoutRef.current);
+                                  hoverTimeoutRef.current = setTimeout(
+                                    () => setHoveredReaction(null),
+                                    180,
+                                  );
+                                }}
                                 onClick={() => {
-                                  // clicking a reaction will add my reaction (backend enforces per-user uniqueness)
+                                  // Toggle: add if not reacted, remove if already reacted
+                                  const reactedByMe = user
+                                    ? data.users.includes(user.id)
+                                    : false;
                                   try {
                                     if (
                                       socket &&
                                       socket.readyState === WebSocket.OPEN
                                     ) {
-                                      const ev = {
-                                        type: "ReactionAdd",
-                                        payload: { message_id: msg.id, emoji },
-                                      };
+                                      const ev = reactedByMe
+                                        ? {
+                                            type: "ReactionRemove",
+                                            payload: {
+                                              message_id: msg.id,
+                                              emoji,
+                                            },
+                                          }
+                                        : {
+                                            type: "ReactionAdd",
+                                            payload: {
+                                              message_id: msg.id,
+                                              emoji,
+                                            },
+                                          };
                                       socket.send(JSON.stringify(ev));
                                     } else {
                                       setError(
@@ -280,39 +327,16 @@ export function ChatPanel() {
                                       );
                                     }
                                   } catch (e) {
-                                    console.error("Failed to send reaction", e);
+                                    console.error(
+                                      "Failed to toggle reaction",
+                                      e,
+                                    );
                                     setError(
                                       "Erreur lors de l'envoi de la réaction",
                                     );
                                   }
                                 }}
-                                onDoubleClick={() => {
-                                  // double-click removes my reaction (send ReactionRemove)
-                                  try {
-                                    if (
-                                      socket &&
-                                      socket.readyState === WebSocket.OPEN
-                                    ) {
-                                      const ev = {
-                                        type: "ReactionRemove",
-                                        payload: { message_id: msg.id, emoji },
-                                      };
-                                      socket.send(JSON.stringify(ev));
-                                    } else {
-                                      setError(
-                                        "Impossible de supprimer la réaction (non connecté)",
-                                      );
-                                    }
-                                  } catch (e) {
-                                    console.error(
-                                      "Failed to remove reaction",
-                                      e,
-                                    );
-                                    setError(
-                                      "Erreur lors de la suppression de la réaction",
-                                    );
-                                  }
-                                }}
+                                onDoubleClick={(e) => e.preventDefault()}
                               >
                                 <span className="text-lg leading-none">
                                   {emoji}
@@ -320,19 +344,59 @@ export function ChatPanel() {
                                 <span className="text-xs">{data.count}</span>
                               </button>
 
-                              {/* Tooltip shown on hover listing usernames */}
-                              {hoveredReaction &&
-                                hoveredReaction.msgId === msg.id &&
-                                hoveredReaction.emoji === emoji && (
-                                  <div className="absolute -top-10 right-0 z-30 bg-white dark:bg-zinc-900 border rounded px-2 py-1 text-xs shadow">
-                                    <div className="font-semibold text-xs mb-1">
+                              {/* Improved tooltip card */}
+                              {visible && (
+                                <div
+                                  role="dialog"
+                                  aria-label="Réactions"
+                                  onMouseEnter={() => {
+                                    if (hoverTimeoutRef.current) {
+                                      clearTimeout(hoverTimeoutRef.current);
+                                      hoverTimeoutRef.current = null;
+                                    }
+                                    setHoveredReaction({
+                                      msgId: msg.id,
+                                      emoji,
+                                    });
+                                  }}
+                                  onMouseLeave={() => {
+                                    if (hoverTimeoutRef.current)
+                                      clearTimeout(hoverTimeoutRef.current);
+                                    hoverTimeoutRef.current = setTimeout(
+                                      () => setHoveredReaction(null),
+                                      180,
+                                    );
+                                  }}
+                                  // responsive: use left alignment on small screens, limit width to 90vw
+                                  className="absolute -top-44 right-0 md:right-0 left-0 md:left-auto z-40 w-[min(90vw,14rem)] md:w-56 bg-white dark:bg-zinc-900 border rounded-lg px-3 py-2 text-xs shadow-lg"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="font-semibold">
                                       {data.count} réaction(s)
                                     </div>
-                                    <div className="whitespace-nowrap">
-                                      {data.usernames.join(", ")}
-                                    </div>
+                                    {remaining > 0 && (
+                                      <div className="text-xs text-zinc-500">
+                                        +{remaining}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
+                                  <div className="flex flex-col gap-2 max-h-40 overflow-auto pr-1">
+                                    {shown.map((u) => (
+                                      <div
+                                        key={u.id}
+                                        className="flex items-center gap-2"
+                                      >
+                                        <div className="w-6 h-6 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[10px] font-semibold text-zinc-700 dark:text-zinc-100">
+                                          {u.username.slice(0, 2).toUpperCase()}
+                                        </div>
+                                        <div className="truncate">
+                                          {u.username}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         });
