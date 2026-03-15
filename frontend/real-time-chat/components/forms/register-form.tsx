@@ -22,6 +22,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { authApi } from "@/lib/api";
 import { useState } from "react";
 import { getErrorMessage } from "@/lib/api/errors";
+import { useLanguage } from "@/components/language-provider";
 
 export function RegisterForm({
   className,
@@ -34,6 +35,8 @@ export function RegisterForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,11 +44,19 @@ export function RegisterForm({
 
     // Validation côté client
     if (username.trim().length < 3) {
-      setError("Le nom d'utilisateur doit contenir au moins 3 caractères.");
+      setError(
+        isEnglish
+          ? "Username must be at least 3 characters long."
+          : "Le nom d'utilisateur doit contenir au moins 3 caractères.",
+      );
       return;
     }
     if (password.length < 8) {
-      setError("Le mot de passe doit contenir au moins 8 caractères.");
+      setError(
+        isEnglish
+          ? "Password must be at least 8 characters long."
+          : "Le mot de passe doit contenir au moins 8 caractères.",
+      );
       return;
     }
 
@@ -66,9 +77,13 @@ export function RegisterForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle>Creez votre compte</CardTitle>
+          <CardTitle>
+            {isEnglish ? "Create your account" : "Créez votre compte"}
+          </CardTitle>
           <CardDescription>
-            Entrez vos informations pour creer un nouveau compte.
+            {isEnglish
+              ? "Enter your information to create a new account."
+              : "Entrez vos informations pour créer un nouveau compte."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -81,7 +96,9 @@ export function RegisterForm({
               )}
 
               <Field>
-                <FieldLabel htmlFor="username">Nom utilisateur</FieldLabel>
+                <FieldLabel htmlFor="username">
+                  {isEnglish ? "Username" : "Nom d'utilisateur"}
+                </FieldLabel>
                 <Input
                   id="username"
                   type="text"
@@ -107,7 +124,9 @@ export function RegisterForm({
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="password">Mot de passe</FieldLabel>
+                <FieldLabel htmlFor="password">
+                  {isEnglish ? "Password" : "Mot de passe"}
+                </FieldLabel>
                 <Input
                   id="password"
                   type="password"
@@ -124,13 +143,19 @@ export function RegisterForm({
                   type="submit"
                   disabled={loading}
                 >
-                  {loading ? "Creation..." : "Creer un compte"}
+                  {loading
+                    ? isEnglish
+                      ? "Creating..."
+                      : "Création..."
+                    : isEnglish
+                      ? "Create account"
+                      : "Créer un compte"}
                 </Button>
 
                 <FieldDescription className="text-center">
-                  Vous avez deja un compte?{" "}
+                  {isEnglish ? "Already have an account? " : "Vous avez déjà un compte ? "}
                   <Link href="/login" className="underline">
-                    Se connecter
+                    {isEnglish ? "Sign in" : "Se connecter"}
                   </Link>
                 </FieldDescription>
               </Field>

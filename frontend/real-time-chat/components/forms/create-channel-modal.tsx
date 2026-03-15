@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { channelsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
+import { useLanguage } from "@/components/language-provider";
 
 interface CreateChannelModalProps {
   open: boolean;
@@ -32,18 +33,24 @@ export function CreateChannelModal({
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!serverId) {
-      setError("Aucun serveur sélectionné");
+      setError(
+        isEnglish ? "No server selected" : "Aucun serveur sélectionné",
+      );
       return;
     }
 
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Le nom du channel est requis");
+      setError(
+        isEnglish ? "Channel name is required" : "Le nom du channel est requis",
+      );
       return;
     }
 
@@ -82,17 +89,19 @@ export function CreateChannelModal({
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg">
                 <Hash className="h-5 w-5 text-white" />
               </div>
-              Créer un channel
+              {isEnglish ? "Create a channel" : "Créer un channel"}
             </DialogTitle>
             <DialogDescription className="text-[#6B7280] mt-2">
-              Les channels sont des espaces de discussion au sein de votre serveur.
+              {isEnglish
+                ? "Channels are discussion spaces within your server."
+                : "Les channels sont des espaces de discussion au sein de votre serveur."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="channel-name" className="text-sm font-medium text-[#1A1A2E]">
-                Nom du channel
+                {isEnglish ? "Channel name" : "Nom du channel"}
               </Label>
               <div className="flex items-center gap-2">
                 <span className="text-[#023BFC] font-bold text-lg">#</span>
@@ -100,14 +109,16 @@ export function CreateChannelModal({
                   id="channel-name"
                   value={name}
                   onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "-"))}
-                  placeholder="général"
+                  placeholder={isEnglish ? "general" : "général"}
                   disabled={loading}
                   autoFocus
                   className="flex-1 h-12 px-4 rounded-xl border-[#E5E7EB] focus:border-[#023BFC] focus:ring-[#023BFC]/20 transition-all duration-200 bg-[#F7F8FA]"
                 />
               </div>
               <p className="text-xs text-[#6B7280]">
-                Utilisez des lettres minuscules et des tirets
+                {isEnglish
+                  ? "Use lowercase letters and dashes"
+                  : "Utilisez des lettres minuscules et des tirets"}
               </p>
             </div>
 
@@ -129,7 +140,7 @@ export function CreateChannelModal({
               disabled={loading}
               className="h-11 px-6 rounded-xl border-[#E5E7EB] hover:bg-[#F7F8FA] transition-all duration-200"
             >
-              Annuler
+              {isEnglish ? "Cancel" : "Annuler"}
             </Button>
             <Button 
               type="submit" 
@@ -139,10 +150,10 @@ export function CreateChannelModal({
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Création...
+                  {isEnglish ? "Creating..." : "Création..."}
                 </>
               ) : (
-                "Créer le channel"
+                isEnglish ? "Create channel" : "Créer le channel"
               )}
             </Button>
           </DialogFooter>
