@@ -7,6 +7,7 @@ import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 import { useMemo, useState } from "react";
 import { UserSettings } from "./user-settings";
+import { useLanguage } from "@/components/language-provider";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
 
 function extractInviteCode(value: string): string | null {
@@ -38,6 +39,8 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const isOwner = !!activeServer && !!currentUser && activeServer.owner_id === currentUser.id;
 
   const [openCreateServer, setOpenCreateServer] = useState(false);
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
   const [inviteInput, setInviteInput] = useState("");
   const [joinLoading, setJoinLoading] = useState(false);
 
@@ -178,21 +181,39 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
             variant="outline"
             onClick={onInvite}
             disabled={!activeServerId || inviteLoading}
-            title={isOwner ? "Générer une invitation" : "Réservé au créateur"}
+            title={
+              isOwner
+                ? isEnglish
+                  ? "Generate an invite"
+                  : "Générer une invitation"
+                : isEnglish
+                  ? "Owner only"
+                  : "Réservé au créateur"
+            }
           >
-            {inviteLoading ? "..." : "Inviter"}
+            {inviteLoading ? "..." : isEnglish ? "Invite" : "Inviter"}
           </Button>
 
           <Button
             variant={isOwner ? "destructive" : "outline"}
             onClick={onLeaveOrDelete}
             disabled={!activeServerId}
-            title={isOwner ? "Supprimer le serveur" : "Quitter le serveur"}
+            title={
+              isOwner
+                ? isEnglish
+                  ? "Delete server"
+                  : "Supprimer le serveur"
+                : isEnglish
+                  ? "Leave server"
+                  : "Quitter le serveur"
+            }
           >
-            {isOwner ? "Supprimer" : "Quitter"}
+            {isOwner ? (isEnglish ? "Delete" : "Supprimer") : isEnglish ? "Leave" : "Quitter"}
           </Button>
 
-          <Button onClick={onCreateServer}>+ Nouveau serveur</Button>
+          <Button onClick={onCreateServer}>
+            + {isEnglish ? "New server" : "Nouveau serveur"}
+          </Button>
 
           {/* User Settings */}
           <div className="border-l pl-2 ml-2">
@@ -213,21 +234,23 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
           {inviteLink && (
             <div className="flex items-center gap-2 ml-auto">
               <div className="text-xs border rounded-md px-3 py-2 bg-background">
-                <span className="text-muted-foreground">Lien :</span>{" "}
+                <span className="text-muted-foreground">
+                  {isEnglish ? "Link:" : "Lien :"}
+                </span>{" "}
                 <span className="font-mono">{inviteLink}</span>
               </div>
               <Button size="sm" variant="outline" onClick={onCopyInvite}>
-                Copier
+                {isEnglish ? "Copy" : "Copier"}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => {
                   setInviteLink(null);
-                  setInfo("Lien masqué.");
+                  setInfo(isEnglish ? "Link hidden." : "Lien masqué.");
                 }}
               >
-                Fermer
+                {isEnglish ? "Close" : "Fermer"}
               </Button>
             </div>
           )}

@@ -8,6 +8,7 @@ import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
+import { useLanguage } from "@/components/language-provider";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
 const ROLE_LABELS: Record<string, string> = {
@@ -26,6 +27,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const membersLoading = useMemberStore((s) => s.loading);
   const setMembersLoading = useMemberStore((s) => s.setLoading);
   const onlineUsers = useWebSocketStore((s) => s.onlineUsers);
+  const { language } = useLanguage();
 
   const server = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
@@ -95,8 +97,12 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   if (!server) {
     return (
       <aside className="w-full border-l p-4">
-        <h3 className="text-sm font-semibold mb-4">Membres</h3>
-        <p className="text-sm text-muted-foreground">Aucun serveur sélectionné</p>
+        <h3 className="text-sm font-semibold mb-4">
+          {language === "en" ? "Members" : "Membres"}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {language === "en" ? "No server selected" : "Aucun serveur sélectionné"}
+        </p>
       </aside>
     );
   }
@@ -117,11 +123,13 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   return (
     <aside className="h-[95%] rounded-2xl my-4 ml-2 border border-[#E5E7EB] w-full p-4 overflow-auto shadow-lg">
       <h3 className="text-sm font-semibold mb-1">
-        Membres ({membersLoading ? "..." : members.length})
+        {language === "en" ? "Members" : "Membres"} ({
+          membersLoading ? "..." : members.length
+        })
       </h3>
       <p className="text-xs text-muted-foreground mb-3">
         <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />
-        {onlineCount} en ligne
+        {onlineCount} {language === "en" ? "online" : "en ligne"}
       </p>
 
       {actionError && (
@@ -133,7 +141,9 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
       )}
 
       {membersLoading ? (
-        <p className="text-sm text-muted-foreground">Chargement...</p>
+        <p className="text-sm text-muted-foreground">
+          {language === "en" ? "Loading..." : "Chargement..."}
+        </p>
       ) : (
         <ul className="space-y-3 text-sm">
           {sortedMembers.map((m) => {
