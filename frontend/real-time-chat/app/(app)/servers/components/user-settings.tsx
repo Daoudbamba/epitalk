@@ -6,12 +6,15 @@ import { useAuthStore } from "@/store/auth.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { Button } from "@/components/ui/button";
 import { Copy, Check } from "lucide-react";
+import { useLanguage } from "@/components/language-provider";
 
 export function UserSettings() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const disconnect = useWebSocketStore((s) => s.disconnect);
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   const [isOpen, setIsOpen] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -43,7 +46,15 @@ export function UserSettings() {
             ? "bg-[#F7F8FA] border-[#E5E7EB] text-[#6B7280] cursor-not-allowed"
             : "bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] border-[#023BFC]/30 text-white shadow-lg hover:shadow-xl hover:scale-105"
         }`}
-        title={user ? "Paramètres utilisateur" : "Chargement..."}
+        title={
+          user
+            ? isEnglish
+              ? "User settings"
+              : "Paramètres utilisateur"
+            : isEnglish
+              ? "Loading..."
+              : "Chargement..."
+        }
         disabled={!user}
       >
         {user ? (
@@ -78,14 +89,20 @@ export function UserSettings() {
                   </svg>
                 </div>
                 <div>
-                  <div className="font-bold text-[#1A1A2E]">Paramètres utilisateur</div>
-                  <div className="text-xs text-[#6B7280]">Gérer ton profil et préférences</div>
+                  <div className="font-bold text-[#1A1A2E]">
+                    {isEnglish ? "User settings" : "Paramètres utilisateur"}
+                  </div>
+                  <div className="text-xs text-[#6B7280]">
+                    {isEnglish
+                      ? "Manage your profile and preferences"
+                      : "Gérer ton profil et préférences"}
+                  </div>
                 </div>
               </div>
               <button
                 className="ml-auto w-9 h-9 rounded-xl bg-[#F7F8FA] hover:bg-[#E5E7EB] border border-[#E5E7EB] flex items-center justify-center transition-all duration-300"
                 onClick={() => setIsOpen(false)}
-                title="Fermer"
+                title={isEnglish ? "Close" : "Fermer"}
               >
                 <svg className="w-4 h-4 text-[#6B7280]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -103,7 +120,9 @@ export function UserSettings() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
-                  <div className="text-sm font-bold text-[#1A1A2E]">Mon Profil</div>
+                  <div className="text-sm font-bold text-[#1A1A2E]">
+                    {isEnglish ? "My profile" : "Mon Profil"}
+                  </div>
                 </div>
 
                 {/* Avatar */}
@@ -118,7 +137,7 @@ export function UserSettings() {
                   {/* Username */}
                   <div className="rounded-xl border border-[#E5E7EB] p-3 bg-[#F7F8FA]">
                     <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
-                      Nom d&apos;utilisateur
+                      {isEnglish ? "Username" : "Nom d'utilisateur"}
                     </label>
                     <div className="flex items-center justify-between mt-1">
                       <span className="font-semibold text-[#1A1A2E]">{user.username}</span>
@@ -139,7 +158,7 @@ export function UserSettings() {
                   {/* Email */}
                   <div className="rounded-xl border border-[#E5E7EB] p-3 bg-[#F7F8FA]">
                     <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
-                      Adresse email
+                      {isEnglish ? "Email address" : "Adresse email"}
                     </label>
                     <div className="flex items-center justify-between mt-1">
                       <span className="font-semibold text-[#1A1A2E]">{user.email}</span>
@@ -160,7 +179,7 @@ export function UserSettings() {
                   {/* User ID */}
                   <div className="rounded-xl border border-[#E5E7EB] p-3 bg-[#F7F8FA]">
                     <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
-                      Identifiant utilisateur (ID)
+                      {isEnglish ? "User ID" : "Identifiant utilisateur (ID)"}
                     </label>
                     <div className="flex items-center justify-between mt-1">
                       <span className="font-mono text-sm truncate pr-2 text-[#1A1A2E]">{user.id}</span>
@@ -182,11 +201,11 @@ export function UserSettings() {
                   {user.created_at && (
                     <div className="rounded-xl border border-[#E5E7EB] p-3 bg-[#F7F8FA]">
                       <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
-                        Membre depuis
+                        {isEnglish ? "Member since" : "Membre depuis"}
                       </label>
                       <div className="mt-1">
                         <span className="font-semibold text-[#1A1A2E]">
-                          {new Date(user.created_at).toLocaleDateString("fr-FR", {
+                          {new Date(user.created_at).toLocaleDateString(isEnglish ? "en-US" : "fr-FR", {
                             year: "numeric",
                             month: "long",
                             day: "numeric",
@@ -206,17 +225,21 @@ export function UserSettings() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                     </svg>
                   </div>
-                  <div className="text-sm font-bold text-red-700">Déconnexion</div>
+                  <div className="text-sm font-bold text-red-700">
+                    {isEnglish ? "Sign out" : "Déconnexion"}
+                  </div>
                 </div>
                 <div className="text-xs text-red-600/80 mb-4">
-                  Se déconnecter de ton compte et retourner à la page de connexion.
+                  {isEnglish
+                    ? "Sign out from your account and return to the login page."
+                    : "Se déconnecter de ton compte et retourner à la page de connexion."}
                 </div>
                 <Button
                   variant="destructive"
                   onClick={handleLogout}
                   className="w-full h-11 rounded-xl bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 border-0 shadow-lg"
                 >
-                  Se déconnecter
+                  {isEnglish ? "Sign out" : "Se déconnecter"}
                 </Button>
               </div>
             </div>

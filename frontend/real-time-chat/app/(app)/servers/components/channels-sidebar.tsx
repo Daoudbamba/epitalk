@@ -6,6 +6,7 @@ import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useAuthStore } from "@/store/auth.store";
 import { CreateChannelModal } from "@/components/forms/create-channel-modal";
+import { useLanguage } from "@/components/language-provider";
 
 type Status = { type: "success" | "error" | "info"; text: string } | null;
 
@@ -23,6 +24,7 @@ export function ChannelsSidebar() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [openCreateChannel, setOpenCreateChannel] = useState(false);
+    const { language } = useLanguage();
 
   const activeServer = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
@@ -131,10 +133,11 @@ export function ChannelsSidebar() {
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-bold text-[#1A1A2E] truncate">
-            {activeServer?.name ?? "Aucun serveur"}
+            {activeServer?.name ?? (language === "en" ? "No server" : "Aucun serveur")}
           </div>
           <div className="text-xs text-[#6B7280]">
-            {channels.length} channel{channels.length !== 1 ? "s" : ""}
+            {channels.length} {language === "en" ? "channel" : "channel"}
+            {channels.length !== 1 ? "s" : ""}
           </div>
         </div>
 
@@ -142,7 +145,7 @@ export function ChannelsSidebar() {
           onClick={onCreate}
           disabled={!activeServerId || loading}
           className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-          title="Créer un channel"
+          title={language === "en" ? "Create a channel" : "Créer un channel"}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -160,7 +163,9 @@ export function ChannelsSidebar() {
               </svg>
             </div>
             <p className="text-sm text-[#6B7280]">Sélectionne un serveur</p>
-            <p className="text-xs text-[#9CA3AF] mt-1">dans la barre de gauche</p>
+            <p className="text-xs text-[#9CA3AF] mt-1">
+              {language === "en" ? "in the left bar" : "dans la barre de gauche"}
+            </p>
           </div>
         ) : loading ? (
           <div className="flex flex-col items-center justify-center h-32">
@@ -175,7 +180,9 @@ export function ChannelsSidebar() {
               </svg>
             </div>
             <p className="text-sm text-[#6B7280]">Aucun channel</p>
-            <p className="text-xs text-[#9CA3AF] mt-1">Crée le premier !</p>
+            <p className="text-xs text-[#9CA3AF] mt-1">
+              {language === "en" ? "Create the first one!" : "Crée le premier !"}
+            </p>
           </div>
         ) : (
           channels.map((c) => {

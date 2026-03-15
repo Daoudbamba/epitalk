@@ -28,7 +28,7 @@ const transitionVariants = {
 };
 
 export default function HeroSection() {
-  const { translations } = useLanguage();
+  const { language, translations } = useLanguage();
   const { hero } = translations;
   return (
     <>
@@ -39,6 +39,7 @@ export default function HeroSection() {
           <div className="relative mx-auto max-w-6xl px-6 pb-20 pt-32 lg:pt-48">
             <div className="relative z-10 mx-auto max-w-4xl text-center">
               <TextEffect
+                key={language + "-hero-title"}
                 preset="fade-in-blur"
                 speedSegment={0.3}
                 as="h1"
@@ -47,6 +48,7 @@ export default function HeroSection() {
                 {hero.title}
               </TextEffect>
               <TextEffect
+                key={language + "-hero-subtitle"}
                 per="line"
                 preset="fade-in-blur"
                 speedSegment={0.3}
@@ -107,10 +109,13 @@ export default function HeroSection() {
 }
 
 const AppComponent = () => {
-  const { translations } = useLanguage();
+  const { language, translations } = useLanguage();
   const { stats } = translations;
   return (
-    <div className="relative space-y-3 rounded-[1rem] bg-white/5 p-4">
+    <div
+      key={language + "-hero-stats"}
+      className="relative space-y-3 rounded-[1rem] bg-white/5 p-4"
+    >
       <div className="flex items-center gap-1.5 text-orange-400">
         <svg
           className="size-5"

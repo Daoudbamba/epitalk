@@ -9,6 +9,7 @@ import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
+import { useLanguage } from "@/components/language-provider";
 
 export function ChatPanel() {
   const activeServerId = useServerStore((s) => s.activeServerId);
@@ -20,6 +21,8 @@ export function ChatPanel() {
   const token = useAuthStore((s) => s.token);
 
   const members = useMemberStore((s) => s.members);
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   // WebSocket store
   const isConnected = useWebSocketStore((s) => s.isConnected);
@@ -92,7 +95,7 @@ export function ChatPanel() {
     if (!content) return;
 
     if (!isConnected) {
-      setError("Non connecté au serveur");
+      setError(isEnglish ? "Not connected to the server" : "Non connecté au serveur");
       return;
     }
 
@@ -105,7 +108,7 @@ export function ChatPanel() {
       // Stop typing when message sent
       if (activeChannelId) stopTyping(activeChannelId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur envoi message");
+      setError(e instanceof Error ? e.message : isEnglish ? "Error sending message" : "Erreur envoi message");
     } finally {
       setSending(false);
     }
@@ -147,10 +150,18 @@ export function ChatPanel() {
   const typingDisplay = useMemo(() => {
     if (currentTypingUsers.length === 0) return null;
     const names = currentTypingUsers.map((uid) => getUsernameById(uid));
-    if (names.length === 1) return `${names[0]} est en train d'écrire...`;
-    if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
-    return `${names.length} personnes écrivent...`;
-  }, [currentTypingUsers]);
+    if (names.length === 1)
+      return isEnglish
+        ? `${names[0]} is typing...`
+        : `${names[0]} est en train d'écrire...`;
+    if (names.length === 2)
+      return isEnglish
+        ? `${names[0]} and ${names[1]} are typing...`
+        : `${names[0]} et ${names[1]} écrivent...`;
+    return isEnglish
+      ? `${names.length} people are typing...`
+      : `${names.length} personnes écrivent...`;
+  }, [currentTypingUsers, isEnglish]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -166,7 +177,7 @@ export function ChatPanel() {
       <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0">
         <span className="text-zinc-500 mr-2 text-2xl">#</span>
         <h2 className="font-bold text-md text-zinc-800 dark:text-zinc-100">
-          {activeChannelName ?? "aucun-channel"}
+          {activeChannelName ?? (isEnglish ? "no-channel" : "aucun-channel")}
         </h2>
       </div>
 
@@ -174,16 +185,20 @@ export function ChatPanel() {
       <div className="flex-1 overflow-y-auto flex flex-col py-4">
         {!canLoad ? (
           <div className="px-4 text-sm text-muted-foreground">
-            Sélectionne un serveur et un channel.
+            {isEnglish
+              ? "Select a server and a channel."
+              : "Sélectionne un serveur et un channel."}
           </div>
         ) : !isConnected ? (
           <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Connexion au serveur...
+            {isEnglish ? "Connecting to server..." : "Connexion au serveur..."}
           </div>
         ) : messages.length === 0 ? (
           <div className="px-4 text-sm text-muted-foreground">
-            Aucun message dans ce channel. Soyez le premier à écrire !
+            {isEnglish
+              ? "No messages in this channel yet. Be the first to write!"
+              : "Aucun message dans ce channel. Soyez le premier à écrire !"}
           </div>
         ) : (
           <div className="flex flex-col mt-auto">
@@ -243,9 +258,15 @@ export function ChatPanel() {
               className="px-14 pr-32 py-6 bg-zinc-200/90 dark:bg-zinc-700/75 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-zinc-600 dark:text-zinc-200 placeholder:text-zinc-500"
               placeholder={
                 !canLoad
-                  ? "Sélectionne un channel..."
+                  ? isEnglish
+                    ? "Select a channel..."
+                    : "Sélectionne un channel..."
                   : !isConnected
-                  ? "Connexion en cours..."
+                  ? isEnglish
+                    ? "Connecting..."
+                    : "Connexion en cours..."
+                  : isEnglish
+                  ? `Send a message in #${activeChannelName ?? ""}`
                   : `Envoyer un message dans #${activeChannelName ?? ""}`
               }
             />
