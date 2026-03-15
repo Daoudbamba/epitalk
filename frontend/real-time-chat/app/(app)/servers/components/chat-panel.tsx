@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Gift, Sticker, Send, Loader2 } from "lucide-react";
+import { Plus, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2, X } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
@@ -25,6 +25,8 @@ export function ChatPanel() {
   const isConnected = useWebSocketStore((s) => s.isConnected);
   const connect = useWebSocketStore((s) => s.connect);
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
+  const editMessage = useWebSocketStore((s) => s.editMessage);
+  const deleteMessage = useWebSocketStore((s) => s.deleteMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
   const wsMessages = useWebSocketStore((s) => s.messages);
   const startTyping = useWebSocketStore((s) => s.startTyping);
@@ -38,6 +40,10 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -85,6 +91,9 @@ export function ChatPanel() {
     return authorId.slice(0, 8);
   };
 
+  const currentMemberRole = members.find((m) => m.user_id === user?.id)?.role;
+  const canModerate = currentMemberRole === "Owner" || currentMemberRole === "Admin" || currentMemberRole === "Moderator";
+
   const onSend = async () => {
     if (!activeChannelId || !canLoad) return;
 
@@ -100,15 +109,29 @@ export function ChatPanel() {
     setError(null);
 
     try {
-      sendMessage(activeChannelId, content);
+      if (isEditing && editingMessageId) {
+        editMessage(activeChannelId, editingMessageId, content);
+        setEditingMessageId(null);
+        setIsEditing(false);
+      } else {
+        sendMessage(activeChannelId, content, replyTo || undefined);
+        setReplyTo(null);
+        setReplyToUsername(null);
+      }
       setValue("");
-      // Stop typing when message sent
       if (activeChannelId) stopTyping(activeChannelId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur envoi message");
     } finally {
       setSending(false);
     }
+  };
+
+  const cancelPendingAction = () => {
+    setIsEditing(false);
+    setEditingMessageId(null);
+    setReplyTo(null);
+    setValue("");
   };
 
   // Typing indicator: track when user is typing
@@ -150,7 +173,7 @@ export function ChatPanel() {
     if (names.length === 1) return `${names[0]} est en train d'écrire...`;
     if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
     return `${names.length} personnes écrivent...`;
-  }, [currentTypingUsers]);
+  }, [currentTypingUsers, getUsernameById]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -187,33 +210,89 @@ export function ChatPanel() {
           </div>
         ) : (
           <div className="flex flex-col mt-auto">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
-              >
-                <div className="mr-4">
-                  <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
-                    {getUsernameById(msg.author_id, msg.username).slice(0, 2).toUpperCase()}
-                  </div>
-                </div>
-
-                <div className="flex flex-col w-full">
-                  <div className="flex items-center gap-x-2">
-                    <span className="font-semibold text-sm text-zinc-800 dark:text-zinc-100">
-                      {getUsernameById(msg.author_id, msg.username)}
-                    </span>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {new Date(msg.created_at).toLocaleString()}
-                    </span>
+            {messages.map((msg) => {
+              const isAuthor = user?.id === msg.author_id;
+              const canDelete = isAuthor || canModerate;
+              const messageUsername = getUsernameById(msg.author_id, msg.username);
+              return (
+                <div
+                  key={msg.id}
+                  className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
+                >
+                  <div className="mr-4">
+                    <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
+                      {messageUsername.slice(0, 2).toUpperCase()}
+                    </div>
                   </div>
 
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
-                    {msg.content}
-                  </p>
+                  <div className="flex flex-col w-full">
+                    <div className="flex items-center gap-x-2">
+                      <span className="font-semibold text-sm text-zinc-800 dark:text-zinc-100">
+                        {messageUsername}
+                      </span>
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {new Date(msg.created_at).toLocaleString()}
+                      </span>
+                      {msg.edited_at && (
+                        <span className="text-xs text-indigo-500">(édité)</span>
+                      )}
+                    </div>
+
+                    {msg.reply_to && (() => {
+                      const original = messages.find((m) => m.id === msg.reply_to);
+                      return (
+                        <div className="text-xs text-zinc-500 italic mb-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-md">
+                          Réponse à {original ? getUsernameById(original.author_id, original.username) : msg.reply_to.slice(0, 8)}:
+                          <div className="truncate max-w-full">
+                            {original ? original.content : "message introuvable"}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
+
+                    <div className="mt-2 flex justify-end gap-2">
+                      <button
+                        className="text-indigo-500 hover:text-indigo-700 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-800/40 dark:hover:bg-indigo-700 p-1.5 rounded-full transition"
+                        onClick={() => {
+                          setReplyTo(msg.id);
+                          setReplyToUsername(messageUsername);
+                          setValue("");
+                        }}
+                        title="Répondre"
+                      >
+                        <CornerUpLeft className="h-4 w-4" />
+                      </button>
+                      {isAuthor && (
+                        <button
+                          className="text-emerald-600 hover:text-emerald-800 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-800/40 dark:hover:bg-emerald-700 p-1.5 rounded-full transition"
+                          onClick={() => {
+                            setIsEditing(true);
+                            setEditingMessageId(msg.id);
+                            setValue(msg.content);
+                          }}
+                          title="Modifier"
+                        >
+                          <Edit3 className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className="text-red-600 hover:text-red-800 bg-red-100 hover:bg-red-200 dark:bg-red-800/40 dark:hover:bg-red-700 p-1.5 rounded-full transition"
+                          onClick={() => deleteMessage(activeChannelId || "", msg.id)}
+                          title="Supprimer"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             <div ref={bottomRef} />
           </div>
@@ -224,6 +303,20 @@ export function ChatPanel() {
 
       {/* --- INPUT --- */}
       <div className="p-4 mb-2 shrink-0">
+        {((replyTo && !isEditing) || isEditing) && (
+          <div className="mb-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200 flex items-center justify-between">
+            <div>
+              {isEditing ? "Modification du message en cours" : "Réponse en cours"}
+              {replyTo && !isEditing && replyToUsername ? `: ${replyToUsername}` : ""}
+            </div>
+            <button
+              className="text-indigo-700 underline text-xs flex items-center gap-1"
+              onClick={cancelPendingAction}
+            >
+              <X className="h-3 w-3" /> Annuler
+            </button>
+          </div>
+        )}
         <div className="relative flex items-center gap-2">
           <div className="relative flex-1">
             <button
