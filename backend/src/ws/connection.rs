@@ -14,7 +14,7 @@ use crate::services::typing_service::TypingService;
 use crate::ws::hub::{ConnId, Hub};
 use crate::ws::protocol::{
     validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_FRAME_BYTES,
-    TYPING_THROTTLE_MS,
+    TYPING_THROTTLE_MS, Reaction as WsReaction,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -263,6 +263,7 @@ pub async fn handle_connection(
                         username,
                         content,
                         created_at,
+                        reactions: None,
                     };
 
                     hub_recv.broadcast_room(&channel_id, event).await;
@@ -316,14 +317,26 @@ pub async fn handle_connection(
                                     &mut username_cache,
                                 )
                                 .await;
-                                let event = ServerEvent::MessageNew {
-                                    id: msg_id,
-                                    channel_id: msg.channel_id.clone(),
-                                    author_id: msg.author_id.clone(),
-                                    username,
-                                    content: msg.content.clone(),
-                                    created_at: msg.created_at.clone(),
-                                };
+                                    let reactions_ws: Option<Vec<WsReaction>> = msg.reactions.map(|rs| {
+                                        rs.into_iter()
+                                            .map(|r| WsReaction {
+                                                emoji: r.emoji,
+                                                user_id: r.user_id,
+                                                username: r.username,
+                                                created_at: r.created_at,
+                                            })
+                                            .collect()
+                                    });
+
+                                    let event = ServerEvent::MessageNew {
+                                        id: msg_id,
+                                        channel_id: msg.channel_id.clone(),
+                                        author_id: msg.author_id.clone(),
+                                        username,
+                                        content: msg.content.clone(),
+                                        created_at: msg.created_at.clone(),
+                                        reactions: reactions_ws,
+                                    };
                                 if let Ok(json) = serde_json::to_string(&event) {
                                     let _ = tx.send(Message::Text(json));
                                 }
@@ -420,6 +433,62 @@ pub async fn handle_connection(
                         channel_id: channel_id.clone(),
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
+                },
+
+                // ======================================================
+                // REACTION ADD / REMOVE
+                // ======================================================
+                ClientEvent::ReactionAdd { message_id, emoji } => {
+                    // Resolve username for the reacting user
+                    let username = resolve_username(
+                        &user_id_recv,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
+
+                    match message_service_recv
+                        .add_reaction(&message_id, &emoji, &user_id_recv, Some(&username))
+                        .await
+                    {
+                        Ok(Some(channel_id)) => {
+                            let event = ServerEvent::ReactionAdded {
+                                message_id: message_id.clone(),
+                                emoji: emoji.clone(),
+                                user_id: user_id_recv.clone(),
+                                username: Some(username),
+                            };
+                            hub_recv.broadcast_room(&channel_id, event).await;
+                        }
+                        Ok(None) => {
+                            send_error(&hub_recv, &conn_id, "MESSAGE_NOT_FOUND", "message not found");
+                        }
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "invalid message id or failed to add reaction");
+                        }
+                    }
+                },
+
+                ClientEvent::ReactionRemove { message_id, emoji } => {
+                    match message_service_recv
+                        .remove_reaction(&message_id, &emoji, &user_id_recv)
+                        .await
+                    {
+                        Ok(Some(channel_id)) => {
+                            let event = ServerEvent::ReactionRemoved {
+                                message_id: message_id.clone(),
+                                emoji: emoji.clone(),
+                                user_id: user_id_recv.clone(),
+                            };
+                            hub_recv.broadcast_room(&channel_id, event).await;
+                        }
+                        Ok(None) => {
+                            send_error(&hub_recv, &conn_id, "MESSAGE_NOT_FOUND", "message not found");
+                        }
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "invalid message id or failed to remove reaction");
+                        }
+                    }
                 },
 
                 // ======================================================

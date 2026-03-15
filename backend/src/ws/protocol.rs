@@ -32,6 +32,16 @@ pub enum ClientEvent {
     TypingStop {
         channel_id: String,
     },
+    /// Client requests to add a reaction to a message
+    ReactionAdd {
+        message_id: String,
+        emoji: String,
+    },
+    /// Client requests to remove a reaction from a message
+    ReactionRemove {
+        message_id: String,
+        emoji: String,
+    },
     Ping,
 }
 
@@ -48,6 +58,8 @@ pub enum ServerEvent {
         username: String,
         content: String,
         created_at: String,
+        /// Optional reactions array for the message (empty or absent if none)
+        reactions: Option<Vec<Reaction>>,
     },
 
     UserJoined {
@@ -87,6 +99,27 @@ pub enum ServerEvent {
     UserOffline {
         user_id: String,
     },
+
+    ReactionAdded {
+        message_id: String,
+        emoji: String,
+        user_id: String,
+        username: Option<String>,
+    },
+
+    ReactionRemoved {
+        message_id: String,
+        emoji: String,
+        user_id: String,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Reaction {
+    pub emoji: String,
+    pub user_id: String,
+    pub username: Option<String>,
+    pub created_at: String,
 }
 
 // ─────────────────────────────────────────────────────────────────

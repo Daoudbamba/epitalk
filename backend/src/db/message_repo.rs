@@ -7,6 +7,15 @@ use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Reaction {
+    pub emoji: String,
+    pub user_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageDb {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
@@ -15,6 +24,8 @@ pub struct MessageDb {
     pub author_id: String,
     pub content: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reactions: Option<Vec<Reaction>>,
 }
 
 pub struct MessageRepo {
@@ -73,6 +84,50 @@ impl MessageRepo {
             .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
         let result = collection.insert_one(msg, None).await?;
         Ok(result.inserted_id.as_object_id().unwrap())
+    }
+
+    /// Find message by ObjectId
+    pub async fn find_by_id(&self, id: ObjectId) -> Option<MessageDb> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return None,
+        };
+
+        match collection.find_one(doc! { "_id": id }, None).await {
+            Ok(opt) => opt,
+            Err(_) => None,
+        }
+    }
+
+    /// Add a reaction to a message if the user hasn't already reacted with the same emoji
+    pub async fn add_reaction(&self, message_id: ObjectId, reaction: Reaction) -> mongodb::error::Result<()> {
+        let collection = self.collection.as_ref()
+            .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
+
+        // Fetch current document and check duplicates (user_id + emoji)
+        if let Ok(Some(msg)) = collection.find_one(doc! { "_id": message_id.clone() }, None).await {
+            if let Some(existing) = msg.reactions {
+                if existing.iter().any(|r| r.user_id == reaction.user_id && r.emoji == reaction.emoji) {
+                    return Ok(()); // already present
+                }
+            }
+        }
+
+        // Push the reaction
+        let bson_reaction = mongodb::bson::to_bson(&reaction)?;
+        let update = doc! { "$push": { "reactions": bson_reaction } };
+        let _ = collection.update_one(doc! { "_id": message_id }, update, None).await?;
+        Ok(())
+    }
+
+    /// Remove a reaction (matching user_id + emoji)
+    pub async fn remove_reaction(&self, message_id: ObjectId, emoji: &str, user_id: &str) -> mongodb::error::Result<()> {
+        let collection = self.collection.as_ref()
+            .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
+
+        let pull = doc! { "$pull": { "reactions": { "emoji": emoji, "user_id": user_id } } };
+        let _ = collection.update_one(doc! { "_id": message_id }, pull, None).await?;
+        Ok(())
     }
 
     // ---------------------------------------------------------
