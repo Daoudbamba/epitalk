@@ -30,7 +30,6 @@ const transitionVariants = {
 export default function HeroSection() {
   const { translations } = useLanguage();
   const { hero } = translations;
-
   return (
     <>
       <HeroHeader />
@@ -110,7 +109,6 @@ export default function HeroSection() {
 const AppComponent = () => {
   const { translations } = useLanguage();
   const { stats } = translations;
-
   return (
     <div className="relative space-y-3 rounded-[1rem] bg-white/5 p-4">
       <div className="flex items-center gap-1.5 text-orange-400">
