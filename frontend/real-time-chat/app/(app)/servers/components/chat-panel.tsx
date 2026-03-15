@@ -73,7 +73,9 @@ export function ChatPanel() {
   // Scroll to bottom when messages change
   useEffect(() => {
     const el = bottomRef.current as HTMLElement | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (el && typeof (el as any).scrollIntoView === "function") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (el as any).scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
@@ -266,7 +268,8 @@ export function ChatPanel() {
                           const visible =
                             hoveredReaction &&
                             hoveredReaction.msgId === msg.id &&
-                            hoveredReaction.emoji === emoji;
+                            hoveredReaction.emoji === emoji &&
+                            openReactionFor !== msg.id; // hide tooltip while emoji picker is open
 
                           // Show up to 6 users in the card, then +N
                           const SHOW_MAX = 6;
@@ -292,7 +295,7 @@ export function ChatPanel() {
                                     clearTimeout(hoverTimeoutRef.current);
                                   hoverTimeoutRef.current = setTimeout(
                                     () => setHoveredReaction(null),
-                                    180,
+                                    250,
                                   );
                                 }}
                                 onClick={() => {
@@ -364,11 +367,11 @@ export function ChatPanel() {
                                       clearTimeout(hoverTimeoutRef.current);
                                     hoverTimeoutRef.current = setTimeout(
                                       () => setHoveredReaction(null),
-                                      180,
+                                      250,
                                     );
                                   }}
                                   // responsive: use left alignment on small screens, limit width to 90vw
-                                  className="absolute -top-20 right-0 md:right-0 left-0 md:left-auto z-40 w-[min(90vw,14rem)] md:w-56 bg-white dark:bg-zinc-900 border rounded-lg px-3 py-2 text-xs shadow-lg"
+                                  className="absolute -top-30 right-0 md:right-0 left-0 md:left-0 z-40 w-[min(90vw,14rem)] md:w-56 bg-white dark:bg-zinc-900 border rounded-lg px-3 py-2 text-xs shadow-lg"
                                 >
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="font-semibold">
@@ -462,7 +465,7 @@ export function ChatPanel() {
                               }
                             }}
                             title={emo.t}
-                            className="px-2 py-1 text-sm rounded hover:bg-green-500 dark:hover:bg-zinc-800 transition"
+                            className="px-2 py-1 text-sm rounded hover:bg-blue-00 dark:hover:bg-zinc-800 transition"
                           >
                             {emo.k}
                           </button>
