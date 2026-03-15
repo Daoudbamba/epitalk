@@ -28,6 +28,12 @@ pub struct MessageDb {
     pub reactions: Option<Vec<Reaction>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ReactionChange {
+    Added,
+    Removed,
+}
+
 pub struct MessageRepo {
     collection: Option<Collection<MessageDb>>,
 }
@@ -99,16 +105,19 @@ impl MessageRepo {
         }
     }
 
-    /// Add a reaction to a message if the user hasn't already reacted with the same emoji
-    pub async fn add_reaction(&self, message_id: ObjectId, reaction: Reaction) -> mongodb::error::Result<()> {
+    /// Toggle a reaction: if the user already reacted with the same emoji, remove it and return Removed;
+    /// otherwise add it and return Added.
+    pub async fn add_reaction(&self, message_id: ObjectId, reaction: Reaction) -> mongodb::error::Result<ReactionChange> {
         let collection = self.collection.as_ref()
             .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
-
         // Fetch current document and check duplicates (user_id + emoji)
         if let Ok(Some(msg)) = collection.find_one(doc! { "_id": message_id.clone() }, None).await {
             if let Some(existing) = msg.reactions {
                 if existing.iter().any(|r| r.user_id == reaction.user_id && r.emoji == reaction.emoji) {
-                    return Ok(()); // already present
+                    // Reaction exists -> remove it
+                    let pull = doc! { "$pull": { "reactions": { "emoji": &reaction.emoji, "user_id": &reaction.user_id } } };
+                    let _ = collection.update_one(doc! { "_id": message_id.clone() }, pull, None).await?;
+                    return Ok(ReactionChange::Removed);
                 }
             }
         }
@@ -117,7 +126,7 @@ impl MessageRepo {
         let bson_reaction = mongodb::bson::to_bson(&reaction)?;
         let update = doc! { "$push": { "reactions": bson_reaction } };
         let _ = collection.update_one(doc! { "_id": message_id }, update, None).await?;
-        Ok(())
+        Ok(ReactionChange::Added)
     }
 
     /// Remove a reaction (matching user_id + emoji)

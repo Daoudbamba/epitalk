@@ -451,20 +451,29 @@ pub async fn handle_connection(
                         .add_reaction(&message_id, &emoji, &user_id_recv, Some(&username))
                         .await
                     {
-                        Ok(Some(channel_id)) => {
-                            let event = ServerEvent::ReactionAdded {
-                                message_id: message_id.clone(),
-                                emoji: emoji.clone(),
-                                user_id: user_id_recv.clone(),
-                                username: Some(username),
-                            };
-                            hub_recv.broadcast_room(&channel_id, event).await;
+                        Ok((Some(channel_id), was_added)) => {
+                            if was_added {
+                                let event = ServerEvent::ReactionAdded {
+                                    message_id: message_id.clone(),
+                                    emoji: emoji.clone(),
+                                    user_id: user_id_recv.clone(),
+                                    username: Some(username),
+                                };
+                                hub_recv.broadcast_room(&channel_id, event).await;
+                            } else {
+                                let event = ServerEvent::ReactionRemoved {
+                                    message_id: message_id.clone(),
+                                    emoji: emoji.clone(),
+                                    user_id: user_id_recv.clone(),
+                                };
+                                hub_recv.broadcast_room(&channel_id, event).await;
+                            }
                         }
-                        Ok(None) => {
+                        Ok((None, _)) => {
                             send_error(&hub_recv, &conn_id, "MESSAGE_NOT_FOUND", "message not found");
                         }
                         Err(_) => {
-                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "invalid message id or failed to add reaction");
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "invalid message id or failed to add/remove reaction");
                         }
                     }
                 },

@@ -1,6 +1,6 @@
 use crate::db::message_repo::{MessageDb, MessageRepo};
 use mongodb::bson::oid::ObjectId;
-use crate::db::message_repo::Reaction as MessageReaction;
+use crate::db::message_repo::{Reaction as MessageReaction, ReactionChange};
 
 pub struct MessageService {
     repo: MessageRepo,
@@ -53,7 +53,7 @@ impl MessageService {
         emoji: &str,
         user_id: &str,
         username: Option<&str>,
-    ) -> Result<Option<String>, ()> {
+    ) -> Result<(Option<String>, bool), ()> {
         let oid = match ObjectId::parse_str(message_id) {
             Ok(o) => o,
             Err(_) => return Err(()),
@@ -66,11 +66,13 @@ impl MessageService {
             created_at: chrono::Utc::now().to_rfc3339(),
         };
 
-        self.repo.add_reaction(oid.clone(), reaction).await.map_err(|_| ())?;
+        let change = self.repo.add_reaction(oid.clone(), reaction).await.map_err(|_| ())?;
 
-        // Return channel_id for broadcasting
+        // Return channel_id for broadcasting and whether it was added (true) or removed (false)
         let msg = self.repo.find_by_id(oid).await;
-        Ok(msg.map(|m| m.channel_id))
+        let channel_id = msg.map(|m| m.channel_id);
+        let was_added = matches!(change, ReactionChange::Added);
+        Ok((channel_id, was_added))
     }
 
     /// Remove a reaction (user + emoji) from a message
