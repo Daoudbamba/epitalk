@@ -1,7 +1,10 @@
-function getReadyNotificationOptions(appName = "EpiTalk") {
+const { getTranslations } = require("./i18n");
+
+function getReadyNotificationOptions(appName = "EpiTalk", lang) {
+  const t = getTranslations(lang);
   return {
-    title: `${appName} est prêt`,
-    body: "Votre application de chat est maintenant disponible.",
+    title: t.readyTitle(appName),
+    body: t.readyBody,
   };
 }
 

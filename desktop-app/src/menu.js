@@ -1,24 +1,28 @@
-function buildMenuTemplate() {
+const { getTranslations } = require("./i18n");
+
+function buildMenuTemplate(lang) {
+  const t = getTranslations(lang);
+
   return [
     {
-      label: "EpiTalk",
+      label: t.appLabel,
       submenu: [
         {
           role: "quit",
-          label: "Quitter EpiTalk",
+          label: t.quitLabel,
         },
       ],
     },
     {
-      label: "Affichage",
+      label: t.viewLabel,
       submenu: [
         {
           role: "reload",
-          label: "Recharger",
+          label: t.reloadLabel,
         },
         {
           role: "toggleDevTools",
-          label: "Basculer les outils de développement",
+          label: t.toggleDevToolsLabel,
         },
       ],
     },
