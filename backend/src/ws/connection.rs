@@ -14,7 +14,7 @@ use crate::services::typing_service::TypingService;
 use crate::ws::hub::{ConnId, Hub};
 use crate::ws::protocol::{
     validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_FRAME_BYTES,
-    TYPING_THROTTLE_MS, Reaction as WsReaction,
+    TYPING_THROTTLE_MS, Reaction as WsReaction, GifPayload as WsGifPayload,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -244,6 +244,7 @@ pub async fn handle_connection(
                             user_id_recv.clone(),
                             content.clone(),
                             created_at.clone(),
+                            None,
                         )
                         .await;
 
@@ -264,6 +265,77 @@ pub async fn handle_connection(
                         content,
                         created_at,
                         reactions: None,
+                        gif: None,
+                    };
+
+                    hub_recv.broadcast_room(&channel_id, event).await;
+                },
+
+                // ======================================================
+                // MESSAGE SEND GIF (structured)
+                // ======================================================
+                ClientEvent::MessageSendGif { channel_id, gif, caption } => {
+                    if let Err(reason) = validate_channel_id(&channel_id) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
+                        continue;
+                    }
+
+                    // Note: caption is optional and will be stored in content if provided
+                    let content = caption.unwrap_or_default();
+
+                    // ── Resolve server_id from channel ──────────
+                    let server_id = match resolve_server_id(
+                        &channel_id,
+                        &pg_pool_recv,
+                        &mut channel_server_cache,
+                        &hub_recv,
+                        &conn_id,
+                    )
+                    .await
+                    {
+                        Some(sid) => sid,
+                        None => continue,
+                    };
+
+                    tracing::info!("📩 MessageSendGif: server={}, channel={}, gif_id={}", server_id, channel_id, gif.id);
+                    let created_at = chrono::Utc::now().to_rfc3339();
+
+                    // Convert WS GifPayload -> DB GifPayload
+                    let db_gif = crate::db::message_repo::GifPayload {
+                        id: gif.id.clone(),
+                        url: gif.url.clone(),
+                        preview: gif.preview.clone(),
+                        provider: gif.provider.clone(),
+                    };
+
+                    let id = message_service_recv
+                        .create_message(
+                            channel_id.clone(),
+                            user_id_recv.clone(),
+                            content.clone(),
+                            created_at.clone(),
+                            Some(db_gif),
+                        )
+                        .await;
+
+                    tracing::info!("💾 GIF message saved to MongoDB with id={}", id.to_hex());
+
+                    let username = resolve_username(
+                        &user_id_recv,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
+
+                    let event = ServerEvent::MessageNew {
+                        id: id.to_hex(),
+                        channel_id: channel_id.clone(),
+                        author_id: user_id_recv.clone(),
+                        username,
+                        content,
+                        created_at,
+                        reactions: None,
+                        gif: Some(gif),
                     };
 
                     hub_recv.broadcast_room(&channel_id, event).await;
@@ -328,15 +400,23 @@ pub async fn handle_connection(
                                             .collect()
                                     });
 
-                                    let event = ServerEvent::MessageNew {
-                                        id: msg_id,
-                                        channel_id: msg.channel_id.clone(),
-                                        author_id: msg.author_id.clone(),
-                                        username,
-                                        content: msg.content.clone(),
-                                        created_at: msg.created_at.clone(),
-                                        reactions: reactions_ws,
-                                    };
+                                        let gif_ws: Option<WsGifPayload> = msg.gif.map(|g| WsGifPayload {
+                                            id: g.id,
+                                            url: g.url,
+                                            preview: g.preview,
+                                            provider: g.provider,
+                                        });
+
+                                        let event = ServerEvent::MessageNew {
+                                            id: msg_id,
+                                            channel_id: msg.channel_id.clone(),
+                                            author_id: msg.author_id.clone(),
+                                            username,
+                                            content: msg.content.clone(),
+                                            created_at: msg.created_at.clone(),
+                                            reactions: reactions_ws,
+                                            gif: gif_ws,
+                                        };
                                 if let Ok(json) = serde_json::to_string(&event) {
                                     let _ = tx.send(Message::Text(json));
                                 }

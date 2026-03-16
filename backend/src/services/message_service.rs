@@ -20,6 +20,7 @@ impl MessageService {
         author_id: String,
         content: String,
         created_at: String,
+        gif: Option<crate::db::message_repo::GifPayload>,
     ) -> ObjectId {
         let msg = MessageDb {
             id: None,
@@ -28,6 +29,7 @@ impl MessageService {
             content,
             created_at,
             reactions: None,
+            gif,
         };
 
         self.repo.insert(msg).await.unwrap()

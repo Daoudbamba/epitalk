@@ -20,6 +20,13 @@ pub enum ClientEvent {
         channel_id: String,
         content: String,
     },
+    /// Send a GIF as a message with normalized metadata
+    MessageSendGif {
+        channel_id: String,
+        gif: GifPayload,
+        // optional caption
+        caption: Option<String>,
+    },
     JoinChannel {
         channel_id: String,
     },
@@ -60,6 +67,9 @@ pub enum ServerEvent {
         created_at: String,
         /// Optional reactions array for the message (empty or absent if none)
         reactions: Option<Vec<Reaction>>,
+        /// Optional GIF metadata when message contains a GIF
+        #[serde(skip_serializing_if = "Option::is_none")]
+        gif: Option<GifPayload>,
     },
 
     UserJoined {
@@ -120,6 +130,16 @@ pub struct Reaction {
     pub user_id: String,
     pub username: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GifPayload {
+    pub id: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────

@@ -44,6 +44,12 @@ export function ChatPanel() {
     msgId: string;
     emoji: string;
   } | null>(null);
+  const [openGifPicker, setOpenGifPicker] = useState<string | null>(null);
+  const [gifQuery, setGifQuery] = useState("");
+  const [gifResults, setGifResults] = useState<
+    { id: string; url: string; preview?: string; provider?: string }[]
+  >([]);
+  const [gifLoading, setGifLoading] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -174,6 +180,77 @@ export function ChatPanel() {
     }
   };
 
+  // Autocomplete/debounced GIF search when picker is open
+  useEffect(() => {
+    if (openGifPicker !== "input") return;
+
+    const query =
+      gifQuery && gifQuery.trim() !== "" ? gifQuery.trim() : "trending";
+    const controller = new AbortController();
+    setGifLoading(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/gifs/search?q=${encodeURIComponent(query)}&limit=24`,
+          { signal: controller.signal },
+        );
+        if (!res.ok) {
+          setGifResults([]);
+          setGifLoading(false);
+          return;
+        }
+        const json = await res.json();
+        const results: {
+          id: string;
+          url: string;
+          preview?: string;
+          provider?: string;
+        }[] = [];
+        if (json.results) {
+          for (const it of json.results) {
+            const id = it.id || "";
+            const url = it.url || "";
+            const preview = it.preview || undefined;
+            const provider = it.provider || undefined;
+            if (url)
+              results.push({ id: id.toString(), url, preview, provider });
+          }
+        } else if (json.data) {
+          for (const it of json.data) {
+            const id = it.id || "";
+            const url =
+              it.images?.original?.url || it.images?.fixed_width?.url || "";
+            const preview =
+              it.images?.preview_gif?.url ||
+              it.images?.fixed_width_small_still?.url;
+            if (url)
+              results.push({
+                id: id.toString(),
+                url,
+                preview,
+                provider: "giphy",
+              });
+          }
+        }
+        setGifResults(results);
+      } catch (err: unknown) {
+        // Ignore AbortError (fetch aborted on quick typing / picker close)
+        if (!(err instanceof DOMException) || err.name !== "AbortError") {
+          console.error("GIF search failed", err);
+        }
+        setGifResults([]);
+      } finally {
+        setGifLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [gifQuery, openGifPicker]);
+
   return (
     <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden">
       {/* --- HEADER --- */}
@@ -224,9 +301,34 @@ export function ChatPanel() {
                     </span>
                   </div>
 
-                  <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
-                    {msg.content}
-                  </p>
+                  <div className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
+                    {(() => {
+                      // Basic detection: if content looks like a gif URL, render image
+                      const content = msg.content || "";
+                      const isUrl =
+                        /^(https?:)?\/\//i.test(content) ||
+                        content.includes("giphy.com") ||
+                        content.includes("tenor.com");
+                      const lower = content.toLowerCase();
+                      const isGif =
+                        isUrl &&
+                        (lower.endsWith(".gif") ||
+                          lower.includes("giphy.com") ||
+                          lower.includes("tenor.com") ||
+                          lower.includes("media.tenor"));
+                      if (isGif) {
+                        return (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={content}
+                            alt="gif"
+                            className="max-h-56 rounded-md"
+                          />
+                        );
+                      }
+                      return <p>{content}</p>;
+                    })()}
+                  </div>
                   {/* Reactions display */}
                   {msg.reactions && msg.reactions.length > 0 && (
                     <div className="mt-2 flex gap-2 flex-wrap">
@@ -421,6 +523,19 @@ export function ChatPanel() {
                       <Smile className="h-4 w-4" />
                     </button>
 
+                    <button
+                      type="button"
+                      className="h-7 w-7 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 hover:bg-zinc-200 transition"
+                      onClick={() =>
+                        setOpenGifPicker(
+                          openGifPicker === msg.id ? null : msg.id,
+                        )
+                      }
+                      title="GIF"
+                    >
+                      <Gift className="h-4 w-4" />
+                    </button>
+
                     {/* Emoji picker simple menu */}
                     {openReactionFor === msg.id && (
                       <div className="absolute right-10 top-0 z-20 bg-white dark:bg-zinc-900 border rounded-lg shadow-md p-2 flex gap-2">
@@ -472,6 +587,130 @@ export function ChatPanel() {
                         ))}
                       </div>
                     )}
+                    {openGifPicker === msg.id && (
+                      <div className="absolute right-10 top-0 z-20 bg-white dark:bg-zinc-900 border rounded-lg shadow-md p-2 w-64">
+                        <div className="flex gap-2 mb-2">
+                          <input
+                            value={gifQuery}
+                            onChange={(e) => setGifQuery(e.target.value)}
+                            placeholder="Search GIFs"
+                            className="flex-1 px-2 py-1 border rounded bg-zinc-50 dark:bg-zinc-800"
+                          />
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(
+                                  `/api/gifs/search?q=${encodeURIComponent(gifQuery || "trending")}&limit=12`,
+                                );
+                                const json = await res.json();
+                                const results: {
+                                  id: string;
+                                  url: string;
+                                  preview?: string;
+                                }[] = [];
+                                if (json.results) {
+                                  for (const it of json.results) {
+                                    const id = it.id || "";
+                                    let url = "";
+                                    let preview = undefined;
+                                    if (it.media_formats) {
+                                      if (
+                                        it.media_formats.gif &&
+                                        it.media_formats.gif.url
+                                      )
+                                        url = it.media_formats.gif.url;
+                                      else if (
+                                        it.media_formats.tinygif &&
+                                        it.media_formats.tinygif.url
+                                      )
+                                        url = it.media_formats.tinygif.url;
+                                      if (
+                                        it.media_formats.smallgif &&
+                                        it.media_formats.smallgif.url
+                                      )
+                                        preview = it.media_formats.smallgif.url;
+                                    }
+                                    if (!url && it.url) url = it.url;
+                                    if (url)
+                                      results.push({
+                                        id: id.toString(),
+                                        url,
+                                        preview,
+                                      });
+                                  }
+                                } else if (json.data) {
+                                  for (const it of json.data) {
+                                    const id = it.id || "";
+                                    const url =
+                                      it.images?.original?.url ||
+                                      it.images?.fixed_width?.url ||
+                                      "";
+                                    const preview =
+                                      it.images?.preview_gif?.url ||
+                                      it.images?.fixed_width_small_still?.url;
+                                    if (url)
+                                      results.push({
+                                        id: id.toString(),
+                                        url,
+                                        preview,
+                                      });
+                                  }
+                                }
+                                setGifResults(results);
+                              } catch (e) {
+                                console.error("GIF search failed", e);
+                                setGifResults([]);
+                              }
+                            }}
+                            className="px-2 py-1 bg-indigo-600 text-white rounded"
+                          >
+                            Go
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 max-h-60 overflow-auto">
+                          {gifResults.map((g) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              key={g.id}
+                              src={g.preview || g.url}
+                              alt="gif"
+                              className="h-20 w-full object-cover rounded cursor-pointer"
+                              onClick={() => {
+                                try {
+                                  if (
+                                    socket &&
+                                    socket.readyState === WebSocket.OPEN &&
+                                    activeChannelId
+                                  ) {
+                                    const ev = {
+                                      type: "MessageSendGif",
+                                      payload: {
+                                        channel_id: activeChannelId,
+                                        gif: {
+                                          id: g.id,
+                                          url: g.url,
+                                          preview: g.preview,
+                                          provider: g.provider,
+                                        },
+                                        caption: null,
+                                      },
+                                    };
+                                    socket.send(JSON.stringify(ev));
+                                  }
+                                } catch (e) {
+                                  console.error("Failed to send gif", e);
+                                  setError("Erreur lors de l'envoi du GIF");
+                                } finally {
+                                  setOpenGifPicker(null);
+                                  setGifResults([]);
+                                  setGifQuery("");
+                                }
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -517,9 +756,16 @@ export function ChatPanel() {
                 <Gift className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
               </span>
 
-              <span title="Fonction à venir">
-                <Sticker className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
-              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setOpenGifPicker(openGifPicker === "input" ? null : "input")
+                }
+                title="GIF"
+                className="h-6 w-6 flex items-center justify-center"
+              >
+                <Sticker className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-pointer" />
+              </button>
 
               <span title="Fonction à venir">
                 <Smile className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
@@ -541,6 +787,143 @@ export function ChatPanel() {
             )}
           </Button>
         </div>
+
+        {/* GIF picker anchored to input bar */}
+        {openGifPicker === "input" && (
+          <div className="absolute left-4 right-4 bottom-20 z-50 bg-white dark:bg-zinc-900 border rounded-lg shadow-md p-3 w-[min(90vw,40rem)]">
+            <div className="flex gap-2 mb-2">
+              <input
+                value={gifQuery}
+                onChange={(e) => setGifQuery(e.target.value)}
+                placeholder="Recherche de GIFs"
+                className="flex-1 px-2 py-1 border rounded bg-zinc-50 dark:bg-zinc-800"
+              />
+              <button
+                onClick={async () => {
+                  setGifLoading(true);
+                  try {
+                    const res = await fetch(
+                      `/api/gifs/search?q=${encodeURIComponent(
+                        gifQuery || "trending",
+                      )}&limit=24`,
+                    );
+                    if (!res.ok) {
+                      setGifResults([]);
+                      setGifLoading(false);
+                      return;
+                    }
+                    const json = await res.json();
+                    const results: {
+                      id: string;
+                      url: string;
+                      preview?: string;
+                      provider?: string;
+                    }[] = [];
+                    if (json.results) {
+                      for (const it of json.results) {
+                        const id = it.id || "";
+                        const url = it.url || "";
+                        const preview = it.preview || undefined;
+                        const provider = it.provider || undefined;
+                        if (url)
+                          results.push({
+                            id: id.toString(),
+                            url,
+                            preview,
+                            provider,
+                          });
+                      }
+                    } else if (json.data) {
+                      for (const it of json.data) {
+                        const id = it.id || "";
+                        const url =
+                          it.images?.original?.url ||
+                          it.images?.fixed_width?.url ||
+                          "";
+                        const preview =
+                          it.images?.preview_gif?.url ||
+                          it.images?.fixed_width_small_still?.url;
+                        if (url)
+                          results.push({
+                            id: id.toString(),
+                            url,
+                            preview,
+                            provider: "giphy",
+                          });
+                      }
+                    }
+                    setGifResults(results);
+                  } catch (err) {
+                    console.error("GIF search failed", err);
+                    setGifResults([]);
+                  } finally {
+                    setGifLoading(false);
+                  }
+                }}
+                className="px-2 py-1 bg-indigo-600 text-white rounded"
+                disabled={gifLoading}
+              >
+                {gifLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Rechercher"
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setOpenGifPicker(null);
+                  setGifResults([]);
+                  setGifQuery("");
+                }}
+                className="px-2 py-1 bg-zinc-200 dark:bg-zinc-700 rounded"
+              >
+                Fermer
+              </button>
+            </div>
+            <div className="grid grid-cols-6 gap-2 max-h-64 overflow-auto">
+              {gifResults.map((g) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={g.id}
+                  src={g.preview || g.url}
+                  alt="gif"
+                  className="h-20 w-full object-cover rounded cursor-pointer"
+                  onClick={() => {
+                    try {
+                      if (
+                        socket &&
+                        socket.readyState === WebSocket.OPEN &&
+                        activeChannelId
+                      ) {
+                        const ev = {
+                          type: "MessageSendGif",
+                          payload: {
+                            channel_id: activeChannelId,
+                            gif: {
+                              id: g.id,
+                              url: g.url,
+                              preview: g.preview,
+                              provider: g.provider,
+                            },
+                            caption: null,
+                          },
+                        };
+                        socket.send(JSON.stringify(ev));
+                      }
+                    } catch (e) {
+                      console.error("Failed to send gif", e);
+                      setError("Erreur lors de l'envoi du GIF");
+                    } finally {
+                      setOpenGifPicker(null);
+                      setGifResults([]);
+                      setGifQuery("");
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Typing indicator */}
         {typingDisplay && (

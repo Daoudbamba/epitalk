@@ -26,6 +26,19 @@ pub struct MessageDb {
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reactions: Option<Vec<Reaction>>,
+    /// Optional GIF metadata when message contains a GIF
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gif: Option<GifPayload>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GifPayload {
+    pub id: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -190,6 +203,8 @@ mod tests {
             author_id: "user".into(),
             content: "hello".into(),
             created_at: "now".into(),
+            reactions: None,
+            gif: None,
         };
 
         let res = repo.insert(msg).await;
