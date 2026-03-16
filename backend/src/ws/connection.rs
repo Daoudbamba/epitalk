@@ -6,15 +6,15 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use crate::repositories::ChannelRepository;
-use crate::repositories::UserRepository;
+use crate::repositories::{ChannelRepository, MembershipRepository, UserRepository};
 use crate::services::message_service::MessageService;
 use crate::services::presence_service::PresenceService;
 use crate::services::typing_service::TypingService;
 use crate::ws::hub::{ConnId, Hub};
+use mongodb::bson::oid::ObjectId;
 use crate::ws::protocol::{
     validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_FRAME_BYTES,
-    TYPING_THROTTLE_MS,
+    TYPING_THROTTLE_MS, Reaction as WsReaction, GifPayload as WsGifPayload,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -205,8 +205,8 @@ pub async fn handle_connection(
                 ClientEvent::MessageSend {
                     channel_id,
                     content,
+                    reply_to,
                 } => {
-                    // ── Validate fields ──────────────────────────
                     if let Err(reason) = validate_channel_id(&channel_id) {
                         send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
                         continue;
@@ -216,7 +216,6 @@ pub async fn handle_connection(
                         continue;
                     }
 
-                    // ── Resolve server_id from channel ──────────
                     let server_id = match resolve_server_id(
                         &channel_id,
                         &pg_pool_recv,
@@ -227,7 +226,24 @@ pub async fn handle_connection(
                     .await
                     {
                         Some(sid) => sid,
-                        None => continue, // error already sent to client
+                        None => continue,
+                    };
+
+                    let reply_to_oid = if let Some(reply_id) = &reply_to {
+                        match ObjectId::parse_str(reply_id) {
+                            Ok(oid) => Some(oid),
+                            Err(_) => {
+                                send_error(
+                                    &hub_recv,
+                                    &conn_id,
+                                    "INVALID_REPLY_TO",
+                                    "reply_to must be a valid message id",
+                                );
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
                     };
 
                     tracing::info!(
@@ -244,6 +260,7 @@ pub async fn handle_connection(
                             user_id_recv.clone(),
                             content.clone(),
                             created_at.clone(),
+                            reply_to_oid,
                         )
                         .await;
 
@@ -263,8 +280,173 @@ pub async fn handle_connection(
                         username,
                         content,
                         created_at,
+                        reply_to,
                     };
 
+                    hub_recv.broadcast_room(&channel_id, event).await;
+                },
+
+                // ======================================================
+                // MESSAGE EDIT
+                // ======================================================
+                ClientEvent::MessageEdit {
+                    channel_id,
+                    message_id,
+                    content,
+                } => {
+                    if let Err(reason) = validate_channel_id(&channel_id) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
+                        continue;
+                    }
+                    if let Err(reason) = validate_content(&content) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                        continue;
+                    }
+                    let msg_oid = match ObjectId::parse_str(&message_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "message_id must be a valid ObjectId");
+                            continue;
+                        }
+                    };
+
+                    let _server_id = match resolve_server_id(
+                        &channel_id,
+                        &pg_pool_recv,
+                        &mut channel_server_cache,
+                        &hub_recv,
+                        &conn_id,
+                    )
+                    .await
+                    {
+                        Some(sid) => sid,
+                        None => continue,
+                    };
+
+                    let existing = match message_service_recv.get_message_by_id(&msg_oid).await {
+                        Some(m) => m,
+                        None => {
+                            send_error(&hub_recv, &conn_id, "MESSAGE_NOT_FOUND", "message not found");
+                            continue;
+                        }
+                    };
+
+                    if existing.channel_id != channel_id {
+                        send_error(&hub_recv, &conn_id, "CHANNEL_MISMATCH", "message does not belong to this channel");
+                        continue;
+                    }
+
+                    if existing.author_id != user_id_recv {
+                        send_error(&hub_recv, &conn_id, "FORBIDDEN", "only the message author can edit their message");
+                        continue;
+                    }
+
+                    let edited_at = chrono::Utc::now().to_rfc3339();
+                    if let Err(e) = message_service_recv
+                        .edit_message(&msg_oid, &content, &edited_at)
+                        .await
+                    {
+                        tracing::error!("failed to edit message: {e}");
+                        send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "failed to edit message");
+                        continue;
+                    }
+
+                    let username = resolve_username(
+                        &existing.author_id,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
+
+                    let event = ServerEvent::MessageEdited {
+                        id: message_id.clone(),
+                        channel_id: channel_id.clone(),
+                        author_id: existing.author_id.clone(),
+                        username,
+                        content: content.clone(),
+                        edited_at,
+                    };
+                    hub_recv.broadcast_room(&channel_id, event).await;
+                },
+
+                // ======================================================
+                // MESSAGE DELETE
+                // ======================================================
+                ClientEvent::MessageDelete {
+                    channel_id,
+                    message_id,
+                } => {
+                    if let Err(reason) = validate_channel_id(&channel_id) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
+                        continue;
+                    }
+                    let msg_oid = match ObjectId::parse_str(&message_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "message_id must be a valid ObjectId");
+                            continue;
+                        }
+                    };
+
+                    let server_id = match resolve_server_id(
+                        &channel_id,
+                        &pg_pool_recv,
+                        &mut channel_server_cache,
+                        &hub_recv,
+                        &conn_id,
+                    )
+                    .await
+                    {
+                        Some(sid) => sid,
+                        None => continue,
+                    };
+
+                    let existing = match message_service_recv.get_message_by_id(&msg_oid).await {
+                        Some(m) => m,
+                        None => {
+                            send_error(&hub_recv, &conn_id, "MESSAGE_NOT_FOUND", "message not found");
+                            continue;
+                        }
+                    };
+
+                    if existing.channel_id != channel_id {
+                        send_error(&hub_recv, &conn_id, "CHANNEL_MISMATCH", "message does not belong to this channel");
+                        continue;
+                    }
+
+                    let member_role = match Uuid::parse_str(&user_id_recv)
+                        .ok()
+                        .and_then(|user_uuid| Uuid::parse_str(&server_id).ok().map(|server_uuid| (user_uuid, server_uuid)))
+                    {
+                        Some((user_uuid, server_uuid)) => {
+                            MembershipRepository::get_role(&pg_pool_recv, user_uuid, server_uuid)
+                                .await
+                                .unwrap_or(None)
+                        }
+                        None => None,
+                    };
+
+                    let is_author = existing.author_id == user_id_recv;
+                    let can_delete = is_author
+                        || member_role
+                            .map(|r| r.can_delete_others_messages())
+                            .unwrap_or(false);
+
+                    if !can_delete {
+                        send_error(&hub_recv, &conn_id, "FORBIDDEN", "not allowed to delete this message");
+                        continue;
+                    }
+
+                    if let Err(e) = message_service_recv.delete_message(&msg_oid).await {
+                        tracing::error!("failed to delete message: {e}");
+                        send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "failed to delete message");
+                        continue;
+                    }
+
+                    let event = ServerEvent::MessageDeleted {
+                        id: message_id.clone(),
+                        channel_id: channel_id.clone(),
+                    };
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
 
@@ -323,6 +505,7 @@ pub async fn handle_connection(
                                     username,
                                     content: msg.content.clone(),
                                     created_at: msg.created_at.clone(),
+                                    reply_to: msg.reply_to.map(|oid| oid.to_hex()),
                                 };
                                 if let Ok(json) = serde_json::to_string(&event) {
                                     let _ = tx.send(Message::Text(json));
@@ -420,6 +603,71 @@ pub async fn handle_connection(
                         channel_id: channel_id.clone(),
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
+                },
+
+                // ======================================================
+                // REACTION ADD / REMOVE
+                // ======================================================
+                ClientEvent::ReactionAdd { message_id, emoji } => {
+                    // Resolve username for the reacting user
+                    let username = resolve_username(
+                        &user_id_recv,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
+
+                    match message_service_recv
+                        .add_reaction(&message_id, &emoji, &user_id_recv, Some(&username))
+                        .await
+                    {
+                        Ok((Some(channel_id), was_added)) => {
+                            if was_added {
+                                let event = ServerEvent::ReactionAdded {
+                                    message_id: message_id.clone(),
+                                    emoji: emoji.clone(),
+                                    user_id: user_id_recv.clone(),
+                                    username: Some(username),
+                                };
+                                hub_recv.broadcast_room(&channel_id, event).await;
+                            } else {
+                                let event = ServerEvent::ReactionRemoved {
+                                    message_id: message_id.clone(),
+                                    emoji: emoji.clone(),
+                                    user_id: user_id_recv.clone(),
+                                };
+                                hub_recv.broadcast_room(&channel_id, event).await;
+                            }
+                        }
+                        Ok((None, _)) => {
+                            send_error(&hub_recv, &conn_id, "MESSAGE_NOT_FOUND", "message not found");
+                        }
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "invalid message id or failed to add/remove reaction");
+                        }
+                    }
+                },
+
+                ClientEvent::ReactionRemove { message_id, emoji } => {
+                    match message_service_recv
+                        .remove_reaction(&message_id, &emoji, &user_id_recv)
+                        .await
+                    {
+                        Ok(Some(channel_id)) => {
+                            let event = ServerEvent::ReactionRemoved {
+                                message_id: message_id.clone(),
+                                emoji: emoji.clone(),
+                                user_id: user_id_recv.clone(),
+                            };
+                            hub_recv.broadcast_room(&channel_id, event).await;
+                        }
+                        Ok(None) => {
+                            send_error(&hub_recv, &conn_id, "MESSAGE_NOT_FOUND", "message not found");
+                        }
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "invalid message id or failed to remove reaction");
+                        }
+                    }
                 },
 
                 // ======================================================

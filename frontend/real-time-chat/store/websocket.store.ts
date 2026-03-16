@@ -8,27 +8,47 @@ export interface WsMessage {
   username?: string;
   content: string;
   created_at: string;
+  edited_at?: string;
+  reply_to?: string;
 }
 
 // CLIENT → SERVER events
 type ClientEvent =
-  | { type: "MessageSend"; payload: { channel_id: string; content: string } }
+  | { type: "MessageSend"; payload: { channel_id: string; content: string; reply_to?: string } }
+  | { type: "MessageEdit"; payload: { channel_id: string; message_id: string; content: string } }
+  | { type: "MessageDelete"; payload: { channel_id: string; message_id: string } }
   | { type: "JoinChannel"; payload: { channel_id: string } }
   | { type: "LeaveChannel"; payload: { channel_id: string } }
   | { type: "TypingStart"; payload: { channel_id: string } }
   | { type: "TypingStop"; payload: { channel_id: string } }
-  | { type: "Ping" };
+  | { type: "Ping" }
+  | {
+      type: "MessageSendGif";
+      payload: {
+        channel_id: string;
+        gif: { id: string; url: string; preview?: string; provider?: string };
+        caption?: string | null;
+      };
+    };
 
 // SERVER → CLIENT events
 type ServerEvent =
-  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string } }
+  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string; reply_to?: string } }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
   | { type: "UserLeft"; payload: { user_id: string; channel_id: string } }
-  | { type: "TypingStart"; payload: { user_id: string; username: string; channel_id: string } }
-  | { type: "TypingStop"; payload: { user_id: string; username: string; channel_id: string } }
+  | {
+      type: "TypingStart";
+      payload: { user_id: string; username: string; channel_id: string };
+    }
+  | {
+      type: "TypingStop";
+      payload: { user_id: string; username: string; channel_id: string };
+    }
   | { type: "Pong" }
   | { type: "UserOnline"; payload: { user_id: string } }
-  | { type: "UserOffline"; payload: { user_id: string } };
+  | { type: "UserOffline"; payload: { user_id: string } }
+  | { type: "MessageEdited"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; edited_at: string } }
+  | { type: "MessageDeleted"; payload: { id: string; channel_id: string } };
 
 type WebSocketState = {
   socket: WebSocket | null;
@@ -42,7 +62,9 @@ type WebSocketState = {
   // Actions
   connect: (token: string) => void;
   disconnect: () => void;
-  sendMessage: (channelId: string, content: string) => void;
+  sendMessage: (channelId: string, content: string, replyTo?: string) => void;
+  editMessage: (channelId: string, messageId: string, content: string) => void;
+  deleteMessage: (channelId: string, messageId: string) => void;
   joinChannel: (channelId: string) => void;
   leaveChannel: (channelId: string) => void;
   startTyping: (channelId: string) => void;
@@ -136,14 +158,14 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     }
   },
 
-  sendMessage: (channelId: string, content: string) => {
+  sendMessage: (channelId: string, content: string, replyTo?: string) => {
     const { socket } = get();
-    console.log("📤 Sending message:", { channelId, content, socketState: socket?.readyState });
+    console.log("📤 Sending message:", { channelId, content, replyTo, socketState: socket?.readyState });
     
     if (socket && socket.readyState === WebSocket.OPEN) {
       const event: ClientEvent = {
         type: "MessageSend",
-        payload: { channel_id: channelId, content },
+        payload: { channel_id: channelId, content, reply_to: replyTo },
       };
       const json = JSON.stringify(event);
       console.log("📤 Sending WebSocket event:", json);
@@ -153,11 +175,33 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     }
   },
 
+  editMessage: (channelId: string, messageId: string, content: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "MessageEdit",
+        payload: { channel_id: channelId, message_id: messageId, content },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  deleteMessage: (channelId: string, messageId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "MessageDelete",
+        payload: { channel_id: channelId, message_id: messageId },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
   joinChannel: (channelId: string) => {
     const { socket, currentChannelId } = get();
-    
+
     console.log("🚪 Joining channel:", channelId);
-    
+
     // Leave previous channel
     if (currentChannelId && currentChannelId !== channelId) {
       get().leaveChannel(currentChannelId);
@@ -236,13 +280,26 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 // Handle incoming server events
 function handleServerEvent(
   event: ServerEvent,
-  set: (partial: Partial<WebSocketState> | ((state: WebSocketState) => Partial<WebSocketState>)) => void
+  set: (
+    partial:
+      | Partial<WebSocketState>
+      | ((state: WebSocketState) => Partial<WebSocketState>),
+  ) => void,
 ) {
   console.log("🔔 Handling server event:", event.type, event);
-  
+
   switch (event.type) {
     case "MessageNew": {
-      const { id, channel_id, author_id, username, content, created_at } = event.payload;
+      const {
+        id,
+        channel_id,
+        author_id,
+        username,
+        content,
+        created_at,
+        reactions,
+        gif,
+      } = event.payload;
       const newMessage: WsMessage = {
         id,
         channel_id,
@@ -250,18 +307,19 @@ function handleServerEvent(
         username,
         content,
         created_at,
+        reply_to: event.payload.reply_to,
       };
 
       console.log("💬 New message received:", newMessage);
 
       set((state) => {
         const channelMessages = state.messages[channel_id] || [];
-        
+
         // Avoid duplicates
         if (channelMessages.some((m) => m.id === id)) {
           return state;
         }
-        
+
         return {
           messages: {
             ...state.messages,
@@ -272,13 +330,92 @@ function handleServerEvent(
       break;
     }
 
+    case "ReactionAdded": {
+      const { message_id, emoji, user_id, username } = event.payload;
+      set((state) => {
+        const newMessages = { ...state.messages } as Record<
+          string,
+          WsMessage[]
+        >;
+
+        // Try to find the message across all channels
+        for (const [chanId, msgs] of Object.entries(newMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+
+            // Prevent duplicates: same user + same emoji
+            const already = existing.some(
+              (r) => r.user_id === user_id && r.emoji === emoji,
+            );
+            if (already) return state;
+
+            const updated: WsMessage = {
+              ...target,
+              reactions: [...existing, { emoji, user_id, username }],
+            };
+
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newMessages[chanId] = updatedList;
+
+            return { messages: newMessages };
+          }
+        }
+
+        return state;
+      });
+      break;
+    }
+
+    case "ReactionRemoved": {
+      const { message_id, emoji, user_id } = event.payload;
+      set((state) => {
+        const newMessages = { ...state.messages } as Record<
+          string,
+          WsMessage[]
+        >;
+
+        for (const [chanId, msgs] of Object.entries(newMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+
+            const updatedReactions = existing.filter(
+              (r) => !(r.user_id === user_id && r.emoji === emoji),
+            );
+
+            const updated: WsMessage = {
+              ...target,
+              reactions: updatedReactions,
+            };
+
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newMessages[chanId] = updatedList;
+
+            return { messages: newMessages };
+          }
+        }
+
+        return state;
+      });
+      break;
+    }
+
     case "UserJoined": {
-      console.log(`👋 User ${event.payload.user_id} joined channel ${event.payload.channel_id}`);
+      console.log(
+        `👋 User ${event.payload.user_id} joined channel ${event.payload.channel_id}`,
+      );
       break;
     }
 
     case "UserLeft": {
-      console.log(`👋 User ${event.payload.user_id} left channel ${event.payload.channel_id}`);
+      console.log(
+        `👋 User ${event.payload.user_id} left channel ${event.payload.channel_id}`,
+      );
       break;
     }
 
@@ -313,6 +450,36 @@ function handleServerEvent(
       break;
     }
 
+    case "MessageEdited": {
+      const { id, channel_id, content, edited_at } = event.payload;
+      set((state) => {
+        const channelMessages = state.messages[channel_id] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [channel_id]: channelMessages.map((msg) =>
+              msg.id === id ? { ...msg, content, edited_at } : msg,
+            ),
+          },
+        };
+      });
+      break;
+    }
+
+    case "MessageDeleted": {
+      const { id, channel_id } = event.payload;
+      set((state) => {
+        const channelMessages = state.messages[channel_id] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [channel_id]: channelMessages.filter((msg) => msg.id !== id),
+          },
+        };
+      });
+      break;
+    }
+
     case "UserOnline": {
       set((state) => {
         if (state.onlineUsers.includes(event.payload.user_id)) {
@@ -327,7 +494,9 @@ function handleServerEvent(
 
     case "UserOffline": {
       set((state) => ({
-        onlineUsers: state.onlineUsers.filter((id) => id !== event.payload.user_id),
+        onlineUsers: state.onlineUsers.filter(
+          (id) => id !== event.payload.user_id,
+        ),
       }));
       break;
     }
