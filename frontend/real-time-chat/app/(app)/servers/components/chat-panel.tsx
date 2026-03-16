@@ -313,7 +313,7 @@ export function ChatPanel() {
                             <img
                               src={url}
                               alt={alt}
-                              className="max-h-56 rounded-md"
+                              className="max-h-56 max-w-[60%] rounded-md object-contain"
                             />
                             {msg.content && (
                               <p className="text-sm text-zinc-600 dark:text-zinc-300">
@@ -343,7 +343,7 @@ export function ChatPanel() {
                           <img
                             src={content}
                             alt="gif"
-                            className="max-h-56 rounded-md"
+                            className="max-h-56 max-w-[60%] rounded-md object-contain"
                           />
                         );
                       }
