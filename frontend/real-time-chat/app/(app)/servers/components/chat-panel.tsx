@@ -303,7 +303,28 @@ export function ChatPanel() {
 
                   <div className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
                     {(() => {
-                      // Basic detection: if content looks like a gif URL, render image
+                      // If server provided GIF metadata, prefer rendering that
+                      if (msg.gif && msg.gif.url) {
+                        const url = msg.gif.url;
+                        const alt = msg.content || "gif";
+                        return (
+                          <div className="flex flex-col gap-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={url}
+                              alt={alt}
+                              className="max-h-56 rounded-md"
+                            />
+                            {msg.content && (
+                              <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                                {msg.content}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // Fallback: basic detection on content (legacy behavior)
                       const content = msg.content || "";
                       const isUrl =
                         /^(https?:)?\/\//i.test(content) ||

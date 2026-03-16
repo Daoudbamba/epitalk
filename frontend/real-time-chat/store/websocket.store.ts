@@ -9,6 +9,7 @@ export interface WsMessage {
   content: string;
   created_at: string;
   reactions?: { emoji: string; user_id: string; username?: string }[];
+  gif?: { id: string; url: string; preview?: string; provider?: string } | null;
 }
 
 // CLIENT → SERVER events
@@ -18,7 +19,15 @@ type ClientEvent =
   | { type: "LeaveChannel"; payload: { channel_id: string } }
   | { type: "TypingStart"; payload: { channel_id: string } }
   | { type: "TypingStop"; payload: { channel_id: string } }
-  | { type: "Ping" };
+  | { type: "Ping" }
+  | {
+      type: "MessageSendGif";
+      payload: {
+        channel_id: string;
+        gif: { id: string; url: string; preview?: string; provider?: string };
+        caption?: string | null;
+      };
+    };
 
 // SERVER → CLIENT events
 type ServerEvent =
@@ -32,6 +41,12 @@ type ServerEvent =
         content: string;
         created_at: string;
         reactions?: { emoji: string; user_id: string; username?: string }[];
+        gif?: {
+          id: string;
+          url: string;
+          preview?: string;
+          provider?: string;
+        } | null;
       };
     }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
@@ -294,6 +309,7 @@ function handleServerEvent(
         content,
         created_at,
         reactions,
+        gif,
       } = event.payload;
       const newMessage: WsMessage = {
         id,
@@ -303,6 +319,7 @@ function handleServerEvent(
         content,
         created_at,
         reactions: reactions || [],
+        gif: gif || null,
       };
 
       console.log("💬 New message received:", newMessage);
