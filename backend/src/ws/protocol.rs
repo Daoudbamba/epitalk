@@ -19,6 +19,16 @@ pub enum ClientEvent {
     MessageSend {
         channel_id: String,
         content: String,
+        reply_to: Option<String>,
+    },
+    MessageEdit {
+        channel_id: String,
+        message_id: String,
+        content: String,
+    },
+    MessageDelete {
+        channel_id: String,
+        message_id: String,
     },
     /// Send a GIF as a message with normalized metadata
     MessageSendGif {
@@ -65,11 +75,19 @@ pub enum ServerEvent {
         username: String,
         content: String,
         created_at: String,
-        /// Optional reactions array for the message (empty or absent if none)
-        reactions: Option<Vec<Reaction>>,
-        /// Optional GIF metadata when message contains a GIF
-        #[serde(skip_serializing_if = "Option::is_none")]
-        gif: Option<GifPayload>,
+        reply_to: Option<String>,
+    },
+    MessageEdited {
+        id: String,
+        channel_id: String,
+        author_id: String,
+        username: String,
+        content: String,
+        edited_at: String,
+    },
+    MessageDeleted {
+        id: String,
+        channel_id: String,
     },
 
     UserJoined {
@@ -215,6 +233,7 @@ mod tests {
             username: "alice".into(),
             content: "hello".into(),
             created_at: "2024-01-01T00:00:00Z".into(),
+            reply_to: None,
         };
 
         let json = serde_json::to_string(&event).unwrap();

@@ -25,26 +25,9 @@ pub struct MessageDb {
     pub content: String,
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reactions: Option<Vec<Reaction>>,
-    /// Optional GIF metadata when message contains a GIF
+    pub edited_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub gif: Option<GifPayload>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GifPayload {
-    pub id: String,
-    pub url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub preview: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ReactionChange {
-    Added,
-    Removed,
+    pub reply_to: Option<ObjectId>,
 }
 
 pub struct MessageRepo {
@@ -105,51 +88,38 @@ impl MessageRepo {
         Ok(result.inserted_id.as_object_id().unwrap())
     }
 
-    /// Find message by ObjectId
-    pub async fn find_by_id(&self, id: ObjectId) -> Option<MessageDb> {
-        let collection = match self.collection.as_ref() {
-            Some(c) => c,
-            None => return None,
-        };
-
-        match collection.find_one(doc! { "_id": id }, None).await {
-            Ok(opt) => opt,
-            Err(_) => None,
+    pub async fn find_by_id(&self, message_id: &ObjectId) -> Option<MessageDb> {
+        let collection = self.collection.as_ref()?;
+        match collection.find_one(doc! { "_id": message_id }, None).await {
+            Ok(Some(msg)) => Some(msg),
+            _ => None,
         }
     }
 
-    /// Toggle a reaction: if the user already reacted with the same emoji, remove it and return Removed;
-    /// otherwise add it and return Added.
-    pub async fn add_reaction(&self, message_id: ObjectId, reaction: Reaction) -> mongodb::error::Result<ReactionChange> {
+    pub async fn update_content(
+        &self,
+        message_id: &ObjectId,
+        new_content: &str,
+        edited_at: &str,
+    ) -> mongodb::error::Result<bool> {
         let collection = self.collection.as_ref()
             .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
-        // Fetch current document and check duplicates (user_id + emoji)
-        if let Ok(Some(msg)) = collection.find_one(doc! { "_id": message_id.clone() }, None).await {
-            if let Some(existing) = msg.reactions {
-                if existing.iter().any(|r| r.user_id == reaction.user_id && r.emoji == reaction.emoji) {
-                    // Reaction exists -> remove it
-                    let pull = doc! { "$pull": { "reactions": { "emoji": &reaction.emoji, "user_id": &reaction.user_id } } };
-                    let _ = collection.update_one(doc! { "_id": message_id.clone() }, pull, None).await?;
-                    return Ok(ReactionChange::Removed);
-                }
-            }
-        }
 
-        // Push the reaction
-        let bson_reaction = mongodb::bson::to_bson(&reaction)?;
-        let update = doc! { "$push": { "reactions": bson_reaction } };
-        let _ = collection.update_one(doc! { "_id": message_id }, update, None).await?;
-        Ok(ReactionChange::Added)
+        let result = collection
+            .update_one(
+                doc! { "_id": message_id },
+                doc! { "$set": { "content": new_content, "edited_at": edited_at } },
+                None,
+            )
+            .await?;
+        Ok(result.matched_count > 0)
     }
 
-    /// Remove a reaction (matching user_id + emoji)
-    pub async fn remove_reaction(&self, message_id: ObjectId, emoji: &str, user_id: &str) -> mongodb::error::Result<()> {
+    pub async fn delete(&self, message_id: &ObjectId) -> mongodb::error::Result<bool> {
         let collection = self.collection.as_ref()
             .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
-
-        let pull = doc! { "$pull": { "reactions": { "emoji": emoji, "user_id": user_id } } };
-        let _ = collection.update_one(doc! { "_id": message_id }, pull, None).await?;
-        Ok(())
+        let result = collection.delete_one(doc! { "_id": message_id }, None).await?;
+        Ok(result.deleted_count > 0)
     }
 
     // ---------------------------------------------------------
@@ -203,8 +173,8 @@ mod tests {
             author_id: "user".into(),
             content: "hello".into(),
             created_at: "now".into(),
-            reactions: None,
-            gif: None,
+            edited_at: None,
+            reply_to: None,
         };
 
         let res = repo.insert(msg).await;

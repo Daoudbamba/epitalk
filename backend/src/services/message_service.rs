@@ -1,6 +1,5 @@
 use crate::db::message_repo::{MessageDb, MessageRepo};
-use mongodb::bson::oid::ObjectId;
-use crate::db::message_repo::{Reaction as MessageReaction, ReactionChange};
+use mongodb::bson::{oid::ObjectId};
 
 pub struct MessageService {
     repo: MessageRepo,
@@ -11,16 +10,13 @@ impl MessageService {
         Self { repo }
     }
 
-    // ---------------------------------------------------------
-    // 🔥 Créer un message (MongoDB)
-    // ---------------------------------------------------------
     pub async fn create_message(
         &self,
         channel_id: String,
         author_id: String,
         content: String,
         created_at: String,
-        gif: Option<crate::db::message_repo::GifPayload>,
+        reply_to: Option<ObjectId>,
     ) -> ObjectId {
         let msg = MessageDb {
             id: None,
@@ -28,16 +24,13 @@ impl MessageService {
             author_id,
             content,
             created_at,
-            reactions: None,
-            gif,
+            edited_at: None,
+            reply_to,
         };
 
         self.repo.insert(msg).await.unwrap()
     }
 
-    // ---------------------------------------------------------
-    // 🔥 Récupérer l'historique d'un channel (pagination)
-    // ---------------------------------------------------------
     pub async fn get_history(
         &self,
         channel_id: &str,
@@ -47,50 +40,20 @@ impl MessageService {
         Ok(self.repo.find_by_channel(channel_id, page, per_page).await)
     }
 
-    /// Add a reaction to a message by id (message_id is hex string of ObjectId)
-    /// Returns the channel_id for the message when successful (useful to broadcast)
-    pub async fn add_reaction(
-        &self,
-        message_id: &str,
-        emoji: &str,
-        user_id: &str,
-        username: Option<&str>,
-    ) -> Result<(Option<String>, bool), ()> {
-        let oid = match ObjectId::parse_str(message_id) {
-            Ok(o) => o,
-            Err(_) => return Err(()),
-        };
-
-        let reaction = MessageReaction {
-            emoji: emoji.to_string(),
-            user_id: user_id.to_string(),
-            username: username.map(|s| s.to_string()),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
-
-        let change = self.repo.add_reaction(oid.clone(), reaction).await.map_err(|_| ())?;
-
-        // Return channel_id for broadcasting and whether it was added (true) or removed (false)
-        let msg = self.repo.find_by_id(oid).await;
-        let channel_id = msg.map(|m| m.channel_id);
-        let was_added = matches!(change, ReactionChange::Added);
-        Ok((channel_id, was_added))
+    pub async fn get_message_by_id(&self, message_id: &ObjectId) -> Option<MessageDb> {
+        self.repo.find_by_id(message_id).await
     }
 
-    /// Remove a reaction (user + emoji) from a message
-    pub async fn remove_reaction(
+    pub async fn edit_message(
         &self,
-        message_id: &str,
-        emoji: &str,
-        user_id: &str,
-    ) -> Result<Option<String>, ()> {
-        let oid = match ObjectId::parse_str(message_id) {
-            Ok(o) => o,
-            Err(_) => return Err(()),
-        };
+        message_id: &ObjectId,
+        new_content: &str,
+        edited_at: &str,
+    ) -> Result<bool, mongodb::error::Error> {
+        self.repo.update_content(message_id, new_content, edited_at).await
+    }
 
-        self.repo.remove_reaction(oid.clone(), emoji, user_id).await.map_err(|_| ())?;
-        let msg = self.repo.find_by_id(oid).await;
-        Ok(msg.map(|m| m.channel_id))
+    pub async fn delete_message(&self, message_id: &ObjectId) -> Result<bool, mongodb::error::Error> {
+        self.repo.delete(message_id).await
     }
 }

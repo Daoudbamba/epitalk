@@ -1,10 +1,11 @@
+"use client";
+
 import React from "react";
-import { Mail, SendHorizonal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TextEffect } from "@/components/ui/text-effect";
 import { AnimatedGroup } from "@/components/ui/animated-group";
 import { HeroHeader } from "./header";
-import { LogoCloud } from "./logo-cloud";
+import { useLanguage } from "@/components/language-provider";
 
 const transitionVariants = {
   item: {
@@ -27,6 +28,9 @@ const transitionVariants = {
 };
 
 export default function HeroSection() {
+  const { translations } = useLanguage();
+  const { hero } = translations;
+
   return (
     <>
       <HeroHeader />
@@ -41,7 +45,7 @@ export default function HeroSection() {
                 as="h1"
                 className="text-balance text-5xl font-medium md:text-6xl"
               >
-                Connecter, discuter, partager.
+                {hero.title}
               </TextEffect>
               <TextEffect
                 per="line"
@@ -51,8 +55,7 @@ export default function HeroSection() {
                 as="p"
                 className="mx-auto mt-6 max-w-2xl text-pretty text-lg"
               >
-                EpiTalk est une plateforme de discussion en temps réel pensée
-                pour créer, organiser et faire grandir des communautés modernes.
+                {hero.subtitle}
               </TextEffect>
 
               <AnimatedGroup
@@ -75,7 +78,7 @@ export default function HeroSection() {
                   className="px-5 h-10 bg-linear-to-r from-purple-700 to-orange-500 rounded-md"
                 >
                   <span className="hidden md:block">
-                    Créer mon premier serveur
+                    {hero.ctaPrimary}
                   </span>
                 </Button>
 
@@ -105,6 +108,9 @@ export default function HeroSection() {
 }
 
 const AppComponent = () => {
+  const { translations } = useLanguage();
+  const { stats } = translations;
+
   return (
     <div className="relative space-y-3 rounded-[1rem] bg-white/5 p-4">
       <div className="flex items-center gap-1.5 text-orange-400">
@@ -126,11 +132,11 @@ const AppComponent = () => {
             ></path>
           </g>
         </svg>
-        <div className="text-sm font-medium">Activités</div>
+        <div className="text-sm font-medium">{stats.activitiesTitle}</div>
       </div>
       <div className="space-y-3">
         <div className="text-foreground border-b border-white/10 pb-3 text-sm font-medium">
-          Cette année, les échanges sur EpiTalk sont plus actifs que l’an dernier.
+          {stats.currentYearDescription}
         </div>
         <div className="space-y-3">
           <div className="space-y-1">
@@ -138,10 +144,12 @@ const AppComponent = () => {
               <span className="text-foreground align-baseline text-[18px] font-medium">
                 8,081
               </span>
-              <span className="text-muted-foreground text-xs">messages / jour</span>
+              <span className="text-muted-foreground text-xs">
+                {stats.messagesPerDay}
+              </span>
             </div>
             <div className="flex h-5 items-center rounded bg-linear-to-r from-purple-700 to-orange-500 px-2 text-xs text-white">
-              2026
+              {stats.currentYearLabel}
             </div>
           </div>
           <div className="space-y-1">
@@ -149,10 +157,12 @@ const AppComponent = () => {
               <span className="text-foreground align-baseline text-xl font-medium">
                 5,412
               </span>
-              <span className="text-muted-foreground text-xs">messages / jour</span>
+              <span className="text-muted-foreground text-xs">
+                {stats.messagesPerDay}
+              </span>
             </div>
             <div className="text-foreground bg-muted flex h-5 w-2/3 items-center rounded px-2 text-xs dark:bg-white/20">
-              2025
+              {stats.previousYearLabel}
             </div>
           </div>
         </div>

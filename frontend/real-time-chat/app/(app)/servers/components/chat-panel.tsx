@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Gift, Sticker, Send, Loader2 } from "lucide-react";
+import { Plus, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2, X } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
@@ -25,6 +25,8 @@ export function ChatPanel() {
   const isConnected = useWebSocketStore((s) => s.isConnected);
   const connect = useWebSocketStore((s) => s.connect);
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
+  const editMessage = useWebSocketStore((s) => s.editMessage);
+  const deleteMessage = useWebSocketStore((s) => s.deleteMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
   const wsMessages = useWebSocketStore((s) => s.messages);
   const socket = useWebSocketStore((s) => s.socket);
@@ -39,18 +41,10 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
-  const [openReactionFor, setOpenReactionFor] = useState<string | null>(null);
-  const [hoveredReaction, setHoveredReaction] = useState<{
-    msgId: string;
-    emoji: string;
-  } | null>(null);
-  const [openGifPicker, setOpenGifPicker] = useState<string | null>(null);
-  const [gifQuery, setGifQuery] = useState("");
-  const [gifResults, setGifResults] = useState<
-    { id: string; url: string; preview?: string; provider?: string }[]
-  >([]);
-  const [gifLoading, setGifLoading] = useState(false);
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -106,6 +100,9 @@ export function ChatPanel() {
     [user, members],
   );
 
+  const currentMemberRole = members.find((m) => m.user_id === user?.id)?.role;
+  const canModerate = currentMemberRole === "Owner" || currentMemberRole === "Admin" || currentMemberRole === "Moderator";
+
   const onSend = async () => {
     if (!activeChannelId || !canLoad) return;
 
@@ -121,15 +118,29 @@ export function ChatPanel() {
     setError(null);
 
     try {
-      sendMessage(activeChannelId, content);
+      if (isEditing && editingMessageId) {
+        editMessage(activeChannelId, editingMessageId, content);
+        setEditingMessageId(null);
+        setIsEditing(false);
+      } else {
+        sendMessage(activeChannelId, content, replyTo || undefined);
+        setReplyTo(null);
+        setReplyToUsername(null);
+      }
       setValue("");
-      // Stop typing when message sent
       if (activeChannelId) stopTyping(activeChannelId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur envoi message");
     } finally {
       setSending(false);
     }
+  };
+
+  const cancelPendingAction = () => {
+    setIsEditing(false);
+    setEditingMessageId(null);
+    setReplyTo(null);
+    setValue("");
   };
 
   // Typing indicator: track when user is typing
@@ -278,464 +289,89 @@ export function ChatPanel() {
           </div>
         ) : (
           <div className="flex flex-col mt-auto">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className="group relative flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
-              >
-                <div className="mr-4">
-                  <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
-                    {getUsernameById(msg.author_id, msg.username)
-                      .slice(0, 2)
-                      .toUpperCase()}
-                  </div>
-                </div>
-
-                <div className="flex flex-col w-full">
-                  <div className="flex items-center gap-x-2">
-                    <span className="font-semibold text-sm text-zinc-800 dark:text-zinc-100">
-                      {getUsernameById(msg.author_id, msg.username)}
-                    </span>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {new Date(msg.created_at).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <div className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
-                    {(() => {
-                      // If server provided GIF metadata, prefer rendering that
-                      if (msg.gif && msg.gif.url) {
-                        const url = msg.gif.url;
-                        const alt = msg.content || "gif";
-                        return (
-                          <div className="flex flex-col gap-2">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={url}
-                              alt={alt}
-                              className="max-h-56 max-w-[60%] rounded-md object-contain"
-                            />
-                            {msg.content && (
-                              <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                                {msg.content}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      // Fallback: basic detection on content (legacy behavior)
-                      const content = msg.content || "";
-                      const isUrl =
-                        /^(https?:)?\/\//i.test(content) ||
-                        content.includes("giphy.com") ||
-                        content.includes("tenor.com");
-                      const lower = content.toLowerCase();
-                      const isGif =
-                        isUrl &&
-                        (lower.endsWith(".gif") ||
-                          lower.includes("giphy.com") ||
-                          lower.includes("tenor.com") ||
-                          lower.includes("media.tenor"));
-                      if (isGif) {
-                        return (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={content}
-                            alt="gif"
-                            className="max-h-56 max-w-[60%] rounded-md object-contain"
-                          />
-                        );
-                      }
-                      return <p>{content}</p>;
-                    })()}
-                  </div>
-                  {/* Reactions display */}
-                  {msg.reactions && msg.reactions.length > 0 && (
-                    <div className="mt-2 flex gap-2 flex-wrap">
-                      {/** Aggregate by emoji (count + who reacted) */}
-                      {(() => {
-                        const map: Record<
-                          string,
-                          {
-                            count: number;
-                            users: string[];
-                            usernames: string[];
-                          }
-                        > = {};
-                        for (const r of msg.reactions || []) {
-                          if (!map[r.emoji])
-                            map[r.emoji] = {
-                              count: 0,
-                              users: [],
-                              usernames: [],
-                            };
-                          map[r.emoji].count += 1;
-                          map[r.emoji].users.push(r.user_id);
-                          const displayName = r.username
-                            ? r.username
-                            : getUsernameById(r.user_id);
-                          map[r.emoji].usernames.push(displayName);
-                        }
-                        return Object.entries(map).map(([emoji, data]) => {
-                          const reactedByMe = user
-                            ? data.users.includes(user.id)
-                            : false;
-
-                          // Build a list of users with ids & names
-                          const usersList = data.users.map((id, idx) => ({
-                            id,
-                            username: data.usernames[idx] || id.slice(0, 8),
-                          }));
-
-                          const visible =
-                            hoveredReaction &&
-                            hoveredReaction.msgId === msg.id &&
-                            hoveredReaction.emoji === emoji &&
-                            openReactionFor !== msg.id; // hide tooltip while emoji picker is open
-
-                          // Show up to 6 users in the card, then +N
-                          const SHOW_MAX = 6;
-                          const shown = usersList.slice(0, SHOW_MAX);
-                          const remaining = Math.max(
-                            0,
-                            usersList.length - SHOW_MAX,
-                          );
-
-                          return (
-                            <div key={emoji} className="relative">
-                              <button
-                                className={`px-2 py-0.5 rounded-full text-sm flex items-center gap-2 ${reactedByMe ? "bg-indigo-100 text-indigo-700" : "bg-zinc-100 text-zinc-700"}`}
-                                onMouseEnter={() => {
-                                  if (hoverTimeoutRef.current) {
-                                    clearTimeout(hoverTimeoutRef.current);
-                                    hoverTimeoutRef.current = null;
-                                  }
-                                  setHoveredReaction({ msgId: msg.id, emoji });
-                                }}
-                                onMouseLeave={() => {
-                                  if (hoverTimeoutRef.current)
-                                    clearTimeout(hoverTimeoutRef.current);
-                                  hoverTimeoutRef.current = setTimeout(
-                                    () => setHoveredReaction(null),
-                                    250,
-                                  );
-                                }}
-                                onClick={() => {
-                                  // Toggle: add if not reacted, remove if already reacted
-                                  const reactedByMe = user
-                                    ? data.users.includes(user.id)
-                                    : false;
-                                  try {
-                                    if (
-                                      socket &&
-                                      socket.readyState === WebSocket.OPEN
-                                    ) {
-                                      const ev = reactedByMe
-                                        ? {
-                                            type: "ReactionRemove",
-                                            payload: {
-                                              message_id: msg.id,
-                                              emoji,
-                                            },
-                                          }
-                                        : {
-                                            type: "ReactionAdd",
-                                            payload: {
-                                              message_id: msg.id,
-                                              emoji,
-                                            },
-                                          };
-                                      socket.send(JSON.stringify(ev));
-                                    } else {
-                                      setError(
-                                        "Impossible d'envoyer la réaction (non connecté)",
-                                      );
-                                    }
-                                  } catch (e) {
-                                    console.error(
-                                      "Failed to toggle reaction",
-                                      e,
-                                    );
-                                    setError(
-                                      "Erreur lors de l'envoi de la réaction",
-                                    );
-                                  }
-                                }}
-                                onDoubleClick={(e) => e.preventDefault()}
-                              >
-                                <span className="text-lg leading-none">
-                                  {emoji}
-                                </span>
-                                <span className="text-xs">{data.count}</span>
-                              </button>
-
-                              {/* Improved tooltip card */}
-                              {visible && (
-                                <div
-                                  role="dialog"
-                                  aria-label="Réactions"
-                                  onMouseEnter={() => {
-                                    if (hoverTimeoutRef.current) {
-                                      clearTimeout(hoverTimeoutRef.current);
-                                      hoverTimeoutRef.current = null;
-                                    }
-                                    setHoveredReaction({
-                                      msgId: msg.id,
-                                      emoji,
-                                    });
-                                  }}
-                                  onMouseLeave={() => {
-                                    if (hoverTimeoutRef.current)
-                                      clearTimeout(hoverTimeoutRef.current);
-                                    hoverTimeoutRef.current = setTimeout(
-                                      () => setHoveredReaction(null),
-                                      250,
-                                    );
-                                  }}
-                                  // responsive: use left alignment on small screens, limit width to 90vw
-                                  className="absolute -top-30 right-0 md:right-0 left-0 md:left-0 z-40 w-[min(90vw,14rem)] md:w-56 bg-white dark:bg-zinc-900 border rounded-lg px-3 py-2 text-xs shadow-lg"
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="font-semibold">
-                                      {data.count} réaction(s)
-                                    </div>
-                                    {remaining > 0 && (
-                                      <div className="text-xs text-zinc-500">
-                                        +{remaining}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="flex flex-col gap-2 max-h-40 overflow-auto">
-                                    {shown.map((u) => (
-                                      <div
-                                        key={u.id}
-                                        className="flex items-center gap-2"
-                                      >
-                                        <div className="w-6 h-6 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[10px] font-semibold text-zinc-700 dark:text-zinc-100">
-                                          {u.username.slice(0, 2).toUpperCase()}
-                                        </div>
-                                        <div className="truncate">
-                                          {u.username}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        });
-                      })()}
+            {messages.map((msg) => {
+              const isAuthor = user?.id === msg.author_id;
+              const canDelete = isAuthor || canModerate;
+              const messageUsername = getUsernameById(msg.author_id, msg.username);
+              return (
+                <div
+                  key={msg.id}
+                  className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
+                >
+                  <div className="mr-4">
+                    <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
+                      {messageUsername.slice(0, 2).toUpperCase()}
                     </div>
-                  )}
-                  {/* Reaction button (visible on hover) */}
-                  <div className="absolute right-2 top-2 hidden group-hover:flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="h-7 w-7 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 hover:bg-zinc-200 transition"
-                      onClick={() =>
-                        setOpenReactionFor(
-                          openReactionFor === msg.id ? null : msg.id,
-                        )
-                      }
-                      title="Réagir"
-                    >
-                      <Smile className="h-4 w-4" />
-                    </button>
+                  </div>
 
-                    <button
-                      type="button"
-                      className="h-7 w-7 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 hover:bg-zinc-200 transition"
-                      onClick={() =>
-                        setOpenGifPicker(
-                          openGifPicker === msg.id ? null : msg.id,
-                        )
-                      }
-                      title="GIF"
-                    >
-                      <Gift className="h-4 w-4" />
-                    </button>
+                  <div className="flex flex-col w-full">
+                    <div className="flex items-center gap-x-2">
+                      <span className="font-semibold text-sm text-zinc-800 dark:text-zinc-100">
+                        {messageUsername}
+                      </span>
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {new Date(msg.created_at).toLocaleString()}
+                      </span>
+                      {msg.edited_at && (
+                        <span className="text-xs text-indigo-500">(édité)</span>
+                      )}
+                    </div>
 
-                    {/* Emoji picker simple menu */}
-                    {openReactionFor === msg.id && (
-                      <div className="absolute right-10 top-0 z-20 bg-white dark:bg-zinc-900 border rounded-lg shadow-md p-2 flex gap-2">
-                        {[
-                          { k: "😂", t: "rire" },
-                          { k: "❤️", t: "coeur" },
-                          { k: "😮", t: "surpris" },
-                          { k: "👍", t: "like" },
-                        ].map((emo) => (
-                          <button
-                            key={emo.k}
-                            onClick={() => {
-                              // send simple reaction event over WS
-                              try {
-                                if (
-                                  socket &&
-                                  socket.readyState === WebSocket.OPEN
-                                ) {
-                                  const ev = {
-                                    type: "ReactionAdd",
-                                    payload: {
-                                      message_id: msg.id,
-                                      emoji: emo.k,
-                                    },
-                                  };
-                                  socket.send(JSON.stringify(ev));
-                                } else {
-                                  console.warn(
-                                    "WebSocket not connected: cannot send reaction",
-                                  );
-                                  setError(
-                                    "Impossible d'envoyer la réaction (non connecté)",
-                                  );
-                                }
-                              } catch (e) {
-                                console.error("Failed to send reaction", e);
-                                setError(
-                                  "Erreur lors de l'envoi de la réaction",
-                                );
-                              } finally {
-                                setOpenReactionFor(null);
-                              }
-                            }}
-                            title={emo.t}
-                            className="px-2 py-1 text-sm rounded hover:bg-blue-00 dark:hover:bg-zinc-800 transition"
-                          >
-                            {emo.k}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {openGifPicker === msg.id && (
-                      <div className="absolute right-10 top-0 z-20 bg-white dark:bg-zinc-900 border rounded-lg shadow-md p-2 w-64">
-                        <div className="flex gap-2 mb-2">
-                          <input
-                            value={gifQuery}
-                            onChange={(e) => setGifQuery(e.target.value)}
-                            placeholder="Search GIFs"
-                            className="flex-1 px-2 py-1 border rounded bg-zinc-50 dark:bg-zinc-800"
-                          />
-                          <button
-                            onClick={async () => {
-                              try {
-                                const res = await fetch(
-                                  `/api/gifs/search?q=${encodeURIComponent(gifQuery || "trending")}&limit=12`,
-                                );
-                                const json = await res.json();
-                                const results: {
-                                  id: string;
-                                  url: string;
-                                  preview?: string;
-                                }[] = [];
-                                if (json.results) {
-                                  for (const it of json.results) {
-                                    const id = it.id || "";
-                                    let url = "";
-                                    let preview = undefined;
-                                    if (it.media_formats) {
-                                      if (
-                                        it.media_formats.gif &&
-                                        it.media_formats.gif.url
-                                      )
-                                        url = it.media_formats.gif.url;
-                                      else if (
-                                        it.media_formats.tinygif &&
-                                        it.media_formats.tinygif.url
-                                      )
-                                        url = it.media_formats.tinygif.url;
-                                      if (
-                                        it.media_formats.smallgif &&
-                                        it.media_formats.smallgif.url
-                                      )
-                                        preview = it.media_formats.smallgif.url;
-                                    }
-                                    if (!url && it.url) url = it.url;
-                                    if (url)
-                                      results.push({
-                                        id: id.toString(),
-                                        url,
-                                        preview,
-                                      });
-                                  }
-                                } else if (json.data) {
-                                  for (const it of json.data) {
-                                    const id = it.id || "";
-                                    const url =
-                                      it.images?.original?.url ||
-                                      it.images?.fixed_width?.url ||
-                                      "";
-                                    const preview =
-                                      it.images?.preview_gif?.url ||
-                                      it.images?.fixed_width_small_still?.url;
-                                    if (url)
-                                      results.push({
-                                        id: id.toString(),
-                                        url,
-                                        preview,
-                                      });
-                                  }
-                                }
-                                setGifResults(results);
-                              } catch (e) {
-                                console.error("GIF search failed", e);
-                                setGifResults([]);
-                              }
-                            }}
-                            className="px-2 py-1 bg-indigo-600 text-white rounded"
-                          >
-                            Go
-                          </button>
+                    {msg.reply_to && (() => {
+                      const original = messages.find((m) => m.id === msg.reply_to);
+                      return (
+                        <div className="text-xs text-zinc-500 italic mb-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-md">
+                          Réponse à {original ? getUsernameById(original.author_id, original.username) : msg.reply_to.slice(0, 8)}:
+                          <div className="truncate max-w-full">
+                            {original ? original.content : "message introuvable"}
+                          </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 max-h-60 overflow-auto">
-                          {gifResults.map((g) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              key={g.id}
-                              src={g.preview || g.url}
-                              alt="gif"
-                              className="h-20 w-full object-cover rounded cursor-pointer"
-                              onClick={() => {
-                                try {
-                                  if (
-                                    socket &&
-                                    socket.readyState === WebSocket.OPEN &&
-                                    activeChannelId
-                                  ) {
-                                    const ev = {
-                                      type: "MessageSendGif",
-                                      payload: {
-                                        channel_id: activeChannelId,
-                                        gif: {
-                                          id: g.id,
-                                          url: g.url,
-                                          preview: g.preview,
-                                          provider: g.provider,
-                                        },
-                                        caption: null,
-                                      },
-                                    };
-                                    socket.send(JSON.stringify(ev));
-                                  }
-                                } catch (e) {
-                                  console.error("Failed to send gif", e);
-                                  setError("Erreur lors de l'envoi du GIF");
-                                } finally {
-                                  setOpenGifPicker(null);
-                                  setGifResults([]);
-                                  setGifQuery("");
-                                }
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
+
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
+
+                    <div className="mt-2 flex justify-end gap-2">
+                      <button
+                        className="text-indigo-500 hover:text-indigo-700 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-800/40 dark:hover:bg-indigo-700 p-1.5 rounded-full transition"
+                        onClick={() => {
+                          setReplyTo(msg.id);
+                          setReplyToUsername(messageUsername);
+                          setValue("");
+                        }}
+                        title="Répondre"
+                      >
+                        <CornerUpLeft className="h-4 w-4" />
+                      </button>
+                      {isAuthor && (
+                        <button
+                          className="text-emerald-600 hover:text-emerald-800 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-800/40 dark:hover:bg-emerald-700 p-1.5 rounded-full transition"
+                          onClick={() => {
+                            setIsEditing(true);
+                            setEditingMessageId(msg.id);
+                            setValue(msg.content);
+                          }}
+                          title="Modifier"
+                        >
+                          <Edit3 className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className="text-red-600 hover:text-red-800 bg-red-100 hover:bg-red-200 dark:bg-red-800/40 dark:hover:bg-red-700 p-1.5 rounded-full transition"
+                          onClick={() => deleteMessage(activeChannelId || "", msg.id)}
+                          title="Supprimer"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             <div ref={bottomRef} />
           </div>
@@ -746,6 +382,20 @@ export function ChatPanel() {
 
       {/* --- INPUT --- */}
       <div className="p-4 mb-2 shrink-0">
+        {((replyTo && !isEditing) || isEditing) && (
+          <div className="mb-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200 flex items-center justify-between">
+            <div>
+              {isEditing ? "Modification du message en cours" : "Réponse en cours"}
+              {replyTo && !isEditing && replyToUsername ? `: ${replyToUsername}` : ""}
+            </div>
+            <button
+              className="text-indigo-700 underline text-xs flex items-center gap-1"
+              onClick={cancelPendingAction}
+            >
+              <X className="h-3 w-3" /> Annuler
+            </button>
+          </div>
+        )}
         <div className="relative flex items-center gap-2">
           <div className="relative flex-1">
             <button

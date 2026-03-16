@@ -1,6 +1,8 @@
 version: '3.8'
 services:
   backend:
+    profiles:
+      - backend
     environment:
       - RUST_LOG=debug
     volumes:
