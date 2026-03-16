@@ -8,11 +8,15 @@ export interface WsMessage {
   username?: string;
   content: string;
   created_at: string;
+  edited_at?: string;
+  reply_to?: string;
 }
 
 // CLIENT → SERVER events
 type ClientEvent =
-  | { type: "MessageSend"; payload: { channel_id: string; content: string } }
+  | { type: "MessageSend"; payload: { channel_id: string; content: string; reply_to?: string } }
+  | { type: "MessageEdit"; payload: { channel_id: string; message_id: string; content: string } }
+  | { type: "MessageDelete"; payload: { channel_id: string; message_id: string } }
   | { type: "JoinChannel"; payload: { channel_id: string } }
   | { type: "LeaveChannel"; payload: { channel_id: string } }
   | { type: "TypingStart"; payload: { channel_id: string } }
@@ -21,14 +25,16 @@ type ClientEvent =
 
 // SERVER → CLIENT events
 type ServerEvent =
-  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string } }
+  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string; reply_to?: string } }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
   | { type: "UserLeft"; payload: { user_id: string; channel_id: string } }
   | { type: "TypingStart"; payload: { user_id: string; username: string; channel_id: string } }
   | { type: "TypingStop"; payload: { user_id: string; username: string; channel_id: string } }
   | { type: "Pong" }
   | { type: "UserOnline"; payload: { user_id: string } }
-  | { type: "UserOffline"; payload: { user_id: string } };
+  | { type: "UserOffline"; payload: { user_id: string } }
+  | { type: "MessageEdited"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; edited_at: string } }
+  | { type: "MessageDeleted"; payload: { id: string; channel_id: string } };
 
 type WebSocketState = {
   socket: WebSocket | null;
@@ -42,7 +48,9 @@ type WebSocketState = {
   // Actions
   connect: (token: string) => void;
   disconnect: () => void;
-  sendMessage: (channelId: string, content: string) => void;
+  sendMessage: (channelId: string, content: string, replyTo?: string) => void;
+  editMessage: (channelId: string, messageId: string, content: string) => void;
+  deleteMessage: (channelId: string, messageId: string) => void;
   joinChannel: (channelId: string) => void;
   leaveChannel: (channelId: string) => void;
   startTyping: (channelId: string) => void;
@@ -136,20 +144,42 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     }
   },
 
-  sendMessage: (channelId: string, content: string) => {
+  sendMessage: (channelId: string, content: string, replyTo?: string) => {
     const { socket } = get();
-    console.log("📤 Sending message:", { channelId, content, socketState: socket?.readyState });
+    console.log("📤 Sending message:", { channelId, content, replyTo, socketState: socket?.readyState });
     
     if (socket && socket.readyState === WebSocket.OPEN) {
       const event: ClientEvent = {
         type: "MessageSend",
-        payload: { channel_id: channelId, content },
+        payload: { channel_id: channelId, content, reply_to: replyTo },
       };
       const json = JSON.stringify(event);
       console.log("📤 Sending WebSocket event:", json);
       socket.send(json);
     } else {
       console.error("❌ Cannot send message: WebSocket not connected");
+    }
+  },
+
+  editMessage: (channelId: string, messageId: string, content: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "MessageEdit",
+        payload: { channel_id: channelId, message_id: messageId, content },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  deleteMessage: (channelId: string, messageId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "MessageDelete",
+        payload: { channel_id: channelId, message_id: messageId },
+      };
+      socket.send(JSON.stringify(event));
     }
   },
 
@@ -250,6 +280,7 @@ function handleServerEvent(
         username,
         content,
         created_at,
+        reply_to: event.payload.reply_to,
       };
 
       console.log("💬 New message received:", newMessage);
@@ -307,6 +338,36 @@ function handleServerEvent(
           typingUsers: {
             ...state.typingUsers,
             [channel_id]: channelTyping.filter((name) => name !== username),
+          },
+        };
+      });
+      break;
+    }
+
+    case "MessageEdited": {
+      const { id, channel_id, content, edited_at } = event.payload;
+      set((state) => {
+        const channelMessages = state.messages[channel_id] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [channel_id]: channelMessages.map((msg) =>
+              msg.id === id ? { ...msg, content, edited_at } : msg,
+            ),
+          },
+        };
+      });
+      break;
+    }
+
+    case "MessageDeleted": {
+      const { id, channel_id } = event.payload;
+      set((state) => {
+        const channelMessages = state.messages[channel_id] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [channel_id]: channelMessages.filter((msg) => msg.id !== id),
           },
         };
       });

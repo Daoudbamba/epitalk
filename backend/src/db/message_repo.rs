@@ -15,6 +15,10 @@ pub struct MessageDb {
     pub author_id: String,
     pub content: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edited_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<ObjectId>,
 }
 
 pub struct MessageRepo {
@@ -75,6 +79,40 @@ impl MessageRepo {
         Ok(result.inserted_id.as_object_id().unwrap())
     }
 
+    pub async fn find_by_id(&self, message_id: &ObjectId) -> Option<MessageDb> {
+        let collection = self.collection.as_ref()?;
+        match collection.find_one(doc! { "_id": message_id }, None).await {
+            Ok(Some(msg)) => Some(msg),
+            _ => None,
+        }
+    }
+
+    pub async fn update_content(
+        &self,
+        message_id: &ObjectId,
+        new_content: &str,
+        edited_at: &str,
+    ) -> mongodb::error::Result<bool> {
+        let collection = self.collection.as_ref()
+            .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
+
+        let result = collection
+            .update_one(
+                doc! { "_id": message_id },
+                doc! { "$set": { "content": new_content, "edited_at": edited_at } },
+                None,
+            )
+            .await?;
+        Ok(result.matched_count > 0)
+    }
+
+    pub async fn delete(&self, message_id: &ObjectId) -> mongodb::error::Result<bool> {
+        let collection = self.collection.as_ref()
+            .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
+        let result = collection.delete_one(doc! { "_id": message_id }, None).await?;
+        Ok(result.deleted_count > 0)
+    }
+
     // ---------------------------------------------------------
     // 📜 GET HISTORY (trié par created_at DESC) avec pagination
     // params: page (1-based), per_page
@@ -126,6 +164,8 @@ mod tests {
             author_id: "user".into(),
             content: "hello".into(),
             created_at: "now".into(),
+            edited_at: None,
+            reply_to: None,
         };
 
         let res = repo.insert(msg).await;
