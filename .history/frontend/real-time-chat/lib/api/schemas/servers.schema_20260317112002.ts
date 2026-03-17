@@ -38,6 +38,19 @@ export type MemberId = string;
 
 export type Member = z.infer<typeof MemberSchema>;
 
+// Invite schema - matches backend InviteResponse
+export const InviteSchema = z.object({
+  code: z.string(),
+  server_id: z.string(),
+  created_by: z.string(),
+  expires_at: z.string().nullable(),
+  max_uses: z.number().nullable(),
+  uses: z.number(),
+  is_valid: z.boolean().optional(), // Backend includes this in response
+});
+
+export type Invite = z.infer<typeof InviteSchema>;
+
 // Ban schema - matches backend BanResponse
 export const BanSchema = z.object({
   id: z.string(),
@@ -58,16 +71,3 @@ export const BanMemberRequestSchema = z.object({
 });
 
 export type BanMemberRequest = z.infer<typeof BanMemberRequestSchema>;
-
-// Invite schema - matches backend InviteResponse
-export const InviteSchema = z.object({
-  code: z.string(),
-  server_id: z.string(),
-  created_by: z.string(),
-  expires_at: z.string().nullable(),
-  max_uses: z.number().nullable(),
-  uses: z.number(),
-  is_valid: z.boolean().optional(), // Backend includes this in response
-});
-
-export type Invite = z.infer<typeof InviteSchema>;

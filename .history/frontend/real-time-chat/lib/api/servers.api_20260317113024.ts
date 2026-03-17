@@ -1,4 +1,5 @@
 import type { FetchClient } from "./fetchClient";
+import type { Server, Channel, Member, Invite } from "./schemas/servers.schema";
 import type { Server, Channel, Member, Invite, Ban, BanMemberRequest } from "./schemas/servers.schema";
 
 export function createServersApi(client: FetchClient) {
