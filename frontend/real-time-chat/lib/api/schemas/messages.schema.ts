@@ -9,6 +9,15 @@ export const MessageSchema = z.object({
   author_id: z.string(),
   username: z.string().optional(), // Denormalized for display
   content: z.string(),
+  // Optional GIF metadata when message contains a GIF
+  gif: z
+    .object({
+      id: z.string(),
+      url: z.string(),
+      preview: z.string().optional(),
+      provider: z.string().optional(),
+    })
+    .optional(),
   created_at: z.string(),
   deleted_at: z.string().nullable().optional(),
 });

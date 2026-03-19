@@ -19,6 +19,23 @@ pub enum ClientEvent {
     MessageSend {
         channel_id: String,
         content: String,
+        reply_to: Option<String>,
+    },
+    MessageEdit {
+        channel_id: String,
+        message_id: String,
+        content: String,
+    },
+    MessageDelete {
+        channel_id: String,
+        message_id: String,
+    },
+    /// Send a GIF as a message with normalized metadata
+    MessageSendGif {
+        channel_id: String,
+        gif: GifPayload,
+        // optional caption
+        caption: Option<String>,
     },
     JoinChannel {
         channel_id: String,
@@ -31,6 +48,16 @@ pub enum ClientEvent {
     },
     TypingStop {
         channel_id: String,
+    },
+    /// Client requests to add a reaction to a message
+    ReactionAdd {
+        message_id: String,
+        emoji: String,
+    },
+    /// Client requests to remove a reaction from a message
+    ReactionRemove {
+        message_id: String,
+        emoji: String,
     },
     Ping,
 }
@@ -48,6 +75,19 @@ pub enum ServerEvent {
         username: String,
         content: String,
         created_at: String,
+        reply_to: Option<String>,
+    },
+    MessageEdited {
+        id: String,
+        channel_id: String,
+        author_id: String,
+        username: String,
+        content: String,
+        edited_at: String,
+    },
+    MessageDeleted {
+        id: String,
+        channel_id: String,
     },
 
     UserJoined {
@@ -87,6 +127,38 @@ pub enum ServerEvent {
     UserOffline {
         user_id: String,
     },
+
+    ReactionAdded {
+        message_id: String,
+        emoji: String,
+        user_id: String,
+        username: Option<String>,
+    },
+
+    ReactionRemoved {
+        message_id: String,
+        emoji: String,
+        user_id: String,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Reaction {
+    pub emoji: String,
+    pub user_id: String,
+    pub username: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GifPayload {
+    pub id: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -162,6 +234,7 @@ mod tests {
             username: "alice".into(),
             content: "hello".into(),
             created_at: "2024-01-01T00:00:00Z".into(),
+            reply_to: None,
         };
 
         let json = serde_json::to_string(&event).unwrap();
