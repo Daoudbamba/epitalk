@@ -50,14 +50,18 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
     const loadData = async () => {
       setMembersLoading(true);
       try {
-        const [membersData, bansData] = await Promise.all([
-          serversApi.listMembers(activeServerId),
-          serversApi.listBans(activeServerId),
-        ]);
+        const membersData = await serversApi.listMembers(activeServerId);
         setMembers(membersData);
-        setBans(bansData);
+        try {
+          const bansData = await serversApi.listBans(activeServerId);
+          setBans(bansData);
+        } catch (banErr) {
+          console.error("Failed to load bans:", banErr);
+          setActionError(getErrorMessage(banErr));
+          setBans([]);
+        }
       } catch (err) {
-        console.error("Failed to load members/bans:", err);
+        console.error("Failed to load members:", err);
         setMembers([]);
         setBans([]);
       } finally {
