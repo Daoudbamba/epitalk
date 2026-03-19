@@ -24,6 +24,7 @@ impl MessageService {
             author_id,
             content,
             created_at,
+            reactions: None,
             edited_at: None,
             reply_to,
         };
@@ -55,5 +56,28 @@ impl MessageService {
 
     pub async fn delete_message(&self, message_id: &ObjectId) -> Result<bool, mongodb::error::Error> {
         self.repo.delete(message_id).await
+    }
+
+    pub async fn add_reaction(
+        &self,
+        message_id: &str,
+        emoji: &str,
+        user_id: &str,
+        username: Option<&str>,
+    ) -> Result<(Option<String>, bool), mongodb::error::Error> {
+        let oid = ObjectId::parse_str(message_id)
+            .map_err(|e| mongodb::error::Error::custom(format!("invalid message id: {}", e)))?;
+        self.repo.add_reaction(&oid, emoji, user_id, username).await
+    }
+
+    pub async fn remove_reaction(
+        &self,
+        message_id: &str,
+        emoji: &str,
+        user_id: &str,
+    ) -> Result<Option<String>, mongodb::error::Error> {
+        let oid = ObjectId::parse_str(message_id)
+            .map_err(|e| mongodb::error::Error::custom(format!("invalid message id: {}", e)))?;
+        self.repo.remove_reaction(&oid, emoji, user_id).await
     }
 }

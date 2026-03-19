@@ -1,5 +1,5 @@
 use mongodb::{
-    bson::{doc, oid::ObjectId},
+    bson::{doc, oid::ObjectId, to_bson},
     options::{FindOptions, IndexOptions},
     Collection, IndexModel,
 };
@@ -24,6 +24,8 @@ pub struct MessageDb {
     pub author_id: String,
     pub content: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reactions: Option<Vec<Reaction>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edited_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -115,6 +117,89 @@ impl MessageRepo {
         Ok(result.matched_count > 0)
     }
 
+    pub async fn add_reaction(
+        &self,
+        message_id: &ObjectId,
+        emoji: &str,
+        user_id: &str,
+        username: Option<&str>,
+    ) -> mongodb::error::Result<(Option<String>, bool)> {
+        let collection = self.collection.as_ref().ok_or_else(|| {
+            mongodb::error::Error::custom("MongoDB not configured")
+        })?;
+
+        let existing = collection
+            .find_one(doc! { "_id": message_id }, None)
+            .await?;
+
+        let msg = match existing {
+            Some(m) => m,
+            None => return Ok((None, false)),
+        };
+
+        let mut reactions = msg.reactions.unwrap_or_default();
+        let idx = reactions.iter().position(|r| r.emoji == emoji && r.user_id == user_id);
+
+        let was_added = if let Some(pos) = idx {
+            reactions.remove(pos);
+            false
+        } else {
+            reactions.push(Reaction {
+                emoji: emoji.to_string(),
+                user_id: user_id.to_string(),
+                username: username.map(|u| u.to_string()),
+                created_at: chrono::Utc::now().to_rfc3339(),
+            });
+            true
+        };
+
+        collection
+            .update_one(
+                doc! { "_id": message_id },
+                doc! { "$set": { "reactions": to_bson(&reactions)? } },
+                None,
+            )
+            .await?;
+
+        Ok((Some(msg.channel_id), was_added))
+    }
+
+    pub async fn remove_reaction(
+        &self,
+        message_id: &ObjectId,
+        emoji: &str,
+        user_id: &str,
+    ) -> mongodb::error::Result<Option<String>> {
+        let collection = self.collection.as_ref().ok_or_else(|| {
+            mongodb::error::Error::custom("MongoDB not configured")
+        })?;
+
+        let existing = collection
+            .find_one(doc! { "_id": message_id }, None)
+            .await?;
+
+        let msg = match existing {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+
+        let reactions = msg.reactions.unwrap_or_default();
+        let filtered: Vec<Reaction> = reactions
+            .into_iter()
+            .filter(|r| !(r.emoji == emoji && r.user_id == user_id))
+            .collect();
+
+        collection
+            .update_one(
+                doc! { "_id": message_id },
+                doc! { "$set": { "reactions": to_bson(&filtered)? } },
+                None,
+            )
+            .await?;
+
+        Ok(Some(msg.channel_id))
+    }
+
     pub async fn delete(&self, message_id: &ObjectId) -> mongodb::error::Result<bool> {
         let collection = self.collection.as_ref()
             .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
@@ -173,6 +258,7 @@ mod tests {
             author_id: "user".into(),
             content: "hello".into(),
             created_at: "now".into(),
+            reactions: None,
             edited_at: None,
             reply_to: None,
         };

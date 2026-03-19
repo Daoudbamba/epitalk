@@ -46,6 +46,17 @@ export function ChatPanel() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
+  // GIF picker state
+  const [openGifPicker, setOpenGifPicker] = useState<"input" | null>(null);
+  const [gifQuery, setGifQuery] = useState("");
+  const [gifResults, setGifResults] = useState<{ id: string; url: string; preview?: string; provider?: string }[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
+
+  // Emoji reaction picker state
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+  const [showInputEmojis, setShowInputEmojis] = useState(false);
+  const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
+
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const canLoad = !!activeServerId && !!activeChannelId;
@@ -99,6 +110,27 @@ export function ChatPanel() {
     },
     [user, members],
   );
+
+  const parseGifContent = useCallback((content: string) => {
+    try {
+      const parsed = JSON.parse(content);
+      if (
+        parsed &&
+        parsed.type === "gif" &&
+        parsed.gif &&
+        typeof parsed.gif.url === "string"
+      ) {
+        return parsed as {
+          type: "gif";
+          gif: { id: string; url: string; preview?: string; provider?: string };
+          caption?: string;
+        };
+      }
+    } catch {
+      // Not JSON
+    }
+    return null;
+  }, []);
 
   const currentMemberRole = members.find((m) => m.user_id === user?.id)?.role;
   const canModerate = currentMemberRole === "Owner" || currentMemberRole === "Admin" || currentMemberRole === "Moderator";
@@ -296,8 +328,81 @@ export function ChatPanel() {
               return (
                 <div
                   key={msg.id}
-                  className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
+                  className="group relative flex items-start px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
                 >
+                  {/* Action buttons — top-right, visible on hover */}
+                  <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-0.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-sm px-1 py-0.5 z-10">
+                    <button
+                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                      onClick={() => {
+                        setReplyTo(msg.id);
+                        setReplyToUsername(messageUsername);
+                        setValue("");
+                      }}
+                      title="Répondre"
+                    >
+                      <CornerUpLeft className="h-4 w-4" />
+                    </button>
+                    {isAuthor && (
+                      <button
+                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-emerald-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                        onClick={() => {
+                          setIsEditing(true);
+                          setEditingMessageId(msg.id);
+                          setValue(msg.content);
+                        }}
+                        title="Modifier"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-red-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                        onClick={() => deleteMessage(activeChannelId || "", msg.id)}
+                        title="Supprimer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-amber-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                      onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                      title="Réaction"
+                    >
+                      <Smile className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Quick emoji picker */}
+                  {emojiPickerMsgId === msg.id && (
+                    <div className="absolute -top-3 right-4 z-20 flex items-center gap-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg px-2 py-1">
+                      {QUICK_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          className="text-lg hover:scale-125 transition-transform p-0.5"
+                          onClick={() => {
+                            if (socket && socket.readyState === WebSocket.OPEN) {
+                              socket.send(JSON.stringify({
+                                type: "ReactionAdd",
+                                payload: { message_id: msg.id, emoji },
+                              }));
+                            }
+                            setEmojiPickerMsgId(null);
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                      <button
+                        className="ml-1 text-zinc-400 hover:text-zinc-600 text-xs"
+                        onClick={() => setEmojiPickerMsgId(null)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="mr-4">
                     <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
                       {messageUsername.slice(0, 2).toUpperCase()}
@@ -329,45 +434,70 @@ export function ChatPanel() {
                       );
                     })()}
 
-                    <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
-                      {msg.content}
-                    </p>
+                    {(() => {
+                      const gifMessage = parseGifContent(msg.content);
+                      if (gifMessage) {
+                        return (
+                          <div className="mt-2 rounded-md border border-zinc-200 dark:border-zinc-700 p-2 bg-zinc-50 dark:bg-zinc-900">
+                            <img
+                              src={gifMessage.gif.url}
+                              alt="GIF"
+                              className="h-36 w-full rounded-md object-cover"
+                            />
+                            {gifMessage.caption && (
+                              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                                {gifMessage.caption}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
 
-                    <div className="mt-2 flex justify-end gap-2">
-                      <button
-                        className="text-indigo-500 hover:text-indigo-700 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-800/40 dark:hover:bg-indigo-700 p-1.5 rounded-full transition"
-                        onClick={() => {
-                          setReplyTo(msg.id);
-                          setReplyToUsername(messageUsername);
-                          setValue("");
-                        }}
-                        title="Répondre"
-                      >
-                        <CornerUpLeft className="h-4 w-4" />
-                      </button>
-                      {isAuthor && (
-                        <button
-                          className="text-emerald-600 hover:text-emerald-800 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-800/40 dark:hover:bg-emerald-700 p-1.5 rounded-full transition"
-                          onClick={() => {
-                            setIsEditing(true);
-                            setEditingMessageId(msg.id);
-                            setValue(msg.content);
-                          }}
-                          title="Modifier"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          className="text-red-600 hover:text-red-800 bg-red-100 hover:bg-red-200 dark:bg-red-800/40 dark:hover:bg-red-700 p-1.5 rounded-full transition"
-                          onClick={() => deleteMessage(activeChannelId || "", msg.id)}
-                          title="Supprimer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
+                      return (
+                        <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
+                          {msg.content}
+                        </p>
+                      );
+                    })()}
+
+                    {/* Reactions display */}
+                    {msg.reactions && msg.reactions.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {Object.entries(
+                          msg.reactions.reduce<Record<string, { count: number; users: string[]; userIds: string[] }>>((acc, r) => {
+                            if (!acc[r.emoji]) acc[r.emoji] = { count: 0, users: [], userIds: [] };
+                            acc[r.emoji].count++;
+                            acc[r.emoji].users.push(r.username || r.user_id.slice(0, 6));
+                            acc[r.emoji].userIds.push(r.user_id);
+                            return acc;
+                          }, {})
+                        ).map(([emoji, data]) => {
+                          const hasReacted = data.userIds.includes(user?.id || "");
+                          return (
+                            <button
+                              key={emoji}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition ${
+                                hasReacted
+                                  ? "bg-indigo-100 border-indigo-300 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-600 dark:text-indigo-300"
+                                  : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400"
+                              }`}
+                              title={data.users.join(", ")}
+                              onClick={() => {
+                                if (socket && socket.readyState === WebSocket.OPEN) {
+                                  socket.send(JSON.stringify({
+                                    type: "ReactionAdd",
+                                    payload: { message_id: msg.id, emoji },
+                                  }));
+                                }
+                              }}
+                            >
+                              <span>{emoji}</span>
+                              <span>{data.count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -438,9 +568,30 @@ export function ChatPanel() {
                 <Sticker className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-pointer" />
               </button>
 
-              <span title="Fonction à venir">
-                <Smile className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-not-allowed" />
-              </span>
+              <button
+                type="button"
+                onClick={() => setShowInputEmojis(!showInputEmojis)}
+                title="Emojis"
+                className="h-6 w-6 flex items-center justify-center"
+              >
+                <Smile className="h-5 w-5 text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition cursor-pointer" />
+              </button>
+              {showInputEmojis && (
+                <div className="absolute bottom-10 right-0 z-50 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg px-2 py-2 flex flex-wrap gap-1 w-48">
+                  {QUICK_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                      onClick={() => {
+                        setValue((prev) => prev + emoji);
+                        setShowInputEmojis(false);
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

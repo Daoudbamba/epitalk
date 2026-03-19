@@ -10,6 +10,7 @@ export interface WsMessage {
   created_at: string;
   edited_at?: string;
   reply_to?: string;
+  reactions?: { emoji: string; user_id: string; username?: string }[];
 }
 
 // CLIENT → SERVER events
@@ -33,7 +34,7 @@ type ClientEvent =
 
 // SERVER → CLIENT events
 type ServerEvent =
-  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string; reply_to?: string } }
+  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string; reply_to?: string; reactions?: { emoji: string; user_id: string; username?: string }[]; } }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
   | { type: "UserLeft"; payload: { user_id: string; channel_id: string } }
   | {
@@ -47,8 +48,12 @@ type ServerEvent =
   | { type: "Pong" }
   | { type: "UserOnline"; payload: { user_id: string } }
   | { type: "UserOffline"; payload: { user_id: string } }
-  | { type: "MessageEdited"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; edited_at: string } }
-  | { type: "MessageDeleted"; payload: { id: string; channel_id: string } };
+  | { type: "MessageEdited"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; edited_at: string; } }
+  | { type: "MessageDeleted"; payload: { id: string; channel_id: string } }
+  | { type: "ReactionAdded"; payload: { message_id: string; emoji: string; user_id: string; username?: string } }
+  | { type: "ReactionRemoved"; payload: { message_id: string; emoji: string; user_id: string } }
+  | { type: "Error"; payload: { code: string; message: string } }
+  | { type: "Pong" };
 
 type WebSocketState = {
   socket: WebSocket | null;
@@ -88,8 +93,18 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   connect: (token: string) => {
     const existingSocket = get().socket;
-    if (existingSocket && existingSocket.readyState === WebSocket.OPEN) {
-      return; // Already connected
+    if (existingSocket) {
+      if (existingSocket.readyState === WebSocket.OPEN) {
+        return; // Already connected
+      }
+      // Close any lingering CONNECTING socket to avoid duplicates
+      if (existingSocket.readyState === WebSocket.CONNECTING) {
+        existingSocket.onopen = null;
+        existingSocket.onmessage = null;
+        existingSocket.onerror = null;
+        existingSocket.onclose = null;
+        existingSocket.close();
+      }
     }
 
     const wsUrl = `${WS_URL}?token=${encodeURIComponent(token)}`;
@@ -297,8 +312,6 @@ function handleServerEvent(
         username,
         content,
         created_at,
-        reactions,
-        gif,
       } = event.payload;
       const newMessage: WsMessage = {
         id,
@@ -503,7 +516,12 @@ function handleServerEvent(
 
     case "Pong": {
       // Heartbeat received
-      console.log("💓 Pong received");
+      break;
+    }
+
+    case "Error": {
+      console.error("❌ Server error:", event.payload.code, event.payload.message);
+      set({ error: `[${event.payload.code}] ${event.payload.message}` });
       break;
     }
   }

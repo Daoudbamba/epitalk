@@ -5,7 +5,7 @@ use axum::{
     routing::get,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use reqwest::Url;
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ pub struct GifResponse {
 
 #[axum::debug_handler]
 async fn search_gifs(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     Query(params): Query<GifQuery>,
 ) -> (StatusCode, Json<GifResponse>) {
     let q = params.q;
@@ -147,5 +147,6 @@ async fn search_gifs(
         }
     }
 
-    (StatusCode::BAD_REQUEST, Json(GifResponse { results: vec![] }))
+    tracing::warn!("No TENOR_API_KEY or GIPHY_API_KEY configured — GIF search unavailable");
+    (StatusCode::OK, Json(GifResponse { results: vec![] }))
 }

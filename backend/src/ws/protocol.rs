@@ -142,6 +142,7 @@ pub enum ServerEvent {
     },
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Reaction {
     pub emoji: String,

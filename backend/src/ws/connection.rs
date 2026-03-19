@@ -14,7 +14,7 @@ use crate::ws::hub::{ConnId, Hub};
 use mongodb::bson::oid::ObjectId;
 use crate::ws::protocol::{
     validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_FRAME_BYTES,
-    TYPING_THROTTLE_MS, Reaction as WsReaction, GifPayload as WsGifPayload,
+    TYPING_THROTTLE_MS,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -199,9 +199,6 @@ pub async fn handle_connection(
             };
 
             match event {
-                // ======================================================
-                // MESSAGE SEND (MongoDB + WebSocket)
-                // ======================================================
                 ClientEvent::MessageSend {
                     channel_id,
                     content,
@@ -285,10 +282,6 @@ pub async fn handle_connection(
 
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
-
-                // ======================================================
-                // MESSAGE EDIT
-                // ======================================================
                 ClientEvent::MessageEdit {
                     channel_id,
                     message_id,
@@ -368,10 +361,6 @@ pub async fn handle_connection(
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
-
-                // ======================================================
-                // MESSAGE DELETE
-                // ======================================================
                 ClientEvent::MessageDelete {
                     channel_id,
                     message_id,
@@ -449,10 +438,6 @@ pub async fn handle_connection(
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
-
-                // ======================================================
-                // JOIN CHANNEL + HISTORY
-                // ======================================================
                 ClientEvent::JoinChannel { channel_id } => {
                     if let Err(reason) = validate_channel_id(&channel_id) {
                         send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
@@ -520,10 +505,6 @@ pub async fn handle_connection(
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
-
-                // ======================================================
-                // LEAVE CHANNEL
-                // ======================================================
                 ClientEvent::LeaveChannel { channel_id } => {
                     if let Err(reason) = validate_channel_id(&channel_id) {
                         send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
@@ -538,10 +519,6 @@ pub async fn handle_connection(
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
-
-                // ======================================================
-                // TYPING START (throttled)
-                // ======================================================
                 ClientEvent::TypingStart { channel_id } => {
                     if let Err(reason) = validate_channel_id(&channel_id) {
                         send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
@@ -574,10 +551,6 @@ pub async fn handle_connection(
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
-
-                // ======================================================
-                // TYPING STOP
-                // ======================================================
                 ClientEvent::TypingStop { channel_id } => {
                     if let Err(reason) = validate_channel_id(&channel_id) {
                         send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
@@ -604,10 +577,6 @@ pub async fn handle_connection(
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
-
-                // ======================================================
-                // REACTION ADD / REMOVE
-                // ======================================================
                 ClientEvent::ReactionAdd { message_id, emoji } => {
                     // Resolve username for the reacting user
                     let username = resolve_username(
@@ -647,7 +616,6 @@ pub async fn handle_connection(
                         }
                     }
                 },
-
                 ClientEvent::ReactionRemove { message_id, emoji } => {
                     match message_service_recv
                         .remove_reaction(&message_id, &emoji, &user_id_recv)
@@ -669,10 +637,6 @@ pub async fn handle_connection(
                         }
                     }
                 },
-
-                // ======================================================
-                // PING → PONG + HEARTBEAT
-                // ======================================================
                 ClientEvent::Ping => {
                     hub_recv.heartbeat(&conn_id);
                     // Refresh presence timestamp
@@ -684,7 +648,76 @@ pub async fn handle_connection(
                         }
                     }
                 },
-            }
+                ClientEvent::MessageSendGif { channel_id, gif, caption } => {
+                    if let Err(reason) = validate_channel_id(&channel_id) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
+                        continue;
+                    }
+
+                    if gif.id.trim().is_empty() || gif.url.trim().is_empty() {
+                        send_error(&hub_recv, &conn_id, "INVALID_GIF", "gif id and url are required");
+                        continue;
+                    }
+
+                    let _server_id = match resolve_server_id(
+                        &channel_id,
+                        &pg_pool_recv,
+                        &mut channel_server_cache,
+                        &hub_recv,
+                        &conn_id,
+                    )
+                    .await
+                    {
+                        Some(sid) => sid,
+                        None => continue,
+                    };
+
+                    let caption_text = caption.unwrap_or_default();
+                    let content = serde_json::json!({
+                        "type": "gif",
+                        "gif": {
+                            "id": gif.id,
+                            "url": gif.url,
+                            "preview": gif.preview,
+                            "provider": gif.provider,
+                        },
+                        "caption": caption_text,
+                    })
+                    .to_string();
+
+                    let created_at = chrono::Utc::now().to_rfc3339();
+
+                    let id = message_service_recv
+                        .create_message(
+                            channel_id.clone(),
+                            user_id_recv.clone(),
+                            content.clone(),
+                            created_at.clone(),
+                            None,
+                        )
+                        .await;
+
+                    tracing::info!("💾 GIF message saved to MongoDB with id={}", id.to_hex());
+
+                    let username = resolve_username(
+                        &user_id_recv,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
+
+                    let event = ServerEvent::MessageNew {
+                        id: id.to_hex(),
+                        channel_id: channel_id.clone(),
+                        author_id: user_id_recv.clone(),
+                        username,
+                        content,
+                        created_at,
+                        reply_to: None,
+                    };
+                    hub_recv.broadcast_room(&channel_id, event).await;
+                },
+                            }
         }
     });
 
