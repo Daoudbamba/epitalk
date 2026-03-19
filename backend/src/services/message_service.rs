@@ -1,5 +1,5 @@
 use crate::db::message_repo::{MessageDb, MessageRepo};
-use mongodb::bson::{oid::ObjectId};
+use mongodb::bson::{oid::ObjectId, Document};
 
 pub struct MessageService {
     repo: MessageRepo,
@@ -79,5 +79,9 @@ impl MessageService {
         let oid = ObjectId::parse_str(message_id)
             .map_err(|e| mongodb::error::Error::custom(format!("invalid message id: {}", e)))?;
         self.repo.remove_reaction(&oid, emoji, user_id).await
+    }
+
+    pub async fn get_dm_conversations(&self, user_id: &str) -> Vec<Document> {
+        self.repo.find_dm_conversations(user_id).await
     }
 }

@@ -59,6 +59,37 @@ pub enum ClientEvent {
         message_id: String,
         emoji: String,
     },
+    /// Send a direct message to another user
+    DmSend {
+        recipient_id: String,
+        content: String,
+        reply_to: Option<String>,
+    },
+    /// Edit a direct message
+    DmEdit {
+        conversation_id: String,
+        message_id: String,
+        content: String,
+    },
+    /// Delete a direct message
+    DmDelete {
+        conversation_id: String,
+        message_id: String,
+    },
+    /// Send a GIF as a direct message
+    DmSendGif {
+        recipient_id: String,
+        gif: GifPayload,
+        caption: Option<String>,
+    },
+    /// Join a DM conversation room (loads history)
+    JoinDm {
+        peer_id: String,
+    },
+    /// Leave a DM conversation room
+    LeaveDm {
+        peer_id: String,
+    },
     Ping,
 }
 
@@ -139,6 +170,33 @@ pub enum ServerEvent {
         message_id: String,
         emoji: String,
         user_id: String,
+    },
+
+    /// A new direct message
+    DmNew {
+        id: String,
+        conversation_id: String,
+        author_id: String,
+        username: String,
+        content: String,
+        created_at: String,
+        reply_to: Option<String>,
+    },
+
+    /// A direct message was edited
+    DmEdited {
+        id: String,
+        conversation_id: String,
+        author_id: String,
+        username: String,
+        content: String,
+        edited_at: String,
+    },
+
+    /// A direct message was deleted
+    DmDeleted {
+        id: String,
+        conversation_id: String,
     },
 }
 
