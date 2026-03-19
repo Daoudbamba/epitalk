@@ -238,14 +238,31 @@ pub async fn handle_connection(
                     );
                     let created_at = chrono::Utc::now().to_rfc3339();
 
-                    let id = message_service_recv
+                    let id = match message_service_recv
                         .create_message(
                             channel_id.clone(),
                             user_id_recv.clone(),
                             content.clone(),
                             created_at.clone(),
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(id) => id,
+                        Err(e) => {
+                            tracing::error!(
+                                channel = %channel_id,
+                                user = %user_id_recv,
+                                "Failed to persist message in MongoDB: {e}"
+                            );
+                            send_error(
+                                &hub_recv,
+                                &conn_id,
+                                "MESSAGE_PERSIST_FAILED",
+                                "failed to persist message",
+                            );
+                            continue;
+                        },
+                    };
 
                     tracing::info!("💾 Message saved to MongoDB with id={}", id.to_hex());
 

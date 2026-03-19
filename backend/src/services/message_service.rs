@@ -19,7 +19,7 @@ impl MessageService {
         author_id: String,
         content: String,
         created_at: String,
-    ) -> ObjectId {
+    ) -> mongodb::error::Result<ObjectId> {
         let msg = MessageDb {
             id: None,
             channel_id,
@@ -28,7 +28,7 @@ impl MessageService {
             created_at,
         };
 
-        self.repo.insert(msg).await.unwrap()
+        self.repo.insert(msg).await
     }
 
     // ---------------------------------------------------------

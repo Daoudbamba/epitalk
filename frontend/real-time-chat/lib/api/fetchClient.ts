@@ -1,5 +1,7 @@
 import { ApiError, parseApiError } from "./errors";
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+
 export class FetchClient {
   constructor(private baseUrl: string = "") {}
 
@@ -23,15 +25,27 @@ export class FetchClient {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
+
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
         method,
         headers,
+        signal: controller.signal,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
-    } catch {
-      throw new ApiError(0, "Impossible de contacter le serveur. Vérifiez votre connexion.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new ApiError(
+          0,
+          "Le serveur met trop de temps a repondre. Verifiez qu'il est demarre et reessayez."
+        );
+      }
+      throw new ApiError(0, "Impossible de contacter le serveur. Verifiez votre connexion.");
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (!res.ok) {
