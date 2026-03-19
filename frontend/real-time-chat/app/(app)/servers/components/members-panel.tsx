@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
+import { useDmStore } from "@/store/dm.store";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 
@@ -18,6 +20,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  const router = useRouter();
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const currentUser = useAuthStore((s) => s.user);
@@ -26,6 +29,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const membersLoading = useMemberStore((s) => s.loading);
   const setMembersLoading = useMemberStore((s) => s.setLoading);
   const onlineUsers = useWebSocketStore((s) => s.onlineUsers);
+  const setActivePeer = useDmStore((s) => s.setActivePeer);
 
   const server = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
@@ -174,6 +178,22 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
                       className="h-6 w-6 p-0 text-xs"
                     >
                       {loadingKick === m.user_id ? "..." : "×"}
+                    </Button>
+                  )}
+
+                  {/* DM button — don't show for yourself */}
+                  {currentUser && m.user_id !== currentUser.id && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setActivePeer(m.user_id);
+                        router.push("/dm");
+                      }}
+                      title="Message privé"
+                      className="h-6 w-6 p-0 text-xs text-zinc-400 hover:text-[#023BFC]"
+                    >
+                      💬
                     </Button>
                   )}
                 </div>

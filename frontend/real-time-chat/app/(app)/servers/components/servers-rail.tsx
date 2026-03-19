@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -164,10 +165,14 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   return (
     <aside className="w-[88px] my-4 ml-3 rounded-2xl flex flex-col items-center gap-4 py-6 bg-gradient-to-b from-[#F7F8FA] to-white border border-[#E5E7EB] shadow-lg">
 
-      {/* Logo */}
-      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg glow-blue-sm">
+      {/* Logo — navigates to DM */}
+      <Link
+        href="/dm"
+        className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg glow-blue-sm hover:scale-105 transition-transform duration-200"
+        title="Messages privés"
+      >
         <span className="text-white font-bold text-lg">B</span>
-      </div>
+      </Link>
       
       <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
 

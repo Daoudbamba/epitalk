@@ -23,6 +23,12 @@ type ClientEvent =
   | { type: "TypingStart"; payload: { channel_id: string } }
   | { type: "TypingStop"; payload: { channel_id: string } }
   | { type: "Ping" }
+  | { type: "DmSend"; payload: { recipient_id: string; content: string; reply_to?: string } }
+  | { type: "DmEdit"; payload: { conversation_id: string; message_id: string; content: string } }
+  | { type: "DmDelete"; payload: { conversation_id: string; message_id: string } }
+  | { type: "DmSendGif"; payload: { recipient_id: string; gif: { id: string; url: string; preview?: string; provider?: string }; caption?: string | null } }
+  | { type: "JoinDm"; payload: { peer_id: string } }
+  | { type: "LeaveDm"; payload: { peer_id: string } }
   | {
       type: "MessageSendGif";
       payload: {
@@ -53,13 +59,18 @@ type ServerEvent =
   | { type: "ReactionAdded"; payload: { message_id: string; emoji: string; user_id: string; username?: string } }
   | { type: "ReactionRemoved"; payload: { message_id: string; emoji: string; user_id: string } }
   | { type: "Error"; payload: { code: string; message: string } }
+  | { type: "DmNew"; payload: { id: string; conversation_id: string; author_id: string; username: string; content: string; created_at: string; reply_to?: string } }
+  | { type: "DmEdited"; payload: { id: string; conversation_id: string; author_id: string; username: string; content: string; edited_at: string } }
+  | { type: "DmDeleted"; payload: { id: string; conversation_id: string } }
   | { type: "Pong" };
 
 type WebSocketState = {
   socket: WebSocket | null;
   isConnected: boolean;
   messages: Record<string, WsMessage[]>; // channel_id -> messages
+  dmMessages: Record<string, WsMessage[]>; // conversation_id -> messages
   currentChannelId: string | null;
+  currentDmPeerId: string | null;
   typingUsers: Record<string, string[]>; // channel_id -> user_ids
   onlineUsers: string[];
   error: string | null;
@@ -78,6 +89,15 @@ type WebSocketState = {
   clearMessages: (channelId: string) => void;
   setCurrentChannel: (channelId: string | null) => void;
   setMessages: (channelId: string, messages: WsMessage[]) => void;
+  // DM actions
+  sendDm: (recipientId: string, content: string, replyTo?: string) => void;
+  editDm: (conversationId: string, messageId: string, content: string) => void;
+  deleteDm: (conversationId: string, messageId: string) => void;
+  sendDmGif: (recipientId: string, gif: { id: string; url: string; preview?: string; provider?: string }, caption?: string | null) => void;
+  joinDm: (peerId: string) => void;
+  leaveDm: (peerId: string) => void;
+  getDmMessages: (conversationId: string) => WsMessage[];
+  setCurrentDmPeer: (peerId: string | null) => void;
 };
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
@@ -86,7 +106,9 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   socket: null,
   isConnected: false,
   messages: {},
+  dmMessages: {},
   currentChannelId: null,
+  currentDmPeerId: null,
   typingUsers: {},
   onlineUsers: [],
   error: null,
@@ -290,6 +312,90 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
       },
     }));
   },
+
+  // ─── DM Actions ────────────────────────────────────────────
+
+  sendDm: (recipientId: string, content: string, replyTo?: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmSend",
+        payload: { recipient_id: recipientId, content, reply_to: replyTo },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  editDm: (conversationId: string, messageId: string, content: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmEdit",
+        payload: { conversation_id: conversationId, message_id: messageId, content },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  deleteDm: (conversationId: string, messageId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmDelete",
+        payload: { conversation_id: conversationId, message_id: messageId },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  sendDmGif: (recipientId: string, gif: { id: string; url: string; preview?: string; provider?: string }, caption?: string | null) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmSendGif",
+        payload: { recipient_id: recipientId, gif, caption },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  joinDm: (peerId: string) => {
+    const { socket, currentDmPeerId } = get();
+
+    // Leave previous DM room
+    if (currentDmPeerId && currentDmPeerId !== peerId) {
+      get().leaveDm(currentDmPeerId);
+    }
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "JoinDm",
+        payload: { peer_id: peerId },
+      };
+      socket.send(JSON.stringify(event));
+      set({ currentDmPeerId: peerId });
+    }
+  },
+
+  leaveDm: (peerId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "LeaveDm",
+        payload: { peer_id: peerId },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  getDmMessages: (conversationId: string) => {
+    const { dmMessages } = get();
+    return dmMessages[conversationId] || [];
+  },
+
+  setCurrentDmPeer: (peerId: string | null) => {
+    set({ currentDmPeerId: peerId });
+  },
 }));
 
 // Handle incoming server events
@@ -377,6 +483,28 @@ function handleServerEvent(
           }
         }
 
+        // Also search in DM messages
+        const newDmMessages = { ...state.dmMessages } as Record<string, WsMessage[]>;
+        for (const [convId, msgs] of Object.entries(newDmMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+            const already = existing.some(
+              (r) => r.user_id === user_id && r.emoji === emoji,
+            );
+            if (already) return state;
+            const updated: WsMessage = {
+              ...target,
+              reactions: [...existing, { emoji, user_id, username }],
+            };
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newDmMessages[convId] = updatedList;
+            return { dmMessages: newDmMessages };
+          }
+        }
+
         return state;
       });
       break;
@@ -410,6 +538,27 @@ function handleServerEvent(
             newMessages[chanId] = updatedList;
 
             return { messages: newMessages };
+          }
+        }
+
+        // Also search in DM messages
+        const newDmMessages = { ...state.dmMessages } as Record<string, WsMessage[]>;
+        for (const [convId, msgs] of Object.entries(newDmMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+            const updatedReactions = existing.filter(
+              (r) => !(r.user_id === user_id && r.emoji === emoji),
+            );
+            const updated: WsMessage = {
+              ...target,
+              reactions: updatedReactions,
+            };
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newDmMessages[convId] = updatedList;
+            return { dmMessages: newDmMessages };
           }
         }
 
@@ -522,6 +671,66 @@ function handleServerEvent(
     case "Error": {
       console.error("❌ Server error:", event.payload.code, event.payload.message);
       set({ error: `[${event.payload.code}] ${event.payload.message}` });
+      break;
+    }
+
+    case "DmNew": {
+      const { id, conversation_id, author_id, username, content, created_at, reply_to } = event.payload;
+      const newMessage: WsMessage = {
+        id,
+        channel_id: conversation_id,
+        author_id,
+        username,
+        content,
+        created_at,
+        reply_to,
+      };
+
+      set((state) => {
+        const convMessages = state.dmMessages[conversation_id] || [];
+
+        // Avoid duplicates
+        if (convMessages.some((m) => m.id === id)) {
+          return state;
+        }
+
+        return {
+          dmMessages: {
+            ...state.dmMessages,
+            [conversation_id]: [...convMessages, newMessage],
+          },
+        };
+      });
+      break;
+    }
+
+    case "DmEdited": {
+      const { id, conversation_id, content, edited_at } = event.payload;
+      set((state) => {
+        const convMessages = state.dmMessages[conversation_id] || [];
+        return {
+          dmMessages: {
+            ...state.dmMessages,
+            [conversation_id]: convMessages.map((msg) =>
+              msg.id === id ? { ...msg, content, edited_at } : msg,
+            ),
+          },
+        };
+      });
+      break;
+    }
+
+    case "DmDeleted": {
+      const { id, conversation_id } = event.payload;
+      set((state) => {
+        const convMessages = state.dmMessages[conversation_id] || [];
+        return {
+          dmMessages: {
+            ...state.dmMessages,
+            [conversation_id]: convMessages.filter((msg) => msg.id !== id),
+          },
+        };
+      });
       break;
     }
   }

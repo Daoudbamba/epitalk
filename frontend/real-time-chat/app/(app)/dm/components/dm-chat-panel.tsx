@@ -1,0 +1,629 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Plus, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2, X } from "lucide-react";
+import { useWebSocketStore, type WsMessage } from "@/store/websocket.store";
+import { useAuthStore } from "@/store/auth.store";
+import { useDmStore } from "@/store/dm.store";
+
+function dmConversationId(a: string, b: string): string {
+  return a < b ? `dm:${a}:${b}` : `dm:${b}:${a}`;
+}
+
+export function DmChatPanel() {
+  const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.token);
+
+  const activePeerId = useDmStore((s) => s.activePeerId);
+  const conversations = useDmStore((s) => s.conversations);
+
+  const isConnected = useWebSocketStore((s) => s.isConnected);
+  const connect = useWebSocketStore((s) => s.connect);
+  const sendDm = useWebSocketStore((s) => s.sendDm);
+  const editDm = useWebSocketStore((s) => s.editDm);
+  const deleteDm = useWebSocketStore((s) => s.deleteDm);
+  const sendDmGif = useWebSocketStore((s) => s.sendDmGif);
+  const joinDm = useWebSocketStore((s) => s.joinDm);
+  const dmMessages = useWebSocketStore((s) => s.dmMessages);
+  const socket = useWebSocketStore((s) => s.socket);
+
+  const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
+
+  const conversationId = useMemo(() => {
+    if (!user || !activePeerId) return null;
+    return dmConversationId(user.id, activePeerId);
+  }, [user, activePeerId]);
+
+  const peerUsername = useMemo(() => {
+    if (!activePeerId) return null;
+    const conv = conversations.find((c) => c.peer_id === activePeerId);
+    return conv?.peer_username ?? activePeerId.slice(0, 8);
+  }, [activePeerId, conversations]);
+
+  const messages: WsMessage[] = useMemo(() => {
+    if (!conversationId) return [];
+    return dmMessages[conversationId] || [];
+  }, [conversationId, dmMessages]);
+
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [value, setValue] = useState("");
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+  const [showInputEmojis, setShowInputEmojis] = useState(false);
+
+  // GIF picker state
+  const [openGifPicker, setOpenGifPicker] = useState<"input" | null>(null);
+  const [gifQuery, setGifQuery] = useState("");
+  const [gifResults, setGifResults] = useState<{ id: string; url: string; preview?: string; provider?: string }[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
+
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // Connect WebSocket
+  useEffect(() => {
+    if (token && !isConnected) {
+      connect(token);
+    }
+  }, [token, isConnected, connect]);
+
+  // Join DM room when peer changes
+  useEffect(() => {
+    if (activePeerId && isConnected) {
+      joinDm(activePeerId);
+    }
+  }, [activePeerId, isConnected, joinDm]);
+
+  // Scroll to bottom
+  useEffect(() => {
+    const el = bottomRef.current;
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  // GIF search effect
+  useEffect(() => {
+    if (openGifPicker !== "input") return;
+    const query = gifQuery && gifQuery.trim() !== "" ? gifQuery.trim() : "trending";
+    const controller = new AbortController();
+    setGifLoading(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/gifs/search?q=${encodeURIComponent(query)}&limit=24`,
+          { signal: controller.signal },
+        );
+        if (!res.ok) { setGifResults([]); setGifLoading(false); return; }
+        const json = await res.json();
+        const results: { id: string; url: string; preview?: string; provider?: string }[] = [];
+        if (json.results) {
+          for (const it of json.results) {
+            const id = it.id || "";
+            const url = it.url || "";
+            const preview = it.preview || undefined;
+            const provider = it.provider || undefined;
+            if (url) results.push({ id: id.toString(), url, preview, provider });
+          }
+        } else if (json.data) {
+          for (const it of json.data) {
+            const id = it.id || "";
+            const url = it.images?.original?.url || it.images?.fixed_width?.url || "";
+            const preview = it.images?.preview_gif?.url || it.images?.fixed_width_small_still?.url;
+            if (url) results.push({ id: id.toString(), url, preview, provider: "giphy" });
+          }
+        }
+        setGifResults(results);
+      } catch (err: unknown) {
+        if (!(err instanceof DOMException) || err.name !== "AbortError") {
+          console.error("GIF search failed", err);
+        }
+        setGifResults([]);
+      } finally {
+        setGifLoading(false);
+      }
+    }, 300);
+
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [gifQuery, openGifPicker]);
+
+  const getUsernameById = useCallback(
+    (authorId: string, msgUsername?: string): string => {
+      if (msgUsername) return msgUsername;
+      if (user && user.id === authorId) return user.username;
+      if (activePeerId === authorId && peerUsername) return peerUsername;
+      return authorId.slice(0, 8);
+    },
+    [user, activePeerId, peerUsername],
+  );
+
+  const parseGifContent = useCallback((content: string) => {
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed?.type === "gif" && parsed?.gif?.url) {
+        return parsed as {
+          type: "gif";
+          gif: { id: string; url: string; preview?: string; provider?: string };
+          caption?: string;
+        };
+      }
+    } catch {
+      // Not JSON
+    }
+    return null;
+  }, []);
+
+  const onSend = async () => {
+    if (!activePeerId || !conversationId) return;
+    const content = value.trim();
+    if (!content) return;
+    if (!isConnected) {
+      setError("Non connecté au serveur");
+      return;
+    }
+
+    setSending(true);
+    setError(null);
+
+    try {
+      if (isEditing && editingMessageId) {
+        editDm(conversationId, editingMessageId, content);
+        setEditingMessageId(null);
+        setIsEditing(false);
+      } else {
+        sendDm(activePeerId, content, replyTo || undefined);
+        setReplyTo(null);
+        setReplyToUsername(null);
+      }
+      setValue("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur envoi message");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const cancelPendingAction = () => {
+    setIsEditing(false);
+    setEditingMessageId(null);
+    setReplyTo(null);
+    setValue("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+    }
+  };
+
+  if (!activePeerId) {
+    return (
+      <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden items-center justify-center">
+        <div className="text-center text-zinc-400">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-zinc-100 flex items-center justify-center">
+            <Send className="w-8 h-8 text-zinc-300" />
+          </div>
+          <p className="text-lg font-semibold text-zinc-600 mb-1">Messages privés</p>
+          <p className="text-sm">Sélectionne une conversation pour commencer.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden">
+      {/* --- HEADER --- */}
+      <div className="h-12 px-4 flex items-center border-b shadow-sm shrink-0">
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center text-[10px] font-semibold text-white mr-3">
+          {(peerUsername ?? "?").slice(0, 2).toUpperCase()}
+        </div>
+        <h2 className="font-bold text-md text-zinc-800 dark:text-zinc-100">
+          {peerUsername}
+        </h2>
+      </div>
+
+      {/* --- MESSAGES --- */}
+      <div className="flex-1 overflow-y-auto flex flex-col py-4">
+        {!isConnected ? (
+          <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Connexion au serveur...
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="px-4 text-sm text-muted-foreground">
+            Aucun message. Écris le premier message à {peerUsername} !
+          </div>
+        ) : (
+          <div className="flex flex-col mt-auto">
+            {messages.map((msg) => {
+              const isAuthor = user?.id === msg.author_id;
+              const messageUsername = getUsernameById(msg.author_id, msg.username);
+              return (
+                <div
+                  key={msg.id}
+                  className="group relative flex items-start px-4 py-2 hover:bg-black/5 transition w-full"
+                >
+                  {/* Action buttons — top-right, visible on hover */}
+                  <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-0.5 bg-white border border-zinc-200 rounded-md shadow-sm px-1 py-0.5 z-10">
+                    <button
+                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:bg-zinc-100 rounded transition"
+                      onClick={() => {
+                        setReplyTo(msg.id);
+                        setReplyToUsername(messageUsername);
+                        setIsEditing(false);
+                        setEditingMessageId(null);
+                        setValue("");
+                      }}
+                      title="Répondre"
+                    >
+                      <CornerUpLeft className="h-4 w-4" />
+                    </button>
+                    {isAuthor && (
+                      <button
+                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-emerald-600 hover:bg-zinc-100 rounded transition"
+                        onClick={() => {
+                          setIsEditing(true);
+                          setEditingMessageId(msg.id);
+                          setReplyTo(null);
+                          setReplyToUsername(null);
+                          setValue(msg.content);
+                        }}
+                        title="Modifier"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                      </button>
+                    )}
+                    {isAuthor && conversationId && (
+                      <button
+                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-red-600 hover:bg-zinc-100 rounded transition"
+                        onClick={() => deleteDm(conversationId, msg.id)}
+                        title="Supprimer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-amber-500 hover:bg-zinc-100 rounded transition"
+                      onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                      title="Réaction"
+                    >
+                      <Smile className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Quick emoji picker */}
+                  {emojiPickerMsgId === msg.id && (
+                    <div className="absolute -top-3 right-4 z-20 flex items-center gap-1 bg-white border border-zinc-200 rounded-lg shadow-lg px-2 py-1">
+                      {QUICK_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          className="text-lg hover:scale-125 transition-transform p-0.5"
+                          onClick={() => {
+                            if (socket && socket.readyState === WebSocket.OPEN) {
+                              socket.send(JSON.stringify({
+                                type: "ReactionAdd",
+                                payload: { message_id: msg.id, emoji },
+                              }));
+                            }
+                            setEmojiPickerMsgId(null);
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                      <button
+                        className="ml-1 text-zinc-400 hover:text-zinc-600 text-xs"
+                        onClick={() => setEmojiPickerMsgId(null)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="mr-4">
+                    <div className="w-10 h-10 rounded-full bg-zinc-200 flex items-center justify-center text-xs font-semibold text-zinc-700">
+                      {messageUsername.slice(0, 2).toUpperCase()}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col w-full">
+                    <div className="flex items-center gap-x-2">
+                      <span className="font-semibold text-sm text-zinc-800">
+                        {messageUsername}
+                      </span>
+                      <span className="text-xs text-zinc-500">
+                        {new Date(msg.created_at).toLocaleString()}
+                      </span>
+                      {msg.edited_at && (
+                        <span className="text-xs text-indigo-500">(édité)</span>
+                      )}
+                    </div>
+
+                    {msg.reply_to && (() => {
+                      const original = messages.find((m) => m.id === msg.reply_to);
+                      return (
+                        <div className="text-xs text-zinc-500 italic mb-1 bg-zinc-100 p-2 rounded-md">
+                          Réponse à {original ? getUsernameById(original.author_id, original.username) : msg.reply_to.slice(0, 8)}:
+                          <div className="truncate max-w-full">
+                            {original ? original.content : "message introuvable"}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {(() => {
+                      const gifMessage = parseGifContent(msg.content);
+                      if (gifMessage) {
+                        return (
+                          <div className="mt-2 rounded-md border border-zinc-200 p-2 bg-zinc-50">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={gifMessage.gif.url}
+                              alt="GIF"
+                              className="h-36 w-full rounded-md object-cover"
+                            />
+                            {gifMessage.caption && (
+                              <p className="mt-1 text-sm text-zinc-600">{gifMessage.caption}</p>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <p className="text-sm text-zinc-600 whitespace-pre-wrap">
+                          {msg.content}
+                        </p>
+                      );
+                    })()}
+
+                    {/* Reactions display */}
+                    {msg.reactions && msg.reactions.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {Object.entries(
+                          msg.reactions.reduce<Record<string, { count: number; users: string[]; userIds: string[] }>>((acc, r) => {
+                            if (!acc[r.emoji]) acc[r.emoji] = { count: 0, users: [], userIds: [] };
+                            acc[r.emoji].count++;
+                            acc[r.emoji].users.push(r.username || r.user_id.slice(0, 6));
+                            acc[r.emoji].userIds.push(r.user_id);
+                            return acc;
+                          }, {})
+                        ).map(([emoji, data]) => {
+                          const hasReacted = data.userIds.includes(user?.id || "");
+                          return (
+                            <button
+                              key={emoji}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition ${
+                                hasReacted
+                                  ? "bg-indigo-100 border-indigo-300 text-indigo-700"
+                                  : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200"
+                              }`}
+                              title={data.users.join(", ")}
+                              onClick={() => {
+                                if (socket && socket.readyState === WebSocket.OPEN) {
+                                  socket.send(JSON.stringify({
+                                    type: "ReactionAdd",
+                                    payload: { message_id: msg.id, emoji },
+                                  }));
+                                }
+                              }}
+                            >
+                              <span>{emoji}</span>
+                              <span>{data.count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
+          </div>
+        )}
+
+        {error && <div className="px-4 mt-2 text-xs text-red-500">{error}</div>}
+      </div>
+
+      {/* --- INPUT --- */}
+      <div className="p-4 mb-2 shrink-0">
+        {((replyTo && !isEditing) || isEditing) && (
+          <div className="mb-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-700 flex items-center justify-between">
+            <div>
+              {isEditing ? "Modification du message en cours" : "Réponse en cours"}
+              {replyTo && !isEditing && replyToUsername ? `: ${replyToUsername}` : ""}
+            </div>
+            <button
+              className="text-indigo-700 underline text-xs flex items-center gap-1"
+              onClick={cancelPendingAction}
+            >
+              <X className="h-3 w-3" /> Annuler
+            </button>
+          </div>
+        )}
+        <div className="relative flex items-center gap-2">
+          <div className="relative flex-1">
+            <button
+              type="button"
+              className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 bg-zinc-500 hover:bg-zinc-600 transition rounded-full p-1 flex items-center justify-center text-white"
+              disabled
+              title="Fonction à venir"
+            >
+              <Plus className="text-white" />
+            </button>
+
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={!activePeerId || sending || !isConnected}
+              className="px-14 pr-32 py-6 bg-zinc-200/90 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-zinc-600 placeholder:text-zinc-500"
+              placeholder={
+                !isConnected
+                  ? "Connexion en cours..."
+                  : `Envoyer un message à ${peerUsername ?? ""}`
+              }
+            />
+
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-x-3">
+              <span title="Fonction à venir">
+                <Gift className="h-5 w-5 text-zinc-500 hover:text-zinc-600 transition cursor-not-allowed" />
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setOpenGifPicker(openGifPicker === "input" ? null : "input")}
+                title="GIF"
+                className="h-6 w-6 flex items-center justify-center"
+              >
+                <Sticker className="h-5 w-5 text-zinc-500 hover:text-zinc-600 transition cursor-pointer" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowInputEmojis(!showInputEmojis)}
+                title="Emojis"
+                className="h-6 w-6 flex items-center justify-center"
+              >
+                <Smile className="h-5 w-5 text-zinc-500 hover:text-zinc-600 transition cursor-pointer" />
+              </button>
+              {showInputEmojis && (
+                <div className="absolute bottom-10 right-0 z-50 bg-white border border-zinc-200 rounded-lg shadow-lg px-2 py-2 flex flex-wrap gap-1 w-48">
+                  {QUICK_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-zinc-100"
+                      onClick={() => {
+                        setValue((prev) => prev + emoji);
+                        setShowInputEmojis(false);
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bouton Envoyer */}
+          <Button
+            onClick={onSend}
+            disabled={!activePeerId || sending || !isConnected || !value.trim()}
+            className="h-12 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Envoyer le message"
+          >
+            {sending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
+          </Button>
+        </div>
+
+        {/* GIF picker anchored to input bar */}
+        {openGifPicker === "input" && (
+          <div className="absolute left-4 right-4 bottom-20 z-50 bg-white border rounded-lg shadow-md p-3 w-[min(90vw,40rem)]">
+            <div className="flex gap-2 mb-2">
+              <input
+                value={gifQuery}
+                onChange={(e) => setGifQuery(e.target.value)}
+                placeholder="Recherche de GIFs"
+                className="flex-1 px-2 py-1 border rounded bg-zinc-50"
+              />
+              <button
+                onClick={async () => {
+                  setGifLoading(true);
+                  try {
+                    const res = await fetch(
+                      `/api/gifs/search?q=${encodeURIComponent(gifQuery || "trending")}&limit=24`,
+                    );
+                    if (!res.ok) { setGifResults([]); setGifLoading(false); return; }
+                    const json = await res.json();
+                    const results: { id: string; url: string; preview?: string; provider?: string }[] = [];
+                    if (json.results) {
+                      for (const it of json.results) {
+                        const id = it.id || "";
+                        const url = it.url || "";
+                        const preview = it.preview || undefined;
+                        const provider = it.provider || undefined;
+                        if (url) results.push({ id: id.toString(), url, preview, provider });
+                      }
+                    } else if (json.data) {
+                      for (const it of json.data) {
+                        const id = it.id || "";
+                        const url = it.images?.original?.url || it.images?.fixed_width?.url || "";
+                        const preview = it.images?.preview_gif?.url || it.images?.fixed_width_small_still?.url;
+                        if (url) results.push({ id: id.toString(), url, preview, provider: "giphy" });
+                      }
+                    }
+                    setGifResults(results);
+                  } catch (err) {
+                    console.error("GIF search failed", err);
+                    setGifResults([]);
+                  } finally {
+                    setGifLoading(false);
+                  }
+                }}
+                className="px-2 py-1 bg-indigo-600 text-white rounded"
+                disabled={gifLoading}
+              >
+                {gifLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Rechercher"}
+              </button>
+              <button
+                onClick={() => { setOpenGifPicker(null); setGifResults([]); setGifQuery(""); }}
+                className="px-2 py-1 bg-zinc-200 rounded"
+              >
+                Fermer
+              </button>
+            </div>
+            <div className="grid grid-cols-6 gap-2 max-h-64 overflow-auto">
+              {gifResults.map((g) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={g.id}
+                  src={g.preview || g.url}
+                  alt="gif"
+                  className="h-20 w-full object-cover rounded cursor-pointer"
+                  onClick={() => {
+                    try {
+                      if (activePeerId) {
+                        sendDmGif(activePeerId, {
+                          id: g.id,
+                          url: g.url,
+                          preview: g.preview,
+                          provider: g.provider,
+                        }, null);
+                      }
+                    } catch (e) {
+                      console.error("Failed to send gif", e);
+                      setError("Erreur lors de l'envoi du GIF");
+                    } finally {
+                      setOpenGifPicker(null);
+                      setGifResults([]);
+                      setGifQuery("");
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Connection status */}
+        {!isConnected && (
+          <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Reconnexion en cours...
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

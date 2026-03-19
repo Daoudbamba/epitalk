@@ -1,0 +1,35 @@
+"use client";
+
+import Link from "next/link";
+import { UserSettings } from "../../servers/components/user-settings";
+
+export function DmRail() {
+  return (
+    <aside className="w-[88px] my-4 ml-3 rounded-2xl flex flex-col items-center gap-4 py-6 bg-gradient-to-b from-[#F7F8FA] to-white border border-[#E5E7EB] shadow-lg">
+      {/* Logo B — active state (we're on DM page) */}
+      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg ring-2 ring-[#023BFC]/40 ring-offset-2">
+        <span className="text-white font-bold text-lg">B</span>
+      </div>
+
+      <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
+
+      {/* Back to servers */}
+      <Link
+        href="/servers"
+        className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border border-[#E5E7EB] hover:border-[#023BFC]/50 text-[#6B7280] hover:text-[#023BFC] flex items-center justify-center transition-all duration-300"
+        title="Retour aux serveurs"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4" />
+        </svg>
+      </Link>
+
+      <div className="flex-1" />
+
+      {/* User Settings */}
+      <div className="mt-auto">
+        <UserSettings />
+      </div>
+    </aside>
+  );
+}

@@ -1,5 +1,5 @@
 use mongodb::{
-    bson::{doc, oid::ObjectId, to_bson},
+    bson::{doc, oid::ObjectId, to_bson, Document},
     options::{FindOptions, IndexOptions},
     Collection, IndexModel,
 };
@@ -242,6 +242,54 @@ impl MessageRepo {
         // On renvoie l'historique dans l'ordre chronologique
         messages.reverse();
         messages
+    }
+
+    // ---------------------------------------------------------
+    // 📬 GET DM CONVERSATIONS for a user
+    // Returns a list of { conversation_id, last_message, last_message_at, peer_id }
+    // ---------------------------------------------------------
+    pub async fn find_dm_conversations(&self, user_id: &str) -> Vec<Document> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return vec![],
+        };
+
+        // Use aggregation pipeline on the raw collection
+        let raw_coll = collection.clone_with_type::<Document>();
+
+        let pipeline = vec![
+            doc! { "$match": {
+                "$and": [
+                    { "channel_id": { "$regex": "^dm:" } },
+                    { "$or": [
+                        { "channel_id": { "$regex": format!("^dm:{}:", user_id) } },
+                        { "channel_id": { "$regex": format!(":{}$", user_id) } },
+                    ]}
+                ]
+            }},
+            doc! { "$sort": { "created_at": -1 } },
+            doc! { "$group": {
+                "_id": "$channel_id",
+                "last_message": { "$first": "$content" },
+                "last_message_at": { "$first": "$created_at" },
+                "last_author_id": { "$first": "$author_id" },
+            }},
+            doc! { "$sort": { "last_message_at": -1 } },
+        ];
+
+        let mut cursor = match raw_coll.aggregate(pipeline, None).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("Failed to aggregate DM conversations: {e}");
+                return vec![];
+            }
+        };
+
+        let mut results = Vec::new();
+        while let Some(doc) = cursor.try_next().await.unwrap_or(None) {
+            results.push(doc);
+        }
+        results
     }
 }
 
