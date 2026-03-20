@@ -74,6 +74,36 @@ impl Hub {
         self.heartbeats.insert(*conn_id, Utc::now());
     }
 
+    /// Force-disconnect all active connections for a user.
+    ///
+    /// Used by moderation flows (e.g. ban) to apply effects immediately.
+    pub fn disconnect_user(&self, user_id: &UserId) {
+        let conn_ids: Vec<ConnId> = self
+            .connections
+            .get(user_id)
+            .map(|set| set.iter().map(|id| *id).collect())
+            .unwrap_or_default();
+
+        if conn_ids.is_empty() {
+            return;
+        }
+
+        for conn_id in conn_ids {
+            if let Some(sender) = self.sockets.get(&conn_id) {
+                let _ = sender.send(Message::Close(None));
+            }
+
+            self.sockets.remove(&conn_id);
+            self.heartbeats.remove(&conn_id);
+
+            for room in self.rooms.iter_mut() {
+                room.value().remove(&conn_id);
+            }
+        }
+
+        self.connections.remove(user_id);
+    }
+
     // ---------------------------------------------------------
     // ROOM MANAGEMENT
     // ---------------------------------------------------------
@@ -163,5 +193,47 @@ mod tests {
             .unwrap_or(false);
 
         assert!(!is_still_in_room);
+    }
+
+    #[tokio::test]
+    async fn disconnect_user_closes_and_removes_connections() {
+        let hub = Hub::new();
+        let (tx1, mut rx1) = unbounded_channel();
+        let (tx2, mut rx2) = unbounded_channel();
+
+        let user_id = "user-1".to_string();
+        let conn_1 = Uuid::new_v4();
+        let conn_2 = Uuid::new_v4();
+
+        hub.register_connection(&user_id, conn_1, tx1);
+        hub.register_connection(&user_id, conn_2, tx2);
+
+        let room_id = "room-1".to_string();
+        hub.join_room(&room_id, conn_1);
+        hub.join_room(&room_id, conn_2);
+
+        hub.disconnect_user(&user_id);
+
+        assert!(!hub.connections.contains_key(&user_id));
+        assert!(!hub.sockets.contains_key(&conn_1));
+        assert!(!hub.sockets.contains_key(&conn_2));
+
+        if let Some(room) = hub.rooms.get(&room_id) {
+            assert!(!room.contains(&conn_1));
+            assert!(!room.contains(&conn_2));
+        }
+
+        let msg1 = rx1.try_recv().expect("expected close frame on conn_1");
+        let msg2 = rx2.try_recv().expect("expected close frame on conn_2");
+
+        match msg1 {
+            Message::Close(_) => {}
+            other => panic!("unexpected message on conn_1: {:?}", other),
+        }
+
+        match msg2 {
+            Message::Close(_) => {}
+            other => panic!("unexpected message on conn_2: {:?}", other),
+        }
     }
 }

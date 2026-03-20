@@ -31,35 +31,62 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn with_clean_env<F: FnOnce()>(f: F) {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+
+        let keys = ["DATABASE_URL", "JWT_SECRET", "JWT_EXPIRES_IN", "PORT"];
+        let snapshot: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|k| (k.to_string(), std::env::var(k).ok()))
+            .collect();
+
+        for key in keys {
+            std::env::remove_var(key);
+        }
+
+        f();
+
+        for (key, value) in snapshot {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
 
     #[test]
     fn from_env_uses_defaults_when_vars_missing() {
-        // Nettoie les variables d’environnement pour forcer les valeurs par défaut
-        std::env::remove_var("DATABASE_URL");
-        std::env::remove_var("JWT_SECRET");
-        std::env::remove_var("JWT_EXPIRES_IN");
-        std::env::remove_var("PORT");
+        with_clean_env(|| {
+            let cfg = Config::from_env().expect("config should load");
 
-        let cfg = Config::from_env().expect("config should load");
-
-        assert_eq!(cfg.database_url, "postgres://epitalk:Epitalk94!@localhost:5432/epitalk");
-        assert_eq!(cfg.jwt_secret, "super_secret_jwt_key_change_in_production_min_32_chars");
-        assert_eq!(cfg.jwt_expiration_hours, 168);
-        assert_eq!(cfg.port, 3000);
+            assert_eq!(cfg.database_url, "postgres://epitalk:Epitalk94!@localhost:5432/epitalk");
+            assert_eq!(cfg.jwt_secret, "super_secret_jwt_key_change_in_production_min_32_chars");
+            assert_eq!(cfg.jwt_expiration_hours, 168);
+            assert_eq!(cfg.port, 3000);
+        });
     }
 
     #[test]
     fn from_env_reads_custom_values() {
-        std::env::set_var("DATABASE_URL", "postgres://custom");
-        std::env::set_var("JWT_SECRET", "my-secret");
-        std::env::set_var("JWT_EXPIRES_IN", "24");
-        std::env::set_var("PORT", "4000");
+        with_clean_env(|| {
+            std::env::set_var("DATABASE_URL", "postgres://custom");
+            std::env::set_var("JWT_SECRET", "my-secret");
+            std::env::set_var("JWT_EXPIRES_IN", "24");
+            std::env::set_var("PORT", "4000");
 
-        let cfg = Config::from_env().expect("config should load");
+            let cfg = Config::from_env().expect("config should load");
 
-        assert_eq!(cfg.database_url, "postgres://custom");
-        assert_eq!(cfg.jwt_secret, "my-secret");
-        assert_eq!(cfg.jwt_expiration_hours, 24);
-        assert_eq!(cfg.port, 4000);
+            assert_eq!(cfg.database_url, "postgres://custom");
+            assert_eq!(cfg.jwt_secret, "my-secret");
+            assert_eq!(cfg.jwt_expiration_hours, 24);
+            assert_eq!(cfg.port, 4000);
+        });
     }
 }
