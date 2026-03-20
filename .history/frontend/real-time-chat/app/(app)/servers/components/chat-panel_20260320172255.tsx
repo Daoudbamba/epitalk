@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Gift, Sticker, Send, Loader2, Pin, Search, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Smile, Gift, Sticker, Send, Loader2, Pin } from "lucide-react";
 import { messagesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
-import type { Message } from "@/lib/api/schemas/messages.schema";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
@@ -21,12 +20,14 @@ export function ChatPanel() {
 
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
 
   const members = useMemberStore((s) => s.members);
 
   // WebSocket store
   const isConnected = useWebSocketStore((s) => s.isConnected);
   const connect = useWebSocketStore((s) => s.connect);
+  const disconnect = useWebSocketStore((s) => s.disconnect);
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
   const wsMessages = useWebSocketStore((s) => s.messages);
@@ -44,14 +45,6 @@ export function ChatPanel() {
   const [editingContent, setEditingContent] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [pinLoadingByMessageId, setPinLoadingByMessageId] = useState<Record<string, boolean>>({});
-  const [showPinnedPanel, setShowPinnedPanel] = useState(true);
-  const [loadingPinnedMessages, setLoadingPinnedMessages] = useState(false);
-  const [pinnedMessagesError, setPinnedMessagesError] = useState<string | null>(null);
-  const [pinnedMessagesFromApi, setPinnedMessagesFromApi] = useState<Message[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; author_id: string; username?: string; content: string; created_at: string }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
 
@@ -65,42 +58,26 @@ export function ChatPanel() {
     return wsMessages[activeChannelId] || [];
   }, [activeChannelId, wsMessages]);
 
-  const pinnedMessagesInMemory = useMemo(() => {
-    return messages
-      .filter((message) => !!message.pinned_at)
-      .sort((a, b) => {
-        const aTs = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
-        const bTs = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
-        return bTs - aTs;
-      });
-  }, [messages]);
+  // Connect WebSocket on mount
+  useEffect(() => {
+    if (!hasHydrated) return;
 
-  const pinnedMessages = useMemo(() => {
-    if (pinnedMessagesFromApi.length === 0) {
-      return pinnedMessagesInMemory;
-    }
-
-    const byId = new Map<string, Message>();
-    for (const msg of pinnedMessagesFromApi) {
-      byId.set(msg.id, msg);
-    }
-    for (const msg of pinnedMessagesInMemory) {
-      if (!byId.has(msg.id)) {
-        byId.set(msg.id, msg);
+    let latestToken = token;
+    if (typeof window !== "undefined") {
+      const persistedToken = localStorage.getItem("token");
+      if (persistedToken !== token) {
+        latestToken = persistedToken;
       }
     }
 
-    return Array.from(byId.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [pinnedMessagesFromApi, pinnedMessagesInMemory]);
-
-  // Connect WebSocket on mount
-  useEffect(() => {
-    if (token && !isConnected) {
-      connect(token);
+    if (latestToken && !isConnected) {
+      connect(latestToken);
     }
-  }, [token, isConnected, connect]);
+
+    if (!latestToken && isConnected) {
+      disconnect();
+    }
+  }, [connect, disconnect, hasHydrated, isConnected, token]);
 
   // Join channel when it changes
   useEffect(() => {
@@ -115,7 +92,7 @@ export function ChatPanel() {
   }, [messages]);
 
   // Get username from message, members or fallback to author_id
-  const getUsernameById = (authorId: string, msgUsername?: string): string => {
+  const getUsernameById = useCallback((authorId: string, msgUsername?: string): string => {
     // Check if username is provided in the message itself
     if (msgUsername) return msgUsername;
     // Check if it's the current user
@@ -129,7 +106,7 @@ export function ChatPanel() {
     }
     // Fallback: use first part of UUID
     return authorId.slice(0, 8);
-  };
+  }, [members, user]);
 
   const onSend = async () => {
     if (!activeChannelId || !canLoad) return;
@@ -196,7 +173,7 @@ export function ChatPanel() {
     if (names.length === 1) return `${names[0]} est en train d'écrire...`;
     if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
     return `${names.length} personnes écrivent...`;
-  }, [currentTypingUsers]);
+  }, [currentTypingUsers, getUsernameById]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -268,30 +245,6 @@ export function ChatPanel() {
     }));
   };
 
-  const loadPinnedMessages = useCallback(async () => {
-    if (!activeServerId || !activeChannelId) {
-      setPinnedMessagesFromApi([]);
-      setPinnedMessagesError(null);
-      return;
-    }
-
-    setLoadingPinnedMessages(true);
-    setPinnedMessagesError(null);
-    try {
-      const list = await messagesApi.listPinned(activeServerId, activeChannelId, 1, 50);
-      setPinnedMessagesFromApi(list);
-    } catch (e) {
-      setPinnedMessagesError(getErrorMessage(e));
-      setPinnedMessagesFromApi([]);
-    } finally {
-      setLoadingPinnedMessages(false);
-    }
-  }, [activeChannelId, activeServerId]);
-
-  useEffect(() => {
-    void loadPinnedMessages();
-  }, [loadPinnedMessages]);
-
   const togglePin = async (messageId: string, isPinned: boolean) => {
     if (!activeServerId || !activeChannelId) return;
 
@@ -316,7 +269,6 @@ export function ChatPanel() {
           : message
       );
       setMessages(activeChannelId, patchedMessages);
-      await loadPinnedMessages();
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
@@ -324,176 +276,16 @@ export function ChatPanel() {
     }
   };
 
-  const jumpToMessage = (messageId: string): boolean => {
-    if (typeof document === "undefined") return false;
-    const element = document.getElementById(`message-${messageId}`);
-    if (!element) return false;
-
-    element.scrollIntoView({ behavior: "smooth", block: "center" });
-    element.classList.add("ring-2", "ring-amber-400", "rounded-md");
-    window.setTimeout(() => {
-      element.classList.remove("ring-2", "ring-amber-400", "rounded-md");
-    }, 1200);
-    return true;
-  };
-
-  useEffect(() => {
-    if (!activeServerId || !activeChannelId) {
-      setSearchResults([]);
-      setSearchError(null);
-      setSearchLoading(false);
-      return;
-    }
-
-    const query = searchQuery.trim();
-    if (query.length < 2) {
-      setSearchResults([]);
-      setSearchError(null);
-      setSearchLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    const timer = window.setTimeout(async () => {
-      setSearchLoading(true);
-      setSearchError(null);
-      try {
-        const result = await messagesApi.search(activeServerId, activeChannelId, query, 1, 30);
-        if (!cancelled) {
-          setSearchResults(result);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setSearchError(getErrorMessage(e));
-          setSearchResults([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setSearchLoading(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [activeChannelId, activeServerId, searchQuery]);
-
   return (
     <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden">
       
       {/* --- HEADER --- */}
-      <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0 gap-3">
+      <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0">
         <span className="text-zinc-500 mr-2 text-2xl">#</span>
         <h2 className="font-bold text-md text-zinc-800 dark:text-zinc-100">
           {activeChannelName ?? "aucun-channel"}
         </h2>
-
-        <div className="ml-auto relative w-72 max-w-[45%]">
-          <Search className="h-4 w-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher un message..."
-            className="h-8 pl-9 pr-3 bg-zinc-100 border-zinc-200 text-sm"
-            disabled={!canLoad}
-          />
-        </div>
       </div>
-
-      {canLoad && searchQuery.trim().length >= 2 && (
-        <div className="border-b border-indigo-200/70 bg-indigo-50/70 px-4 py-2">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-[12px] font-semibold text-indigo-800">Resultats de recherche</div>
-            {searchLoading && <span className="text-[11px] text-indigo-600">Recherche...</span>}
-          </div>
-
-          {searchError && (
-            <div className="text-[12px] text-red-600">{searchError}</div>
-          )}
-
-          {!searchLoading && !searchError && searchResults.length === 0 && (
-            <div className="text-[12px] text-zinc-600">Aucun message trouve.</div>
-          )}
-
-          {!searchError && searchResults.length > 0 && (
-            <div className="max-h-40 overflow-y-auto space-y-1">
-              {searchResults.map((message) => (
-                <button
-                  key={`search-${message.id}`}
-                  type="button"
-                  onClick={() => {
-                    const jumped = jumpToMessage(message.id);
-                    if (!jumped) {
-                      setError("Message trouve mais absent de l'historique charge.");
-                    }
-                  }}
-                  className="w-full rounded-md border border-indigo-200 bg-white/80 px-2 py-1 text-left text-[12px] text-zinc-700 hover:bg-white"
-                  title="Aller au message"
-                >
-                  <span className="font-semibold text-zinc-800">{getUsernameById(message.author_id, message.username)}</span>
-                  <span className="mx-1 text-zinc-400">-</span>
-                  <span className="line-clamp-1">{message.content}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {canLoad && pinnedMessages.length > 0 && (
-        <div className="border-b border-amber-200/70 bg-amber-50/70 px-4 py-2">
-          <div className="mb-2 flex items-center justify-between gap-2 text-[12px] font-semibold text-amber-800">
-            <div className="flex items-center gap-2">
-              <Pin className="h-3.5 w-3.5" />
-              {pinnedMessages.length} message{pinnedMessages.length > 1 ? "s" : ""} epingle
-              {pinnedMessages.length > 1 ? "s" : ""}
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 px-2 text-[11px]"
-              disabled={loadingPinnedMessages}
-              onClick={() => setShowPinnedPanel((prev) => !prev)}
-            >
-              {showPinnedPanel ? (
-                <>
-                  <ChevronUp className="h-3 w-3 mr-1" />
-                  Replier
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-3 w-3 mr-1" />
-                  Afficher
-                </>
-              )}
-            </Button>
-          </div>
-
-          {pinnedMessagesError && (
-            <div className="mb-2 text-[11px] text-red-600">{pinnedMessagesError}</div>
-          )}
-
-          {showPinnedPanel && (
-            <div className="max-h-24 overflow-y-auto space-y-1">
-              {pinnedMessages.map((message) => (
-                <button
-                  key={message.id}
-                  type="button"
-                  onClick={() => jumpToMessage(message.id)}
-                  className="w-full rounded-md border border-amber-200 bg-white/80 px-2 py-1 text-left text-[12px] text-zinc-700 hover:bg-white"
-                  title="Aller au message"
-                >
-                  <span className="font-semibold text-zinc-800">{getUsernameById(message.author_id, message.username)}</span>
-                  <span className="mx-1 text-zinc-400">-</span>
-                  <span className="line-clamp-1">{message.content}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* --- MESSAGES --- */}
       <div className="flex-1 overflow-y-auto flex flex-col py-4">
@@ -515,7 +307,6 @@ export function ChatPanel() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                id={`message-${msg.id}`}
                 className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
               >
                 <div className="mr-4">
