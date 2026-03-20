@@ -7,6 +7,7 @@ use tokio::time::Instant;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::repositories::ChannelRepository;
+use crate::repositories::MembershipRepository;
 use crate::repositories::UserRepository;
 use crate::services::message_service::MessageService;
 use crate::services::presence_service::PresenceService;
@@ -159,6 +160,17 @@ pub async fn handle_connection(
         // Cache: user_id (string) → username to avoid repeated PG lookups
         let mut username_cache: HashMap<String, String> = HashMap::new();
 
+        let current_user_uuid = match Uuid::parse_str(&user_id_recv) {
+            Ok(uid) => uid,
+            Err(_) => {
+                send_error(&hub_recv, &conn_id, "INVALID_USER_ID", "invalid user identifier");
+                if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                    let _ = tx.send(Message::Close(None));
+                }
+                return;
+            }
+        };
+
         while let Some(Ok(msg)) = receiver.next().await {
             let text = match msg {
                 Message::Text(t) => t,
@@ -230,6 +242,33 @@ pub async fn handle_connection(
                         None => continue, // error already sent to client
                     };
 
+                    let server_uuid = match Uuid::parse_str(&server_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "invalid server mapping");
+                            continue;
+                        }
+                    };
+
+                    if MembershipRepository::is_banned(&pg_pool_recv, server_uuid, current_user_uuid)
+                        .await
+                        .unwrap_or(true)
+                    {
+                        send_error(&hub_recv, &conn_id, "BANNED", "You are banned from this server");
+                        if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                            let _ = tx.send(Message::Close(None));
+                        }
+                        break;
+                    }
+
+                    if !MembershipRepository::is_member(&pg_pool_recv, current_user_uuid, server_uuid)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        send_error(&hub_recv, &conn_id, "NOT_MEMBER", "You are not a member of this server");
+                        continue;
+                    }
+
                     tracing::info!(
                         "📩 MessageSend: server={}, channel={}, len={}",
                         server_id,
@@ -290,6 +329,33 @@ pub async fn handle_connection(
                         Some(sid) => sid,
                         None => continue,
                     };
+
+                    let server_uuid = match Uuid::parse_str(&server_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "invalid server mapping");
+                            continue;
+                        }
+                    };
+
+                    if MembershipRepository::is_banned(&pg_pool_recv, server_uuid, current_user_uuid)
+                        .await
+                        .unwrap_or(true)
+                    {
+                        send_error(&hub_recv, &conn_id, "BANNED", "You are banned from this server");
+                        if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                            let _ = tx.send(Message::Close(None));
+                        }
+                        break;
+                    }
+
+                    if !MembershipRepository::is_member(&pg_pool_recv, current_user_uuid, server_uuid)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        send_error(&hub_recv, &conn_id, "NOT_MEMBER", "You are not a member of this server");
+                        continue;
+                    }
 
                     tracing::info!(
                         "🚪 JoinChannel: server={}, channel={}",
