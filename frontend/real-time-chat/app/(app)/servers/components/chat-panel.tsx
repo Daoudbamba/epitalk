@@ -27,6 +27,9 @@ export function ChatPanel() {
 
   // WebSocket store
   const isConnected = useWebSocketStore((s) => s.isConnected);
+  const connectionState = useWebSocketStore((s) => s.connectionState);
+  const reconnectAttempt = useWebSocketStore((s) => s.reconnectAttempt);
+  const nextRetryDelayMs = useWebSocketStore((s) => s.nextRetryDelayMs);
   const connect = useWebSocketStore((s) => s.connect);
   const disconnect = useWebSocketStore((s) => s.disconnect);
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
@@ -60,6 +63,30 @@ export function ChatPanel() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const canLoad = !!activeServerId && !!activeChannelId;
+
+  const connectionStatusLabel = useMemo(() => {
+    if (isConnected) return null;
+
+    const retryInSeconds = nextRetryDelayMs ? Math.max(1, Math.ceil(nextRetryDelayMs / 1000)) : null;
+
+    if (connectionState === "degraded") {
+      return `Serveur indisponible. Nouvelle tentative automatique dans ${retryInSeconds ?? 30}s.`;
+    }
+
+    if (connectionState === "auth_invalid") {
+      return "Session expirée. Reconnecte-toi pour rétablir le temps réel.";
+    }
+
+    if (connectionState === "backoff") {
+      return `Reconnexion en cours (tentative ${Math.max(1, reconnectAttempt)}${retryInSeconds ? `, prochaine dans ${retryInSeconds}s` : ""})...`;
+    }
+
+    if (connectionState === "connecting") {
+      return "Connexion au serveur en cours...";
+    }
+
+    return "Connexion au serveur...";
+  }, [connectionState, isConnected, nextRetryDelayMs, reconnectAttempt]);
 
   // Get messages for current channel
   const messages = useMemo(() => {
@@ -520,7 +547,7 @@ export function ChatPanel() {
         ) : !isConnected ? (
           <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Connexion au serveur...
+            {connectionStatusLabel ?? "Connexion au serveur..."}
           </div>
         ) : messages.length === 0 ? (
           <div className="px-4 text-sm text-muted-foreground">
@@ -722,7 +749,7 @@ export function ChatPanel() {
         {!isConnected && canLoad && (
           <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
             <Loader2 className="h-3 w-3 animate-spin" />
-            Reconnexion en cours...
+            {connectionStatusLabel ?? "Reconnexion en cours..."}
           </div>
         )}
       </div>

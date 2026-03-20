@@ -15,7 +15,9 @@ export default function ServersPage() {
   const [showChannels, setShowChannels] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const wsError = useWebSocketStore((s) => s.error);
+  const wsConnectionState = useWebSocketStore((s) => s.connectionState);
   const clearWsError = useWebSocketStore((s) => s.clearError);
+  const blockingWsError = wsConnectionState === "auth_invalid" ? wsError : null;
 
   return (
     <ServersLoader>
@@ -78,16 +80,16 @@ export default function ServersPage() {
           </div>
 
             <ConfirmActionDialog
-              open={!!wsError}
+              open={!!blockingWsError}
               onOpenChange={(open) => {
                 if (!open) clearWsError();
               }}
               title="Information"
-              description={wsError ?? ""}
+              description={blockingWsError ?? ""}
               confirmLabel="Compris"
               onConfirm={() => {
                 clearWsError();
-                if (wsError?.toLowerCase().includes("banni")) {
+                if (blockingWsError?.toLowerCase().includes("banni")) {
                   window.location.reload();
                 }
               }}
