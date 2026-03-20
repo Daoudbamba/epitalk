@@ -6,7 +6,7 @@ import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
-import type { Invite, Server } from "@/lib/api/schemas/servers.schema";
+import type { Invite } from "@/lib/api/schemas/servers.schema";
 import { UserSettings } from "./user-settings";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
@@ -64,8 +64,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const [openRevokeInviteConfirm, setOpenRevokeInviteConfirm] = useState(false);
   const [openTransferConfirm, setOpenTransferConfirm] = useState(false);
   const [activeInvites, setActiveInvites] = useState<Invite[]>([]);
-  const [serverDetails, setServerDetails] = useState<Server | null>(null);
-  const [loadingServerDetails, setLoadingServerDetails] = useState(false);
   const [pendingRevokeInviteCode, setPendingRevokeInviteCode] = useState("");
   const [transferTargetId, setTransferTargetId] = useState("");
   const [transferCandidates, setTransferCandidates] = useState<
@@ -80,19 +78,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
     () => transferCandidates.find((m) => m.user_id === transferTargetId) ?? null,
     [transferCandidates, transferTargetId]
   );
-
-  const loadServerDetails = async (serverId: string) => {
-    setLoadingServerDetails(true);
-    try {
-      const details = await serversApi.get(serverId);
-      setServerDetails(details);
-    } catch (err) {
-      setErr(getErrorMessage(err));
-      setServerDetails(null);
-    } finally {
-      setLoadingServerDetails(false);
-    }
-  };
 
   const loadActiveInvites = async (serverId: string) => {
     setLoadingInvitesList(true);
@@ -126,15 +111,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
     void loadActiveInvites(activeServerId);
   }, [activeServerId, isOwner, openSettings]);
-
-  useEffect(() => {
-    if (!openSettings || !activeServerId) {
-      setServerDetails(null);
-      return;
-    }
-
-    void loadServerDetails(activeServerId);
-  }, [activeServerId, openSettings]);
 
   useEffect(() => {
     if (!openSettings || !activeServerId || !isOwner || !currentUser) {
@@ -434,48 +410,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
             </div>
 
             <div className="p-6 space-y-5">
-              <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/60 neu-shadow-sm">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-bold text-[#1A1A2E]">Details du serveur</div>
-                    <div className="text-xs text-[#6B7280]">Informations recuperees depuis l'endpoint detail.</div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      if (activeServerId) {
-                        void loadServerDetails(activeServerId);
-                      }
-                    }}
-                    disabled={loadingServerDetails || !activeServerId}
-                    className="h-8 px-3 text-[11px]"
-                  >
-                    {loadingServerDetails ? "..." : "Rafraichir"}
-                  </Button>
-                </div>
-
-                {loadingServerDetails ? (
-                  <div className="text-xs text-[#6B7280]">Chargement des details...</div>
-                ) : serverDetails ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#1A1A2E]">
-                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2">
-                      <span className="font-semibold">Nom:</span> {serverDetails.name}
-                    </div>
-                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2">
-                      <span className="font-semibold">Membres:</span> {serverDetails.member_count ?? "-"}
-                    </div>
-                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 sm:col-span-2">
-                      <span className="font-semibold">Owner ID:</span> {serverDetails.owner_id}
-                    </div>
-                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 sm:col-span-2">
-                      <span className="font-semibold">Cree le:</span> {new Date(serverDetails.created_at).toLocaleString()}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-[#6B7280]">Impossible de charger les details du serveur.</div>
-                )}
-              </div>
-
               {/* Join */}
               <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
