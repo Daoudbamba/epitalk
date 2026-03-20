@@ -11,7 +11,6 @@ import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { serversApi } from "@/lib/api";
 import { ApiError, getErrorMessage } from "@/lib/api/errors";
-import { terminateSession } from "@/lib/auth/session";
 import type { Ban } from "@/lib/api/schemas/servers.schema";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
@@ -33,6 +32,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const currentUser = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const members = useMemberStore((s) => s.members);
   const setMembers = useMemberStore((s) => s.setMembers);
   const membersLoading = useMemberStore((s) => s.loading);
@@ -53,10 +53,12 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const [bans, setBans] = useState<Ban[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [banReason, setBanReason] = useState("");
+  const [banMode, setBanMode] = useState<"permanent" | "temporary">("permanent");
+  const [banExpiresAt, setBanExpiresAt] = useState("");
 
   const handleUnauthorized = (err: unknown): boolean => {
     if (err instanceof ApiError && err.status === 401) {
-      terminateSession();
+      logout();
       router.replace("/login");
       return true;
     }
@@ -138,6 +140,8 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
 
   const onBan = (memberId: string, username: string) => {
     setBanReason("");
+    setBanMode("permanent");
+    setBanExpiresAt("");
     setPendingAction({ kind: "ban", userId: memberId, username });
   };
 
@@ -159,10 +163,31 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
       }
 
       if (pendingAction.kind === "ban") {
+        let expiresAt: string | null = null;
+        if (banMode === "temporary") {
+          if (!banExpiresAt) {
+            setActionError("Choisis une date de fin pour le ban temporaire.");
+            return;
+          }
+
+          const parsed = new Date(banExpiresAt);
+          if (Number.isNaN(parsed.getTime())) {
+            setActionError("Date de fin invalide.");
+            return;
+          }
+
+          if (parsed.getTime() <= Date.now()) {
+            setActionError("La date de fin doit etre dans le futur.");
+            return;
+          }
+
+          expiresAt = parsed.toISOString();
+        }
+
         setLoadingBan(pendingAction.userId);
         await serversApi.banMember(server.id, pendingAction.userId, {
           reason: banReason.trim() ? banReason.trim() : null,
-          expires_at: null,
+          expires_at: expiresAt,
         });
         await reloadMembersAndBans();
         await onRefresh();
@@ -176,6 +201,8 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
 
       setPendingAction(null);
       setBanReason("");
+      setBanMode("permanent");
+      setBanExpiresAt("");
     } catch (err) {
       if (handleUnauthorized(err)) return;
       setActionError(getErrorMessage(err));
@@ -349,6 +376,8 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
           if (!open) {
             setPendingAction(null);
             setBanReason("");
+            setBanMode("permanent");
+            setBanExpiresAt("");
           }
         }}
         title={
@@ -395,6 +424,33 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
               onChange={(e) => setBanReason(e.target.value)}
               placeholder="Ex: harcèlement, spam, insultes"
             />
+
+            <label htmlFor="ban-mode" className="text-sm font-medium text-zinc-700">
+              Type de ban
+            </label>
+            <select
+              id="ban-mode"
+              value={banMode}
+              onChange={(e) => setBanMode(e.target.value as "permanent" | "temporary")}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="permanent">Permanent</option>
+              <option value="temporary">Temporaire</option>
+            </select>
+
+            {banMode === "temporary" ? (
+              <>
+                <label htmlFor="ban-expires-at" className="text-sm font-medium text-zinc-700">
+                  Fin du ban
+                </label>
+                <Input
+                  id="ban-expires-at"
+                  type="datetime-local"
+                  value={banExpiresAt}
+                  onChange={(e) => setBanExpiresAt(e.target.value)}
+                />
+              </>
+            ) : null}
           </div>
         ) : null}
       </ConfirmActionDialog>
