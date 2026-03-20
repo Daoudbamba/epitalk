@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { channelsApi } from "@/lib/api";
 import { ApiError, getErrorMessage } from "@/lib/api/errors";
-import { terminateSession } from "@/lib/auth/session";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -13,9 +13,11 @@ import type { Channel } from "@/lib/api/schemas/channels.schema";
 type Status = { type: "success" | "error" | "info"; text: string } | null;
 
 export function ChannelsSidebar() {
+  const router = useRouter();
   const activeServerId = useServerStore((s) => s.activeServerId);
   const servers = useServerStore((s) => s.servers);
   const currentUser = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   const channels = useChannelStore((s) => s.channels);
   const activeChannelId = useChannelStore((s) => s.activeChannelId);
@@ -42,8 +44,8 @@ export function ChannelsSidebar() {
 
   const handleUnauthorized = (e: unknown): boolean => {
     if (e instanceof ApiError && e.status === 401) {
-      terminateSession();
-      router.replace("/login");
+      logout();
+      window.location.href = "/login";
       return true;
     }
     return false;
@@ -85,6 +87,7 @@ export function ChannelsSidebar() {
       }
       if (data.length === 0) setActiveChannel(null);
     } catch (e) {
+      if (handleUnauthorized(e)) return;
       setErr(e instanceof Error ? e.message : "Erreur chargement channels");
       reset();
     } finally {
@@ -140,6 +143,7 @@ export function ChannelsSidebar() {
       setOk("Channel supprimé.");
       setPendingDeleteChannelId(null);
     } catch (e) {
+      if (handleUnauthorized(e)) return;
       setErr(e instanceof Error ? e.message : "Erreur suppression channel");
     } finally {
       setLoading(false);
