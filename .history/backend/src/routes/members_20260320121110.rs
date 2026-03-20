@@ -1,10 +1,13 @@
 //! Member routes
 //!
 //! Routes (nested under /servers/:server_id/members):
-//! - GET    /                   - List server members
-//! - GET    /:user_id           - Get member details
-//! - PATCH  /:user_id/role      - Update member role (OWNER only)
-//! - DELETE /:user_id           - Kick member (ADMIN+, not OWNER)
+//! - GET    /                    - List server members
+//! - GET    /:user_id            - Get member details
+//! - PATCH  /:user_id/role       - Update member role (OWNER only)
+//! - DELETE /:user_id            - Kick member (ADMIN+, not OWNER)
+//! - POST   /:user_id/ban        - Ban member (ADMIN+, permanent or temporary)
+//! - DELETE /:user_id/ban        - Unban member (ADMIN+)
+//! - GET    /bans                - List active bans (members only)
 
 use axum::{
     extract::{Path, State},
@@ -15,7 +18,7 @@ use uuid::Uuid;
 
 use crate::auth::RequireAuth;
 use crate::error::{AppError, AppResult};
-use crate::models::{MemberResponse, MemberRole, UpdateMemberRoleRequest};
+use crate::models::{BanMemberRequest, BanResponse, MemberResponse, MemberRole, UpdateMemberRoleRequest};
 use crate::repositories::MembershipRepository;
 use crate::state::AppState;
 use crate::ws::protocol::ServerEvent;
@@ -24,8 +27,13 @@ use std::sync::Arc;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_members))
+        .route("/bans", get(list_bans))
         .route("/:user_id", get(get_member).delete(kick_member))
         .route("/:user_id/role", axum::routing::patch(update_member_role))
+        .route(
+            "/:user_id/ban",
+            axum::routing::post(ban_member).delete(unban_member),
+        )
 }
 
 /// Path parameters

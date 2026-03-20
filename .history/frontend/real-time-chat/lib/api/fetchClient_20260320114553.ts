@@ -1,7 +1,6 @@
 import { ApiError, parseApiError } from "./errors";
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
-const RETRY_TIMEOUT_MS = 45_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const NON_REFRESHABLE_PATHS = ["/auth/login", "/auth/register", "/auth/refresh"];
 let refreshInFlight: Promise<string | null> | null = null;
 
@@ -107,7 +106,6 @@ export class FetchClient {
     path: string,
     body?: unknown,
     retryOnAuthFailure: boolean = true,
-    retryOnTimeout: boolean = true,
   ): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -120,10 +118,7 @@ export class FetchClient {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      retryOnTimeout ? DEFAULT_REQUEST_TIMEOUT_MS : RETRY_TIMEOUT_MS,
-    );
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
 
     let res: Response;
     try {
@@ -135,9 +130,6 @@ export class FetchClient {
       });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        if (retryOnTimeout) {
-          return this.request<T>(method, path, body, retryOnAuthFailure, false);
-        }
         throw new ApiError(
           0,
           "Le serveur met trop de temps a repondre. Verifiez qu'il est demarre et reessayez."
@@ -156,7 +148,7 @@ export class FetchClient {
     ) {
       const refreshedToken = await this.tryRefreshToken(token);
       if (refreshedToken) {
-        return this.request<T>(method, path, body, false, retryOnTimeout);
+        return this.request<T>(method, path, body, false);
       }
 
       this.setToken(null);
