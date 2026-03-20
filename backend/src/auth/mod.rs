@@ -6,6 +6,6 @@ pub mod jwt;
 mod middleware;
 mod password;
 
-pub use jwt::{validate_token, Claims, JwtService};
+pub use jwt::{Claims, JwtService};
 pub use middleware::RequireAuth;
 pub use password::PasswordService;

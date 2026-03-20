@@ -9,6 +9,10 @@ services:
     image: epitalk-backend:latest
     container_name: epitalk-backend
     env_file: .env
+    environment:
+      # Override host-based URLs from .env to use docker network service names
+      DATABASE_URL: postgres://epitalk:Epitalk94!@postgres:5432/epitalk
+      MONGO_URL: mongodb://mongo:27017/epitalk_messages
     ports:
       - "3000:3000"
     depends_on:
@@ -19,6 +23,8 @@ services:
     restart: unless-stopped
     networks:
       - epitalk-network
+    profiles:
+      - backend
 
   # =============================================================================
   # PostgreSQL Database (Users, Servers, Channels, Memberships)

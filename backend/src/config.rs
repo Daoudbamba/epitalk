@@ -8,6 +8,7 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expiration_hours: i64,
     pub port: u16,
+    pub upload_dir: String,
 }
 
 impl Config {
@@ -22,8 +23,10 @@ impl Config {
                 .unwrap_or_else(|_| "super_secret_jwt_key_change_in_production_min_32_chars".into()),
             jwt_expiration_hours,
             port: std::env::var("PORT")
-                .unwrap_or_else(|_| "3000".into())
+                .unwrap_or_else(|_| "3001".into())
                 .parse()?,
+            upload_dir: std::env::var("UPLOAD_DIR")
+                .unwrap_or_else(|_| "./uploads".into()),
         })
     }
 }
@@ -39,13 +42,15 @@ mod tests {
         std::env::remove_var("JWT_SECRET");
         std::env::remove_var("JWT_EXPIRES_IN");
         std::env::remove_var("PORT");
+        std::env::remove_var("UPLOAD_DIR");
 
         let cfg = Config::from_env().expect("config should load");
 
         assert_eq!(cfg.database_url, "postgres://epitalk:Epitalk94!@localhost:5432/epitalk");
         assert_eq!(cfg.jwt_secret, "super_secret_jwt_key_change_in_production_min_32_chars");
         assert_eq!(cfg.jwt_expiration_hours, 168);
-        assert_eq!(cfg.port, 3000);
+        assert_eq!(cfg.port, 3001);
+        assert_eq!(cfg.upload_dir, "./uploads");
     }
 
     #[test]
@@ -54,6 +59,7 @@ mod tests {
         std::env::set_var("JWT_SECRET", "my-secret");
         std::env::set_var("JWT_EXPIRES_IN", "24");
         std::env::set_var("PORT", "4000");
+        std::env::set_var("UPLOAD_DIR", "/tmp/uploads");
 
         let cfg = Config::from_env().expect("config should load");
 
@@ -61,5 +67,6 @@ mod tests {
         assert_eq!(cfg.jwt_secret, "my-secret");
         assert_eq!(cfg.jwt_expiration_hours, 24);
         assert_eq!(cfg.port, 4000);
+        assert_eq!(cfg.upload_dir, "/tmp/uploads");
     }
 }

@@ -17,6 +17,7 @@ use axum::routing::get;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -61,6 +62,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .nest("/api", routes::api_router())
+        .nest_service("/uploads", ServeDir::new(&config.upload_dir))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
         .layer(

@@ -2,10 +2,12 @@
 
 pub mod auth;
 pub mod channels;
+pub mod dm;
 pub mod health;
 pub mod invites;
 pub mod members;
 pub mod servers;
+pub mod gifs;
 
 use axum::Router;
 use crate::state::AppState;
@@ -16,6 +18,8 @@ pub fn api_router() -> Router<Arc<AppState>> {
     Router::new()
         .merge(health::router())
         .nest("/auth", auth::routes())
+        .nest("/gifs", gifs::router())
         .nest("/servers", servers::router())
         .nest("/join", invites::join_router())
+        .nest("/dm", dm::router())
 }
