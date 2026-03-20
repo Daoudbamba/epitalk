@@ -27,7 +27,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{ChannelResponse, CreateChannelRequest, UpdateChannelRequest};
 use crate::repositories::{ChannelRepository, MembershipRepository, UserRepository};
 use crate::state::AppState;
-use crate::ws::protocol::validate_content;
+use crate::ws::protocol::{validate_content, ServerEvent};
 use std::sync::Arc;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -515,7 +515,7 @@ async fn edit_message(
         .map(|u| u.username)
         .unwrap_or_else(|| user_id.to_string().chars().take(8).collect());
 
-    Ok(Json(MessageResponse {
+    let response = MessageResponse {
         id: updated
             .id
             .map(|oid| oid.to_hex())
@@ -526,7 +526,22 @@ async fn edit_message(
         username,
         content: updated.content,
         created_at: updated.created_at,
-    }))
+    };
+
+    let event = ServerEvent::MessageUpdated {
+        id: response.id.clone(),
+        channel_id: response.channel_id.clone(),
+        author_id: response.author_id.clone(),
+        username: response.username.clone(),
+        content: response.content.clone(),
+        edited_at: chrono::Utc::now().to_rfc3339(),
+    };
+    state
+        .hub
+        .broadcast_room(&params.channel_id.to_string(), event)
+        .await;
+
+    Ok(Json(response))
 }
 
 /// List pinned messages for a channel
@@ -642,6 +657,17 @@ async fn pin_message(
         return Err(AppError::NotFound("Message not found".to_string()));
     }
 
+    let event = ServerEvent::MessagePinned {
+        message_id: params.message_id.clone(),
+        channel_id: params.channel_id.to_string(),
+        pinned_by: user_id.to_string(),
+        pinned_at: chrono::Utc::now().to_rfc3339(),
+    };
+    state
+        .hub
+        .broadcast_room(&params.channel_id.to_string(), event)
+        .await;
+
     Ok(Json(serde_json::json!({ "pinned": true })))
 }
 
@@ -685,6 +711,17 @@ async fn unpin_message(
     if unpinned.is_none() {
         return Err(AppError::NotFound("Message not found".to_string()));
     }
+
+    let event = ServerEvent::MessageUnpinned {
+        message_id: params.message_id.clone(),
+        channel_id: params.channel_id.to_string(),
+        unpinned_by: user_id.to_string(),
+        unpinned_at: chrono::Utc::now().to_rfc3339(),
+    };
+    state
+        .hub
+        .broadcast_room(&params.channel_id.to_string(), event)
+        .await;
 
     Ok(Json(serde_json::json!({ "unpinned": true })))
 }
