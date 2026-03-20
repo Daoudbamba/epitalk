@@ -19,16 +19,24 @@ CREATE TYPE member_role AS ENUM ('OWNER', 'ADMIN', 'MODERATOR', 'MEMBER');
 -- Types de channels (extensible pour VOICE plus tard)
 CREATE TYPE channel_kind AS ENUM ('TEXT');
 
+-- Statut utilisateur
+CREATE TYPE user_status AS ENUM ('ONLINE', 'IDLE', 'DND', 'OFFLINE');
+
 -- =============================================================================
 -- TABLE: users
 -- =============================================================================
--- Stocke les informations d'authentification des utilisateurs
+-- Stocke les informations d'authentification et de profil des utilisateurs
 
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email CITEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     username TEXT NOT NULL,
+    avatar_url TEXT,
+    bio TEXT DEFAULT '',
+    banner_color_1 TEXT DEFAULT '#023BFC',
+    banner_color_2 TEXT DEFAULT '#3D6AFF',
+    status user_status NOT NULL DEFAULT 'ONLINE',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

@@ -34,7 +34,7 @@ function extractInviteCode(value: string): string | null {
 
 type Status = { type: "success" | "error" | "info"; text: string } | null;
 
-export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
+export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRefresh: () => Promise<void>; openSettings: boolean; setOpenSettings: (v: boolean) => void }) {
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
@@ -46,8 +46,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   );
 
   const isOwner = !!activeServer && !!currentUser && activeServer.owner_id === currentUser.id;
-
-  const [openSettings, setOpenSettings] = useState(false);
   const [openCreateServer, setOpenCreateServer] = useState(false);
   const [inviteInput, setInviteInput] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -211,33 +209,21 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
       <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
 
-      {/* User Settings (Profile / Logout) */}
-      <div className="mt-auto">
+      {/* User Settings (Profile) */}
+      <div>
         <UserSettings />
       </div>
 
-      {/* Settings button (bottom) - Server settings */}
-      <button
-        onClick={() => setOpenSettings(true)}
-        className="w-12 h-12 server-icon bg-white hover:bg-[#F7F8FA] border border-[#E5E7EB] text-[#6B7280] hover:text-[#023BFC] flex items-center justify-center transition-all duration-300"
-        title="Parametres serveur"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-      </button>
-
       {/* Modal settings - Premium glassmorphism */}
       {openSettings && (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setOpenSettings(false)}
           />
-          <div className="absolute left-1/2 top-1/2 w-140 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-3xl glass border border-white/30 shadow-2xl overflow-hidden">
+          <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-3xl glass border border-white/30 shadow-2xl overflow-hidden">
             {/* Header with gradient */}
-            <div className="px-6 py-5 border-b border-[#E5E7EB]/50 flex items-center bg-gradient-to-r from-[#023BFC]/5 to-transparent">
+            <div className="shrink-0 px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E5E7EB]/50 flex items-center bg-gradient-to-r from-[#023BFC]/5 to-transparent">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#0066FF] flex items-center justify-center shadow-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -245,15 +231,15 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="font-bold text-[#1A1A2E]">Parametres</div>
-                  <div className="text-xs text-[#6B7280]">{activeServer?.name ?? "Aucun serveur selectionne"}</div>
+                  <div className="text-xs text-[#6B7280] truncate">{activeServer?.name ?? "Aucun serveur selectionne"}</div>
                 </div>
               </div>
               <button
                 title="Fermer les paramètres"
                 aria-label="Fermer les paramètres"
-                className="ml-auto w-9 h-9 rounded-xl bg-[#F7F8FA] hover:bg-[#E5E7EB] border border-[#E5E7EB] flex items-center justify-center transition-all duration-300"
+                className="ml-auto w-9 h-9 rounded-xl bg-[#F7F8FA] hover:bg-[#E5E7EB] border border-[#E5E7EB] flex items-center justify-center transition-all duration-300 shrink-0"
                 onClick={() => setOpenSettings(false)}
               >
                 <svg className="w-4 h-4 text-[#6B7280]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -262,9 +248,9 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
               {/* Join */}
-              <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
+              <div className="rounded-2xl border border-[#E5E7EB]/50 p-4 sm:p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center">
                     <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -277,21 +263,21 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
                   Colle un code ou un lien complet d&apos;invitation.
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <input
                     value={inviteInput}
                     onChange={(e) => setInviteInput(e.target.value)}
                     placeholder="Lien d'invite ou code..."
                     className="h-11 flex-1 rounded-xl border border-[#E5E7EB] px-4 text-sm bg-white/80 focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 outline-none transition-all duration-300"
                   />
-                  <Button onClick={onJoin} disabled={loadingJoin || !inviteInput.trim()} className="btn-premium h-11 px-5">
+                  <Button onClick={onJoin} disabled={loadingJoin || !inviteInput.trim()} className="btn-premium h-11 px-5 shrink-0">
                     {loadingJoin ? "..." : "Rejoindre"}
                   </Button>
                 </div>
               </div>
 
               {/* Invite */}
-              <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
+              <div className="rounded-2xl border border-[#E5E7EB]/50 p-4 sm:p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#023BFC] to-[#0066FF] flex items-center justify-center">
                     <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -317,7 +303,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
                   {inviteLink && (
                     <>
-                      <div className="flex-1 min-w-[200px] text-xs rounded-xl border border-[#E5E7EB] px-4 py-3 bg-[#F7F8FA] font-mono overflow-hidden text-ellipsis text-[#1A1A2E]">
+                      <div className="w-full sm:flex-1 sm:w-auto min-w-0 text-xs rounded-xl border border-[#E5E7EB] px-4 py-3 bg-[#F7F8FA] font-mono overflow-hidden text-ellipsis text-[#1A1A2E] break-all">
                         {inviteLink}
                       </div>
                       <Button variant="outline" onClick={onCopyInvite} className="h-11 px-4 rounded-xl border-[#023BFC] text-[#023BFC] hover:bg-[#023BFC] hover:text-white transition-all duration-300">
@@ -329,7 +315,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
               </div>
 
               {/* Danger */}
-              <div className="rounded-2xl border border-red-200/50 p-5 bg-red-50/30 hover:bg-red-50/50 transition-all duration-300">
+              <div className="rounded-2xl border border-red-200/50 p-4 sm:p-5 bg-red-50/30 hover:bg-red-50/50 transition-all duration-300">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center">
                     <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

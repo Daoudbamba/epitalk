@@ -11,6 +11,7 @@ import { Menu, Users, X } from "lucide-react";
 export default function ServersPage() {
   const [showChannels, setShowChannels] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [openServerSettings, setOpenServerSettings] = useState(false);
 
   return (
     <ServersLoader>
@@ -35,7 +36,7 @@ export default function ServersPage() {
 
           {/* Left rail (servers) - hidden on mobile, shown on md+ */}
           <div className="hidden md:flex md:h-full">
-            <ServersRail onRefresh={refresh} />
+            <ServersRail onRefresh={refresh} openSettings={openServerSettings} setOpenSettings={setOpenServerSettings} />
           </div>
 
           {/* Channels sidebar - responsive overlay on mobile */}
@@ -46,9 +47,9 @@ export default function ServersPage() {
           `}>
             {/* Mobile: show servers rail inline */}
             <div className="md:hidden border-b p-2">
-              <ServersRail onRefresh={refresh} />
+              <ServersRail onRefresh={refresh} openSettings={openServerSettings} setOpenSettings={setOpenServerSettings} />
             </div>
-            <ChannelsSidebar />
+            <ChannelsSidebar onOpenSettings={() => setOpenServerSettings(true)} />
           </div>
 
           {/* Chat - takes remaining space */}
