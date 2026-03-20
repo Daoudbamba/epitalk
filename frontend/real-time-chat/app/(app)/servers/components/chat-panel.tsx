@@ -24,9 +24,11 @@ import { useMemberStore } from "@/store/member.store";
 
 export function ChatPanel() {
   const activeServerId = useServerStore((s) => s.activeServerId);
+  const setActiveServer = useServerStore((s) => s.setActiveServer);
 
   const channels = useChannelStore((s) => s.channels);
   const activeChannelId = useChannelStore((s) => s.activeChannelId);
+  const setActiveChannel = useChannelStore((s) => s.setActiveChannel);
 
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
@@ -88,6 +90,46 @@ export function ChatPanel() {
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // Jump to a message by id (switch server/channel if needed)
+  const jumpToMessage = async (
+    messageId: string,
+    serverId: string,
+    channelId: string,
+  ) => {
+    try {
+      // If server or channel differs, set them so the UI switches
+      if (serverId && serverId !== activeServerId) {
+        setActiveServer(serverId);
+      }
+      if (channelId && channelId !== activeChannelId) {
+        setActiveChannel(channelId);
+      }
+
+      // Wait for the DOM element to appear (messages loaded via WS)
+      const selector = `#msg-${messageId}`;
+      const start = Date.now();
+      const timeout = 3000; // ms
+      while (Date.now() - start < timeout) {
+        const el = document.querySelector(selector) as HTMLElement | null;
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          // briefly highlight
+          const original = el.style.boxShadow;
+          el.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.25)";
+          setTimeout(() => {
+            el.style.boxShadow = original;
+          }, 1600);
+          return;
+        }
+        // wait a bit
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      // If not found, just close search
+    } catch (err) {
+      console.error("jumpToMessage failed", err);
+    }
+  };
 
   const canLoad = !!activeServerId && !!activeChannelId;
 
@@ -438,15 +480,15 @@ export function ChatPanel() {
                   <div className="text-sm text-zinc-500">Aucun résultat</div>
                 ) : (
                   <ul className="flex flex-col gap-2">
-                    {searchResults.map((r) => (
+                          {searchResults.map((r) => (
                       <li
                         key={r.id}
                         className="p-2 border rounded hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
-                        onClick={() => {
-                          // Put message content into input for quick reference and close
-                          setValue(r.content || "");
+                        onClick={async () => {
+                          // Jump to the message in the conversation
                           setSearchOpen(false);
                           setSearchResults([]);
+                          await jumpToMessage(r.id, r.server_id, r.channel_id);
                         }}
                       >
                         <div className="text-xs text-zinc-500">
@@ -493,6 +535,7 @@ export function ChatPanel() {
               return (
                 <div
                   key={msg.id}
+                  id={`msg-${msg.id}`}
                   className="group relative flex items-start px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
                 >
                   {/* Action buttons — top-right, visible on hover */}
@@ -632,7 +675,7 @@ export function ChatPanel() {
                             <img
                               src={gifMessage.gif.url}
                               alt={gifMessage.caption || "GIF"}
-                              className="max-h-[360px] max-w-[70%] rounded-md object-contain cursor-pointer"
+                              className="max-h-90 max-w-[70%] rounded-md object-contain cursor-pointer"
                               onClick={() =>
                                 setOpenGifLightbox(gifMessage.gif.url)
                               }
