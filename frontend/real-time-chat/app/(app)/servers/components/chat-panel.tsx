@@ -97,6 +97,30 @@ export function ChatPanel() {
 
   // Connect WebSocket on mount
   useEffect(() => {
+    if (!hasHydrated) return;
+
+  const pinnedMessages = useMemo(() => {
+    if (pinnedMessagesFromApi.length === 0) {
+      return pinnedMessagesInMemory;
+    }
+
+    const byId = new Map<string, Message>();
+    for (const msg of pinnedMessagesFromApi) {
+      byId.set(msg.id, msg);
+    }
+    for (const msg of pinnedMessagesInMemory) {
+      if (!byId.has(msg.id)) {
+        byId.set(msg.id, msg);
+      }
+    }
+
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [pinnedMessagesFromApi, pinnedMessagesInMemory]);
+
+  // Connect WebSocket on mount
+  useEffect(() => {
     if (token && !isConnected) {
       connect(token);
     }
