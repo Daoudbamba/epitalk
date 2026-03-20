@@ -4,7 +4,8 @@ import { createServersApi } from "./servers.api";
 import { createChannelsApi } from "./channels.api";
 import { createMessagesApi } from "./messages.api";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+// Prefer explicit loopback IPv4 to avoid localhost resolution issues.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080";
   
 const client = new FetchClient(`${API_BASE_URL}/api`);
 

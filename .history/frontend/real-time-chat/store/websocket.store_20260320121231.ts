@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { authApi } from "@/lib/api";
+import { useAuthStore } from "@/store/auth.store";
 
 // Types basés sur le protocole WebSocket du backend
 export interface WsMessage {
@@ -62,6 +64,18 @@ type WebSocketState = {
 };
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
+const MAX_RECONNECT_ATTEMPTS = 5;
+const BASE_RECONNECT_DELAY_MS = 1000;
+
+let reconnectAttempts = 0;
+
+function getLatestToken(): string | null {
+  if (typeof window !== "undefined") {
+    const fromStorage = localStorage.getItem("token");
+    if (fromStorage) return fromStorage;
+  }
+  return useAuthStore.getState().token;
+}
 
 export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   socket: null,
@@ -74,8 +88,12 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   connect: (token: string) => {
     const existingSocket = get().socket;
-    if (existingSocket && existingSocket.readyState === WebSocket.OPEN) {
-      return; // Already connected
+    if (
+      existingSocket &&
+      (existingSocket.readyState === WebSocket.OPEN ||
+        existingSocket.readyState === WebSocket.CONNECTING)
+    ) {
+      return; // Already connected or connecting
     }
 
     const wsUrl = `${WS_URL}?token=${encodeURIComponent(token)}`;
@@ -84,6 +102,7 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
     socket.onopen = () => {
       console.log("✅ WebSocket connected");
+      reconnectAttempts = 0;
       set({ socket, isConnected: true, error: null });
 
       // Rejoin current channel if any
@@ -121,15 +140,35 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
       console.log("🔌 WebSocket disconnected:", event.code, event.reason);
       set({ socket: null, isConnected: false });
 
-      // Auto-reconnect after 3 seconds if not intentionally closed
+      // Auto-reconnect with guardrails if not intentionally closed
       if (event.code !== 1000) {
-        setTimeout(() => {
-          const state = get();
-          if (!state.isConnected && token) {
-            console.log("🔄 Attempting to reconnect...");
-            state.connect(token);
+        reconnectAttempts += 1;
+
+        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+          set({ error: "Connexion WebSocket impossible. Veuillez vous reconnecter." });
+          return;
+        }
+
+        void (async () => {
+          try {
+            await authApi.me();
+          } catch {
+            useAuthStore.getState().logout();
+            reconnectAttempts = 0;
+            set({ error: "Session expirée. Veuillez vous reconnecter." });
+            return;
           }
-        }, 3000);
+
+          const delay = BASE_RECONNECT_DELAY_MS * reconnectAttempts;
+          setTimeout(() => {
+            const state = get();
+            const latestToken = getLatestToken();
+            if (!state.isConnected && latestToken) {
+              console.log("🔄 Attempting to reconnect...");
+              state.connect(latestToken);
+            }
+          }, delay);
+        })();
       }
     };
 
@@ -138,6 +177,7 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   disconnect: () => {
     const { socket } = get();
+    reconnectAttempts = 0;
     if (socket) {
       socket.close(1000, "User disconnected");
       set({ socket: null, isConnected: false });
