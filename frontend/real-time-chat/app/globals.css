@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *), &:is(.dim *));
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PREMIUM DESIGN SYSTEM - Electric Blue Theme
@@ -55,6 +55,7 @@
 
 :root {
   --radius: 0.75rem;
+  --chat-font-size: 16px;
   
   /* Core Colors - Electric Blue Premium Theme */
   --electric-blue: #023BFC;
@@ -116,6 +117,87 @@
   --sidebar-ring: #023BFC;
 }
 
+/* Cendré — warm muted gray */
+.ash {
+  --background: #E8E6E1;
+  --foreground: #2C2A26;
+  --surface: #D9D6D0;
+  --surface-elevated: #EFEDE8;
+
+  --card: #EFEDE8;
+  --card-foreground: #2C2A26;
+  --popover: #EFEDE8;
+  --popover-foreground: #2C2A26;
+
+  --primary: #023BFC;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #D9D6D0;
+  --secondary-foreground: #2C2A26;
+
+  --muted: #D1CEC8;
+  --muted-foreground: #6B6860;
+
+  --accent: #D6DEFC;
+  --accent-foreground: #023BFC;
+
+  --destructive: #EF4444;
+
+  --border: #C5C2BB;
+  --input: #D9D6D0;
+  --ring: #023BFC;
+
+  --sidebar: #D9D6D0;
+  --sidebar-foreground: #2C2A26;
+  --sidebar-primary: #023BFC;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #D6DEFC;
+  --sidebar-accent-foreground: #023BFC;
+  --sidebar-border: #C5C2BB;
+  --sidebar-ring: #023BFC;
+}
+
+/* Sombre — dark gray, softer than full dark */
+.dim {
+  --background: #1E2028;
+  --foreground: #E4E5EA;
+  --surface: #272A34;
+  --surface-elevated: #2F3340;
+
+  --card: #272A34;
+  --card-foreground: #E4E5EA;
+  --popover: #272A34;
+  --popover-foreground: #E4E5EA;
+
+  --primary: #3D6AFF;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #2F3340;
+  --secondary-foreground: #E4E5EA;
+
+  --muted: #2F3340;
+  --muted-foreground: #9CA3AF;
+
+  --accent: #1E2A4A;
+  --accent-foreground: #3D6AFF;
+
+  --destructive: #F87171;
+
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #3D6AFF;
+
+  --sidebar: #272A34;
+  --sidebar-foreground: #E4E5EA;
+  --sidebar-primary: #3D6AFF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1E2A4A;
+  --sidebar-accent-foreground: #3D6AFF;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --sidebar-ring: #3D6AFF;
+}
+
+/* Dark — full black */
 .dark {
   --background: #0F1117;
   --foreground: #F7F8FA;
@@ -175,6 +257,21 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.ash .glass {
+  background: rgba(239, 237, 232, 0.8);
+  border: 1px solid rgba(197, 194, 187, 0.5);
+}
+
+.dim .glass {
+  background: rgba(39, 42, 52, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dark .glass {
+  background: rgba(26, 29, 38, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-dark {

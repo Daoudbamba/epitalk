@@ -26,7 +26,7 @@ export function UserSettings() {
       href="/settings"
       className={`relative w-12 h-12 rounded-2xl border-2 transition-all duration-300 flex items-center justify-center overflow-hidden ${
         !user
-          ? "bg-[#F7F8FA] border-[#E5E7EB] text-[#6B7280] pointer-events-none"
+          ? "bg-[var(--surface)] border-[var(--border)] text-[var(--muted-foreground)] pointer-events-none"
           : "border-[#023BFC]/30 shadow-lg hover:shadow-xl hover:scale-105"
       }`}
       title={user ? "Paramètres utilisateur" : "Chargement..."}
@@ -46,7 +46,7 @@ export function UserSettings() {
       )}
       {/* Status dot */}
       {user && (
-        <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white ${statusDot}`} />
+        <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-[var(--card)] ${statusDot}`} />
       )}
     </Link>
   );

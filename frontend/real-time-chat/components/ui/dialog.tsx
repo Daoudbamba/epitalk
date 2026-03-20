@@ -97,7 +97,7 @@ export function DialogContent({ children, className }: DialogContentProps) {
       {/* Content */}
       <div
         className={cn(
-          "relative z-50 w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-zinc-900",
+          "relative z-50 w-full max-w-md rounded-lg bg-[var(--card)] p-6 shadow-xl",
           "animate-in fade-in-0 zoom-in-95 duration-200",
           className
         )}
@@ -106,7 +106,7 @@ export function DialogContent({ children, className }: DialogContentProps) {
         <button
           type="button"
           onClick={() => onOpenChange(false)}
-          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-zinc-400"
+          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
         >
           <X className="h-4 w-4" />
           <span className="sr-only">Fermer</span>
@@ -151,7 +151,7 @@ interface DialogDescriptionProps {
 
 export function DialogDescription({ children, className }: DialogDescriptionProps) {
   return (
-    <p className={cn("text-sm text-zinc-500 dark:text-zinc-400", className)}>
+    <p className={cn("text-sm text-[var(--muted-foreground)]", className)}>
       {children}
     </p>
   );

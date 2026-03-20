@@ -49,10 +49,11 @@ export function ChannelsSidebar({ onOpenSettings }: { onOpenSettings?: () => voi
       const data = await channelsApi.listByServer(activeServerId);
       setChannels(data);
 
-      // ✅ si aucun actif OU actif pas dans cette liste, on sélectionne le 1er
-      const stillExists = data.some((c) => c.id === activeChannelId);
+      // ✅ Lire la valeur courante du store (évite les closures périmées)
+      const currentActiveChannel = useChannelStore.getState().activeChannelId;
+      const stillExists = data.some((c) => c.id === currentActiveChannel);
 
-      if ((!activeChannelId || !stillExists) && data.length > 0) {
+      if ((!currentActiveChannel || !stillExists) && data.length > 0) {
         setActiveChannel(data[0].id);
       }
       if (data.length === 0) setActiveChannel(null);
@@ -65,8 +66,7 @@ export function ChannelsSidebar({ onOpenSettings }: { onOpenSettings?: () => voi
   };
 
   useEffect(() => {
-    // ✅ serveur changé : reset sélection + reload
-    setActiveChannel(null);
+    // ✅ serveur changé : reload les channels (la sélection est gérée dans refresh)
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeServerId]);
@@ -118,22 +118,22 @@ export function ChannelsSidebar({ onOpenSettings }: { onOpenSettings?: () => voi
       ? "border-emerald-200 text-emerald-700 bg-emerald-50/80"
       : status?.type === "error"
         ? "border-red-200 text-red-700 bg-red-50/80"
-        : "border-[#023BFC]/20 text-[#023BFC] bg-[#EBF0FF]";
+        : "border-[#023BFC]/20 text-[#023BFC] bg-[var(--accent)]";
 
   return (
-    <div className="h-[95%] rounded-2xl my-4 mx-2 flex flex-col bg-white/70 backdrop-blur-sm border border-[#E5E7EB] shadow-lg overflow-hidden">
+    <div className="h-[95%] rounded-2xl my-4 mx-2 flex flex-col bg-[var(--card)] backdrop-blur-sm border border-[var(--border)] shadow-lg overflow-hidden">
       {/* Header with server name */}
-      <div className="border-b border-[#E5E7EB]/50 px-5 py-4 flex items-center gap-3 bg-gradient-to-r from-white to-[#F7F8FA]">
+      <div className="border-b border-[var(--border)]/50 px-5 py-4 flex items-center gap-3 bg-gradient-to-r from-[var(--card)] to-[var(--surface)]">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC]/10 to-[#023BFC]/5 flex items-center justify-center">
           <svg className="w-5 h-5 text-[#023BFC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
           </svg>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-[#1A1A2E] truncate">
+          <div className="text-sm font-bold text-[var(--foreground)] truncate">
             {activeServer?.name ?? "Aucun serveur"}
           </div>
-          <div className="text-xs text-[#6B7280]">
+          <div className="text-xs text-[var(--muted-foreground)]">
             {channels.length} channel{channels.length !== 1 ? "s" : ""}
           </div>
         </div>
@@ -143,7 +143,7 @@ export function ChannelsSidebar({ onOpenSettings }: { onOpenSettings?: () => voi
             <button
               onClick={onOpenSettings}
               disabled={!activeServerId}
-              className="w-9 h-9 rounded-xl bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#023BFC] hover:border-[#023BFC]/50 flex items-center justify-center transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="w-9 h-9 rounded-xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[#023BFC] hover:border-[#023BFC]/50 flex items-center justify-center transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               title="Paramètres serveur"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,28 +169,28 @@ export function ChannelsSidebar({ onOpenSettings }: { onOpenSettings?: () => voi
       <div className="flex-1 overflow-auto p-4 space-y-2 scrollbar-thin">
         {!activeServerId ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <div className="w-16 h-16 rounded-2xl bg-[#F7F8FA] flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-[#9CA3AF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--surface)] flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-[var(--muted-foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </div>
-            <p className="text-sm text-[#6B7280]">Sélectionne un serveur</p>
-            <p className="text-xs text-[#9CA3AF] mt-1">dans la barre de gauche</p>
+            <p className="text-sm text-[var(--muted-foreground)]">Sélectionne un serveur</p>
+            <p className="text-xs text-[var(--muted-foreground)] mt-1">dans la barre de gauche</p>
           </div>
         ) : loading ? (
           <div className="flex flex-col items-center justify-center h-32">
             <div className="w-8 h-8 rounded-full border-2 border-[#023BFC] border-t-transparent animate-spin"></div>
-            <p className="text-sm text-[#6B7280] mt-3">Chargement...</p>
+            <p className="text-sm text-[var(--muted-foreground)] mt-3">Chargement...</p>
           </div>
         ) : channels.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <div className="w-16 h-16 rounded-2xl bg-[#EBF0FF] flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--accent)] flex items-center justify-center mb-4">
               <svg className="w-8 h-8 text-[#023BFC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
               </svg>
             </div>
-            <p className="text-sm text-[#6B7280]">Aucun channel</p>
-            <p className="text-xs text-[#9CA3AF] mt-1">Crée le premier !</p>
+            <p className="text-sm text-[var(--muted-foreground)]">Aucun channel</p>
+            <p className="text-xs text-[var(--muted-foreground)] mt-1">Crée le premier !</p>
           </div>
         ) : (
           channels.map((c) => {
@@ -204,12 +204,12 @@ export function ChannelsSidebar({ onOpenSettings }: { onOpenSettings?: () => voi
                     "flex-1 text-left rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-300",
                     active
                       ? "channel-active bg-gradient-to-r from-[#023BFC] to-[#3D6AFF] text-white shadow-lg"
-                      : "text-[#4B5563] hover:bg-[#F7F8FA] hover:text-[#023BFC] border border-transparent hover:border-[#E5E7EB]",
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--surface)] hover:text-[#023BFC] border border-transparent hover:border-[var(--border)]",
                   ].join(" ")}
                   title={active ? "Channel actif" : "Sélectionner"}
                 >
                   <span className="flex items-center gap-2">
-                    <span className={active ? "text-white/80" : "text-[#9CA3AF]"}>#</span>
+                    <span className={active ? "text-white/80" : "text-[var(--muted-foreground)]"}>#</span>
                     {c.name}
                   </span>
                 </button>
@@ -222,8 +222,8 @@ export function ChannelsSidebar({ onOpenSettings }: { onOpenSettings?: () => voi
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300",
                     "opacity-0 group-hover:opacity-100",
                     isOwner
-                      ? "text-[#9CA3AF] hover:text-red-500 hover:bg-red-50"
-                      : "text-[#D1D5DB] cursor-not-allowed",
+                      ? "text-[var(--muted-foreground)] hover:text-red-500 hover:bg-red-50"
+                      : "text-[var(--muted-foreground)] cursor-not-allowed",
                   ].join(" ")}
                   title={isOwner ? "Supprimer" : "Réservé au créateur"}
                 >
@@ -239,7 +239,7 @@ export function ChannelsSidebar({ onOpenSettings }: { onOpenSettings?: () => voi
 
       {/* Status with premium styling */}
       {status && (
-        <div className={`border-t border-[#E5E7EB]/50 px-5 py-3 text-xs rounded-b-2xl ${statusClasses}`}>
+        <div className={`border-t border-[var(--border)]/50 px-5 py-3 text-xs rounded-b-2xl ${statusClasses}`}>
           <div className="flex items-center gap-2">
             {status.type === "success" && (
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -21,11 +21,11 @@ export function DmSidebar() {
   }, [fetchConversations]);
 
   return (
-    <aside className="h-full flex flex-col bg-white/90 dark:bg-[#2b2d31] border-r border-[#E5E7EB]">
+    <aside className="h-full flex flex-col bg-[var(--card)] border-r border-[var(--border)]">
       {/* Header */}
-      <div className="h-12 px-4 flex items-center border-b border-[#E5E7EB] shrink-0">
+      <div className="h-12 px-4 flex items-center border-b border-[var(--border)] shrink-0">
         <MessageSquare className="w-5 h-5 text-[#023BFC] mr-2" />
-        <h2 className="font-bold text-sm text-zinc-800 dark:text-zinc-100">
+        <h2 className="font-bold text-sm text-[var(--foreground)]">
           Messages privés
         </h2>
       </div>
@@ -33,13 +33,13 @@ export function DmSidebar() {
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto py-2">
         {loading && conversations.length === 0 && (
-          <div className="px-4 py-8 text-sm text-zinc-400 text-center">
+          <div className="px-4 py-8 text-sm text-[var(--muted-foreground)] text-center">
             Chargement...
           </div>
         )}
 
         {!loading && conversations.length === 0 && (
-          <div className="px-4 py-8 text-sm text-zinc-400 text-center">
+          <div className="px-4 py-8 text-sm text-[var(--muted-foreground)] text-center">
             Aucune conversation privée.
             <br />
             <span className="text-xs">
@@ -60,7 +60,7 @@ export function DmSidebar() {
                 "w-full px-3 py-2.5 flex items-center gap-3 transition-all duration-200",
                 active
                   ? "bg-[#023BFC]/10 border-l-2 border-[#023BFC]"
-                  : "hover:bg-zinc-100 dark:hover:bg-zinc-800 border-l-2 border-transparent",
+                  : "hover:bg-[var(--surface)] border-l-2 border-transparent",
               ].join(" ")}
             >
               {/* Avatar */}
@@ -69,24 +69,24 @@ export function DmSidebar() {
                   "w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold",
                   active
                     ? "bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white"
-                    : "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-100",
+                    : "bg-[var(--muted)] text-[var(--foreground)]",
                 ].join(" ")}>
                   {conv.peer_username.slice(0, 2).toUpperCase()}
                 </div>
                 {/* Online indicator */}
                 {isOnline && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#2b2d31] rounded-full" />
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-[var(--card)] rounded-full" />
                 )}
               </div>
 
               <div className="flex-1 min-w-0 text-left">
                 <div className={[
                   "text-sm font-semibold truncate",
-                  active ? "text-[#023BFC]" : "text-zinc-800 dark:text-zinc-100",
+                  active ? "text-[#023BFC]" : "text-[var(--foreground)]",
                 ].join(" ")}>
                   {conv.peer_username}
                 </div>
-                <div className="text-xs text-zinc-400 truncate max-w-[160px]">
+                <div className="text-xs text-[var(--muted-foreground)] truncate max-w-[160px]">
                   {conv.last_message.length > 40
                     ? conv.last_message.slice(0, 40) + "..."
                     : conv.last_message}
@@ -95,7 +95,7 @@ export function DmSidebar() {
 
               {/* Time */}
               {conv.last_message_at && (
-                <div className="text-[10px] text-zinc-400 shrink-0">
+                <div className="text-[10px] text-[var(--muted-foreground)] shrink-0">
                   {formatTime(conv.last_message_at)}
                 </div>
               )}

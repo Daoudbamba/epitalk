@@ -18,7 +18,7 @@ export default function DmPage() {
       </div>
 
       {/* Chat panel */}
-      <div className="flex-1 min-w-0 h-full bg-white overflow-hidden">
+      <div className="flex-1 min-w-0 h-full bg-[var(--card)] overflow-hidden">
         <DmChatPanel />
       </div>
     </div>
