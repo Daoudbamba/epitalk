@@ -100,6 +100,23 @@ impl JwtService {
         })
     }
 
+    /// Validate and decode a JWT token without enforcing expiration.
+    ///
+    /// Signature is still verified and claims are decoded safely.
+    pub fn validate_token_allow_expired(&self, token: &str) -> AppResult<TokenData<Claims>> {
+        let mut validation = Validation::default();
+        validation.validate_exp = false;
+
+        decode::<Claims>(token, &self.decoding_key, &validation).map_err(|e| {
+            match e.kind() {
+                jsonwebtoken::errors::ErrorKind::InvalidToken => {
+                    AppError::Unauthorized("Invalid token format".to_string())
+                }
+                _ => AppError::Unauthorized(format!("Token validation failed: {}", e)),
+            }
+        })
+    }
+
     /// Extract claims from a token without full validation (for debugging)
     #[allow(dead_code)] // Useful for debugging and testing
     pub fn decode_without_validation(&self, token: &str) -> AppResult<Claims> {
@@ -162,6 +179,32 @@ mod tests {
         let token = service.generate_token(user_id, "test@example.com", "test").unwrap();
         let result = service.validate_token(&token);
 
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_allow_expired_token() {
+        let service = JwtService::new("test-secret-key-at-least-32-chars", -1); // Expired immediately
+        let user_id = Uuid::new_v4();
+
+        let token = service.generate_token(user_id, "test@example.com", "test").unwrap();
+        let result = service.validate_token_allow_expired(&token);
+
+        assert!(result.is_ok());
+        let decoded = result.unwrap();
+        assert_eq!(decoded.claims.sub, user_id);
+    }
+
+    #[test]
+    fn test_allow_expired_rejects_tampered_token() {
+        let service = JwtService::new("test-secret-key-at-least-32-chars", -1); // Expired immediately
+        let user_id = Uuid::new_v4();
+
+        let token = service.generate_token(user_id, "test@example.com", "test").unwrap();
+        let mut tampered = token.clone();
+        tampered.push('x');
+
+        let result = service.validate_token_allow_expired(&tampered);
         assert!(result.is_err());
     }
 }

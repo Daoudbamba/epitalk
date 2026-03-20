@@ -18,12 +18,14 @@ export function ChatPanel() {
 
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
 
   const members = useMemberStore((s) => s.members);
 
   // WebSocket store
   const isConnected = useWebSocketStore((s) => s.isConnected);
   const connect = useWebSocketStore((s) => s.connect);
+  const disconnect = useWebSocketStore((s) => s.disconnect);
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
   const wsMessages = useWebSocketStore((s) => s.messages);
@@ -51,10 +53,24 @@ export function ChatPanel() {
 
   // Connect WebSocket on mount
   useEffect(() => {
-    if (token && !isConnected) {
-      connect(token);
+    if (!hasHydrated) return;
+
+    let latestToken = token;
+    if (typeof window !== "undefined") {
+      const persistedToken = localStorage.getItem("token");
+      if (persistedToken !== token) {
+        latestToken = persistedToken;
+      }
     }
-  }, [token, isConnected, connect]);
+
+    if (latestToken && !isConnected) {
+      connect(latestToken);
+    }
+
+    if (!latestToken && isConnected) {
+      disconnect();
+    }
+  }, [connect, disconnect, hasHydrated, isConnected, token]);
 
   // Join channel when it changes
   useEffect(() => {
@@ -69,7 +85,7 @@ export function ChatPanel() {
   }, [messages]);
 
   // Get username from message, members or fallback to author_id
-  const getUsernameById = (authorId: string, msgUsername?: string): string => {
+  const getUsernameById = useCallback((authorId: string, msgUsername?: string): string => {
     // Check if username is provided in the message itself
     if (msgUsername) return msgUsername;
     // Check if it's the current user
@@ -83,7 +99,7 @@ export function ChatPanel() {
     }
     // Fallback: use first part of UUID
     return authorId.slice(0, 8);
-  };
+  }, [members, user]);
 
   const onSend = async () => {
     if (!activeChannelId || !canLoad) return;
@@ -150,7 +166,7 @@ export function ChatPanel() {
     if (names.length === 1) return `${names[0]} est en train d'écrire...`;
     if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
     return `${names.length} personnes écrivent...`;
-  }, [currentTypingUsers]);
+  }, [currentTypingUsers, getUsernameById]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {

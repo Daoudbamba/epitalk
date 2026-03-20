@@ -7,5 +7,5 @@ mod middleware;
 mod password;
 
 pub use jwt::{Claims, JwtService};
-pub use middleware::RequireAuth;
+pub use middleware::{RequireAuth, RequireAuthAllowExpired};
 pub use password::PasswordService;

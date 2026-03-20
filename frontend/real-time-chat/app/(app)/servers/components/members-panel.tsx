@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { serversApi } from "@/lib/api";
-import { getErrorMessage } from "@/lib/api/errors";
+import { ApiError, getErrorMessage } from "@/lib/api/errors";
+import { terminateSession } from "@/lib/auth/session";
 import type { Ban } from "@/lib/api/schemas/servers.schema";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
@@ -19,6 +21,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  const router = useRouter();
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const currentUser = useAuthStore((s) => s.user);
@@ -41,6 +44,15 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const [actionError, setActionError] = useState<string | null>(null);
   const [bans, setBans] = useState<Ban[]>([]);
 
+  const handleUnauthorized = (err: unknown): boolean => {
+    if (err instanceof ApiError && err.status === 401) {
+      terminateSession();
+      router.replace("/login");
+      return true;
+    }
+    return false;
+  };
+
   useEffect(() => {
     if (!activeServerId || !isMemberOfActiveServer) {
       setMembers([]);
@@ -56,11 +68,13 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
           const bansData = await serversApi.listBans(activeServerId);
           setBans(bansData);
         } catch (banErr) {
+          if (handleUnauthorized(banErr)) return;
           console.error("Failed to load bans:", banErr);
           setActionError(getErrorMessage(banErr));
           setBans([]);
         }
       } catch (err) {
+        if (handleUnauthorized(err)) return;
         console.error("Failed to load members:", err);
         setMembers([]);
         setBans([]);
@@ -92,6 +106,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
       await reloadMembersAndBans();
       await onRefresh();
     } catch (err) {
+      if (handleUnauthorized(err)) return;
       console.error("Kick error:", err);
       setActionError(getErrorMessage(err));
     } finally {
@@ -107,6 +122,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
       await serversApi.updateMemberRole(server.id, memberId, newRole);
       await reloadMembersAndBans();
     } catch (err) {
+      if (handleUnauthorized(err)) return;
       console.error("Role update error:", err);
       setActionError(getErrorMessage(err));
     } finally {
@@ -132,6 +148,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
       await reloadMembersAndBans();
       await onRefresh();
     } catch (err) {
+      if (handleUnauthorized(err)) return;
       console.error("Ban error:", err);
       setActionError(getErrorMessage(err));
     } finally {
@@ -150,6 +167,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
       await serversApi.unbanMember(server.id, userId);
       await reloadMembersAndBans();
     } catch (err) {
+      if (handleUnauthorized(err)) return;
       console.error("Unban error:", err);
       setActionError(getErrorMessage(err));
     } finally {

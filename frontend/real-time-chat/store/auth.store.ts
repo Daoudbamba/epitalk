@@ -6,11 +6,13 @@ type AuthState = {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  hasHydrated: boolean;
 
   // Actions
   setAuth: (response: AuthResponse) => void;
   logout: () => void;
   setUser: (user: User) => void;
+  setHasHydrated: (value: boolean) => void;
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -19,6 +21,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isAuthenticated: false,
+      hasHydrated: false,
 
       setAuth: (response: AuthResponse) => {
         // Stocker le token dans localStorage pour fetchClient
@@ -46,6 +49,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setUser: (user: User) => set({ user }),
+      setHasHydrated: (value: boolean) => set({ hasHydrated: value }),
     }),
     {
       name: "auth-storage",
@@ -54,6 +58,9 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );
