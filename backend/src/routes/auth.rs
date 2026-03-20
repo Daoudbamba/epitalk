@@ -33,6 +33,8 @@ pub fn routes() -> Router<Arc<AppState>> {
             post(upload_avatar).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
         .route("/me/avatar-url", post(set_avatar_from_url))
+        .route("/me/email", post(change_email))
+        .route("/me/password", post(change_password))
         .route("/refresh", post(refresh_token))
 }
 
@@ -611,6 +613,82 @@ pub async fn set_avatar_from_url(
         None,
     )
     .await?;
+
+    Ok(Json(user.into()))
+}
+
+/// Change email address
+///
+/// POST /api/auth/me/email
+#[derive(Debug, Deserialize, Validate)]
+pub struct ChangeEmailRequest {
+    #[validate(email(message = "Invalid email format"))]
+    pub new_email: String,
+    pub password: String,
+}
+
+#[axum::debug_handler]
+pub async fn change_email(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Json(payload): Json<ChangeEmailRequest>,
+) -> AppResult<Json<UserResponse>> {
+    payload
+        .validate()
+        .map_err(|e| AppError::Validation(e.to_string()))?;
+
+    // Fetch current user to verify password
+    let current_user = UserRepository::find_by_id(&state.db, auth.user_id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let password_service = PasswordService::new();
+    if !password_service.verify_password(&payload.password, &current_user.password_hash)? {
+        return Err(AppError::Unauthorized(
+            "Mot de passe incorrect".to_string(),
+        ));
+    }
+
+    let user = UserRepository::update_email(&state.db, auth.user_id, &payload.new_email).await?;
+
+    Ok(Json(user.into()))
+}
+
+/// Change password
+///
+/// POST /api/auth/me/password
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[axum::debug_handler]
+pub async fn change_password(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Json(payload): Json<ChangePasswordRequest>,
+) -> AppResult<Json<UserResponse>> {
+    if payload.new_password.len() < 8 {
+        return Err(AppError::Validation(
+            "Le nouveau mot de passe doit faire au moins 8 caractères".to_string(),
+        ));
+    }
+
+    // Fetch current user to verify old password
+    let current_user = UserRepository::find_by_id(&state.db, auth.user_id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let password_service = PasswordService::new();
+    if !password_service.verify_password(&payload.current_password, &current_user.password_hash)? {
+        return Err(AppError::Unauthorized(
+            "Mot de passe actuel incorrect".to_string(),
+        ));
+    }
+
+    let new_hash = password_service.hash_password(&payload.new_password)?;
+    let user = UserRepository::update_password(&state.db, auth.user_id, &new_hash).await?;
 
     Ok(Json(user.into()))
 }

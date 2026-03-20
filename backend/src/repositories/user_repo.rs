@@ -131,4 +131,60 @@ impl UserRepository {
 
         Ok(user)
     }
+
+    /// Update user email
+    pub async fn update_email(
+        pool: &PgPool,
+        id: Uuid,
+        new_email: &str,
+    ) -> AppResult<User> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            UPDATE users
+            SET email = $2, updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, email, password_hash, username, avatar_url, bio,
+                      banner_color_1, banner_color_2, status, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(new_email)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(ref db_err) = e {
+                if db_err.constraint() == Some("users_email_key") {
+                    return AppError::Conflict("Email already exists".to_string());
+                }
+            }
+            AppError::Database(e)
+        })?
+        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        Ok(user)
+    }
+
+    /// Update user password hash
+    pub async fn update_password(
+        pool: &PgPool,
+        id: Uuid,
+        new_password_hash: &str,
+    ) -> AppResult<User> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            UPDATE users
+            SET password_hash = $2, updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, email, password_hash, username, avatar_url, bio,
+                      banner_color_1, banner_color_2, status, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(new_password_hash)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        Ok(user)
+    }
 }

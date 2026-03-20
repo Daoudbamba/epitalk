@@ -21,6 +21,10 @@ import {
   Loader2,
   Search,
   X,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Mail,
 } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
@@ -66,6 +70,20 @@ export default function SettingsPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  // Account data edit modals
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showEmailPassword, setShowEmailPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [emailRevealed, setEmailRevealed] = useState(false);
 
   // GIF picker state
   const [showGifPicker, setShowGifPicker] = useState(false);
@@ -344,7 +362,7 @@ export default function SettingsPage() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-h-0 overflow-y-auto">
         {section === "profile" && (
           <div className="max-w-2xl mx-auto p-8 space-y-8">
             <h1 className="text-2xl font-bold text-[#1A1A2E]">Mon profil</h1>
@@ -489,26 +507,241 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* Profile Read Info */}
-            <div className="space-y-3">
-              <InfoField label="Nom d'utilisateur" value={user.username} field="username" copiedField={copiedField} onCopy={handleCopy} />
-              <InfoField label="Adresse email" value={user.email} field="email" copiedField={copiedField} onCopy={handleCopy} />
-              <InfoField label="Identifiant (ID)" value={user.id} field="id" copiedField={copiedField} onCopy={handleCopy} mono />
-              {user.created_at && (
-                <div className="rounded-xl border border-[#E5E7EB] p-3 bg-white">
-                  <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Membre depuis</label>
-                  <div className="mt-1">
-                    <span className="font-semibold text-[#1A1A2E]">
-                      {new Date(user.created_at).toLocaleDateString("fr-FR", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
+            {/* Account Data — Discord style */}
+            <div className="rounded-2xl border border-[#E5E7EB] bg-white overflow-hidden">
+              {/* Username row */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
+                <div>
+                  <div className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Nom d&apos;utilisateur</div>
+                  <div className="mt-0.5 text-sm font-semibold text-[#1A1A2E]">{user.username}</div>
+                </div>
+              </div>
+
+              {/* Email row */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
+                <div>
+                  <div className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">E-mail</div>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[#1A1A2E]">
+                      {emailRevealed
+                        ? user.email
+                        : user.email.replace(/^(.{2})(.*)(@.*)$/, (_, a, b, c) => a + "*".repeat(b.length) + c)}
                     </span>
+                    <button
+                      onClick={() => setEmailRevealed((v) => !v)}
+                      className="text-[#023BFC] text-xs font-medium hover:underline"
+                    >
+                      {emailRevealed ? "Masquer" : "Afficher"}
+                    </button>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setEditingEmail(true); setNewEmail(user.email); setEmailPassword(""); setError(null); }}
+                  className="rounded-lg border-[#E5E7EB] text-[#1A1A2E] text-xs h-8 px-3"
+                >
+                  Modifier
+                </Button>
+              </div>
+
+              {/* Password row */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
+                <div>
+                  <div className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Mot de passe</div>
+                  <div className="mt-0.5 text-sm text-[#1A1A2E]">••••••••••</div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setEditingPassword(true); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setError(null); }}
+                  className="rounded-lg border-[#E5E7EB] text-[#1A1A2E] text-xs h-8 px-3"
+                >
+                  Modifier
+                </Button>
+              </div>
+
+              {/* Member since row */}
+              {user.created_at && (
+                <div className="px-5 py-4">
+                  <div className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Membre depuis</div>
+                  <div className="mt-0.5 text-sm font-semibold text-[#1A1A2E]">
+                    {new Date(user.created_at).toLocaleDateString("fr-FR", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
                   </div>
                 </div>
               )}
             </div>
+
+            {/* Email edit modal */}
+            {editingEmail && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#023BFC]/10 flex items-center justify-center">
+                      <Mail className="w-5 h-5 text-[#023BFC]" />
+                    </div>
+                    <h3 className="text-lg font-bold text-[#1A1A2E]">Modifier l&apos;adresse e-mail</h3>
+                  </div>
+                  {error && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
+                  )}
+                  <div>
+                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Nouvelle adresse e-mail</label>
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Mot de passe actuel</label>
+                    <div className="relative mt-1">
+                      <input
+                        type={showEmailPassword ? "text" : "password"}
+                        value={emailPassword}
+                        onChange={(e) => setEmailPassword(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 pr-10 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEmailPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#1A1A2E]"
+                      >
+                        {showEmailPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end pt-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => { setEditingEmail(false); setError(null); }}
+                      className="rounded-xl border-[#E5E7EB] text-[#6B7280]"
+                    >
+                      Annuler
+                    </Button>
+                    <Button
+                      disabled={accountSaving || !newEmail || !emailPassword}
+                      onClick={async () => {
+                        setAccountSaving(true);
+                        setError(null);
+                        try {
+                          const updated = await authApi.changeEmail(newEmail, emailPassword);
+                          setUser(updated);
+                          setEditingEmail(false);
+                        } catch (e: unknown) {
+                          setError(e instanceof Error ? e.message : "Erreur lors du changement d'email");
+                        } finally {
+                          setAccountSaving(false);
+                        }
+                      }}
+                      className="rounded-xl bg-[#023BFC] hover:bg-[#023BFC]/90 text-white"
+                    >
+                      {accountSaving ? "Enregistrement..." : "Enregistrer"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Password edit modal */}
+            {editingPassword && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#023BFC]/10 flex items-center justify-center">
+                      <KeyRound className="w-5 h-5 text-[#023BFC]" />
+                    </div>
+                    <h3 className="text-lg font-bold text-[#1A1A2E]">Modifier le mot de passe</h3>
+                  </div>
+                  {error && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
+                  )}
+                  <div>
+                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Mot de passe actuel</label>
+                    <div className="relative mt-1">
+                      <input
+                        type={showCurrentPassword ? "text" : "password"}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 pr-10 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#1A1A2E]"
+                      >
+                        {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Nouveau mot de passe</label>
+                    <div className="relative mt-1">
+                      <input
+                        type={showNewPassword ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 pr-10 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                        placeholder="Min. 8 caractères"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#1A1A2E]"
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Confirmer le nouveau mot de passe</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end pt-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => { setEditingPassword(false); setError(null); }}
+                      className="rounded-xl border-[#E5E7EB] text-[#6B7280]"
+                    >
+                      Annuler
+                    </Button>
+                    <Button
+                      disabled={accountSaving || !currentPassword || !newPassword || newPassword !== confirmPassword}
+                      onClick={async () => {
+                        if (newPassword !== confirmPassword) {
+                          setError("Les mots de passe ne correspondent pas");
+                          return;
+                        }
+                        setAccountSaving(true);
+                        setError(null);
+                        try {
+                          const updated = await authApi.changePassword(currentPassword, newPassword);
+                          setUser(updated);
+                          setEditingPassword(false);
+                        } catch (e: unknown) {
+                          setError(e instanceof Error ? e.message : "Erreur lors du changement de mot de passe");
+                        } finally {
+                          setAccountSaving(false);
+                        }
+                      }}
+                      className="rounded-xl bg-[#023BFC] hover:bg-[#023BFC]/90 text-white"
+                    >
+                      {accountSaving ? "Enregistrement..." : "Enregistrer"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Divider */}
             <div className="h-px bg-[#E5E7EB]" />

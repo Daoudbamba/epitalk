@@ -74,6 +74,22 @@ export class AuthAPI {
     return UserSchema.parse(response);
   }
 
+  async changeEmail(newEmail: string, password: string): Promise<User> {
+    const response = await this.client.post<User>("/auth/me/email", {
+      new_email: newEmail,
+      password,
+    });
+    return UserSchema.parse(response);
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<User> {
+    const response = await this.client.post<User>("/auth/me/password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    return UserSchema.parse(response);
+  }
+
   async refresh(): Promise<AuthResponse> {
     const response = await this.client.post<AuthResponse>("/auth/refresh");
     return AuthResponseSchema.parse(response);
