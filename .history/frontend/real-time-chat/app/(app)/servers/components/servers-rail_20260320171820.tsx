@@ -6,7 +6,6 @@ import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
-import type { Invite, Server } from "@/lib/api/schemas/servers.schema";
 import { UserSettings } from "./user-settings";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
@@ -54,19 +53,12 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [loadingJoin, setLoadingJoin] = useState(false);
   const [loadingInvite, setLoadingInvite] = useState(false);
-  const [loadingInvitesList, setLoadingInvitesList] = useState(false);
-  const [loadingRevokeInviteCode, setLoadingRevokeInviteCode] = useState<string | null>(null);
   const [loadingDanger, setLoadingDanger] = useState(false);
   const [loadingTransferCandidates, setLoadingTransferCandidates] = useState(false);
   const [loadingTransfer, setLoadingTransfer] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [openDangerConfirm, setOpenDangerConfirm] = useState(false);
-  const [openRevokeInviteConfirm, setOpenRevokeInviteConfirm] = useState(false);
   const [openTransferConfirm, setOpenTransferConfirm] = useState(false);
-  const [activeInvites, setActiveInvites] = useState<Invite[]>([]);
-  const [serverDetails, setServerDetails] = useState<Server | null>(null);
-  const [loadingServerDetails, setLoadingServerDetails] = useState(false);
-  const [pendingRevokeInviteCode, setPendingRevokeInviteCode] = useState("");
   const [transferTargetId, setTransferTargetId] = useState("");
   const [transferCandidates, setTransferCandidates] = useState<
     Array<{ user_id: string; username: string; role: string }>
@@ -80,61 +72,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
     () => transferCandidates.find((m) => m.user_id === transferTargetId) ?? null,
     [transferCandidates, transferTargetId]
   );
-
-  const loadServerDetails = async (serverId: string) => {
-    setLoadingServerDetails(true);
-    try {
-      const details = await serversApi.get(serverId);
-      setServerDetails(details);
-    } catch (err) {
-      setErr(getErrorMessage(err));
-      setServerDetails(null);
-    } finally {
-      setLoadingServerDetails(false);
-    }
-  };
-
-  const loadActiveInvites = async (serverId: string) => {
-    setLoadingInvitesList(true);
-    try {
-      const data = await serversApi.listActiveInvites(serverId);
-      setActiveInvites(data);
-    } catch (err) {
-      setErr(getErrorMessage(err));
-      setActiveInvites([]);
-    } finally {
-      setLoadingInvitesList(false);
-    }
-  };
-
-  const formatInviteMeta = (invite: Invite): string => {
-    const usesPart = invite.max_uses === null
-      ? `${invite.uses} utilisations`
-      : `${invite.uses}/${invite.max_uses} utilisations`;
-    const expiryPart = invite.expires_at
-      ? `Expire le ${new Date(invite.expires_at).toLocaleString()}`
-      : "Sans expiration";
-    return `${usesPart} • ${expiryPart}`;
-  };
-
-  useEffect(() => {
-    if (!openSettings || !activeServerId || !isOwner) {
-      setActiveInvites([]);
-      setPendingRevokeInviteCode("");
-      return;
-    }
-
-    void loadActiveInvites(activeServerId);
-  }, [activeServerId, isOwner, openSettings]);
-
-  useEffect(() => {
-    if (!openSettings || !activeServerId) {
-      setServerDetails(null);
-      return;
-    }
-
-    void loadServerDetails(activeServerId);
-  }, [activeServerId, openSettings]);
 
   useEffect(() => {
     if (!openSettings || !activeServerId || !isOwner || !currentUser) {
@@ -225,8 +162,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
       const link = `${window.location.origin}/invite/${invite.code}`;
       setInviteLink(link);
 
-      await loadActiveInvites(activeServerId);
-
       await navigator.clipboard.writeText(link).catch(() => {});
       setOk("Invitation generee (lien copie).");
     } catch (err) {
@@ -249,30 +184,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
     }
 
     setOpenDangerConfirm(true);
-  };
-
-  const onRevokeInvite = (inviteCode: string) => {
-    setPendingRevokeInviteCode(inviteCode);
-    setOpenRevokeInviteConfirm(true);
-  };
-
-  const confirmRevokeInvite = async () => {
-    if (!activeServerId || !pendingRevokeInviteCode) return;
-
-    setLoadingRevokeInviteCode(pendingRevokeInviteCode);
-    setStatus(null);
-
-    try {
-      await serversApi.deleteInvite(activeServerId, pendingRevokeInviteCode);
-      await loadActiveInvites(activeServerId);
-      setOpenRevokeInviteConfirm(false);
-      setPendingRevokeInviteCode("");
-      setInfo("Invitation revoquee.");
-    } catch (err) {
-      setErr(getErrorMessage(err));
-    } finally {
-      setLoadingRevokeInviteCode(null);
-    }
   };
 
   const confirmLeaveOrDelete = async () => {
@@ -434,48 +345,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
             </div>
 
             <div className="p-6 space-y-5">
-              <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/60 neu-shadow-sm">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-bold text-[#1A1A2E]">Details du serveur</div>
-                    <div className="text-xs text-[#6B7280]">Informations recuperees depuis l'endpoint detail.</div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      if (activeServerId) {
-                        void loadServerDetails(activeServerId);
-                      }
-                    }}
-                    disabled={loadingServerDetails || !activeServerId}
-                    className="h-8 px-3 text-[11px]"
-                  >
-                    {loadingServerDetails ? "..." : "Rafraichir"}
-                  </Button>
-                </div>
-
-                {loadingServerDetails ? (
-                  <div className="text-xs text-[#6B7280]">Chargement des details...</div>
-                ) : serverDetails ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#1A1A2E]">
-                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2">
-                      <span className="font-semibold">Nom:</span> {serverDetails.name}
-                    </div>
-                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2">
-                      <span className="font-semibold">Membres:</span> {serverDetails.member_count ?? "-"}
-                    </div>
-                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 sm:col-span-2">
-                      <span className="font-semibold">Owner ID:</span> {serverDetails.owner_id}
-                    </div>
-                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 sm:col-span-2">
-                      <span className="font-semibold">Cree le:</span> {new Date(serverDetails.created_at).toLocaleString()}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-[#6B7280]">Impossible de charger les details du serveur.</div>
-                )}
-              </div>
-
               {/* Join */}
               <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
@@ -537,53 +406,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
                         Copier
                       </Button>
                     </>
-                  )}
-                </div>
-
-                <div className="mt-4 rounded-xl border border-[#E5E7EB] bg-white/70 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-xs font-semibold text-[#1A1A2E]">Invitations actives</div>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        if (activeServerId) {
-                          void loadActiveInvites(activeServerId);
-                        }
-                      }}
-                      disabled={loadingInvitesList || !activeServerId || !isOwner}
-                      className="h-7 px-2 text-[11px]"
-                    >
-                      {loadingInvitesList ? "..." : "Rafraichir"}
-                    </Button>
-                  </div>
-
-                  {!isOwner ? (
-                    <div className="text-xs text-[#6B7280]">
-                      La gestion des invitations est reservee au createur.
-                    </div>
-                  ) : loadingInvitesList ? (
-                    <div className="text-xs text-[#6B7280]">Chargement des invitations...</div>
-                  ) : activeInvites.length === 0 ? (
-                    <div className="text-xs text-[#6B7280]">Aucune invitation active.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {activeInvites.map((invite) => (
-                        <div key={invite.code} className="flex items-center gap-2 rounded-lg border border-[#E5E7EB] bg-white p-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate font-mono text-xs text-[#1A1A2E]">{invite.code}</div>
-                            <div className="truncate text-[11px] text-[#6B7280]">{formatInviteMeta(invite)}</div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            onClick={() => onRevokeInvite(invite.code)}
-                            disabled={loadingRevokeInviteCode === invite.code}
-                            className="h-8 px-3 text-[11px] border-red-300 text-red-600 hover:bg-red-50"
-                          >
-                            {loadingRevokeInviteCode === invite.code ? "..." : "Revoquer"}
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
                   )}
                 </div>
               </div>
@@ -692,21 +514,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
         confirmVariant={isOwner ? "destructive" : "default"}
         loading={loadingDanger}
         onConfirm={confirmLeaveOrDelete}
-      />
-
-      <ConfirmActionDialog
-        open={openRevokeInviteConfirm}
-        onOpenChange={setOpenRevokeInviteConfirm}
-        title="Revoquer cette invitation ?"
-        description={
-          pendingRevokeInviteCode
-            ? `Le code ${pendingRevokeInviteCode} sera desactive immediatement.`
-            : "Cette invitation sera desactivee immediatement."
-        }
-        confirmLabel="Revoquer"
-        confirmVariant="destructive"
-        loading={loadingRevokeInviteCode === pendingRevokeInviteCode}
-        onConfirm={confirmRevokeInvite}
       />
 
       <ConfirmActionDialog

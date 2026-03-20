@@ -11,7 +11,8 @@ import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { serversApi } from "@/lib/api";
 import { ApiError, getErrorMessage } from "@/lib/api/errors";
-import type { Ban, Member } from "@/lib/api/schemas/servers.schema";
+import { terminateSession } from "@/lib/auth/session";
+import type { Ban } from "@/lib/api/schemas/servers.schema";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
 const ROLE_LABELS: Record<string, string> = {
@@ -32,7 +33,6 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const currentUser = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
   const members = useMemberStore((s) => s.members);
   const setMembers = useMemberStore((s) => s.setMembers);
   const membersLoading = useMemberStore((s) => s.loading);
@@ -55,14 +55,10 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const [banReason, setBanReason] = useState("");
   const [banMode, setBanMode] = useState<"permanent" | "temporary">("permanent");
   const [banExpiresAt, setBanExpiresAt] = useState("");
-  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
-  const [memberDetailsById, setMemberDetailsById] = useState<Record<string, Member>>({});
-  const [loadingMemberDetailsId, setLoadingMemberDetailsId] = useState<string | null>(null);
-  const [memberDetailsError, setMemberDetailsError] = useState<string | null>(null);
 
   const handleUnauthorized = (err: unknown): boolean => {
     if (err instanceof ApiError && err.status === 401) {
-      logout();
+      terminateSession();
       router.replace("/login");
       return true;
     }
@@ -120,37 +116,6 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
         return;
       }
       throw err;
-    }
-  };
-
-  const onToggleMemberDetails = async (memberId: string) => {
-    if (!server) return;
-
-    if (expandedMemberId === memberId) {
-      setExpandedMemberId(null);
-      setMemberDetailsError(null);
-      return;
-    }
-
-    setExpandedMemberId(memberId);
-    setMemberDetailsError(null);
-
-    if (memberDetailsById[memberId]) {
-      return;
-    }
-
-    setLoadingMemberDetailsId(memberId);
-    try {
-      const detail = await serversApi.getMember(server.id, memberId);
-      setMemberDetailsById((prev) => ({
-        ...prev,
-        [memberId]: detail,
-      }));
-    } catch (err) {
-      if (handleUnauthorized(err)) return;
-      setMemberDetailsError(getErrorMessage(err));
-    } finally {
-      setLoadingMemberDetailsId(null);
     }
   };
 
@@ -323,23 +288,6 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        void onToggleMemberDetails(m.user_id);
-                      }}
-                      disabled={loadingMemberDetailsId === m.user_id}
-                      title="Afficher les details"
-                      className="h-6 px-2 text-[10px]"
-                    >
-                      {loadingMemberDetailsId === m.user_id
-                        ? "..."
-                        : expandedMemberId === m.user_id
-                        ? "Masquer"
-                        : "Infos"}
-                    </Button>
-
                     {isOwner && !memberIsOwner && (
                       <Button
                         size="sm"
@@ -382,31 +330,6 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
                       </option>
                     ))}
                   </select>
-                )}
-
-                {expandedMemberId === m.user_id && (
-                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-700">
-                    {memberDetailsError && loadingMemberDetailsId !== m.user_id ? (
-                      <div className="text-red-600">{memberDetailsError}</div>
-                    ) : (
-                      <>
-                        <div>
-                          <span className="font-medium">ID:</span> {m.user_id}
-                        </div>
-                        <div>
-                          <span className="font-medium">Rejoint le:</span>{" "}
-                          {new Date(
-                            (memberDetailsById[m.user_id]?.joined_at ?? m.joined_at)
-                          ).toLocaleString()}
-                        </div>
-                        <div>
-                          <span className="font-medium">Role:</span>{" "}
-                          {ROLE_LABELS[memberDetailsById[m.user_id]?.role ?? m.role] ??
-                            (memberDetailsById[m.user_id]?.role ?? m.role)}
-                        </div>
-                      </>
-                    )}
-                  </div>
                 )}
               </li>
             );

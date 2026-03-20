@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Plus, Smile, Gift, Sticker, Send, Loader2, Pin, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { messagesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
-import type { Message } from "@/lib/api/schemas/messages.schema";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
@@ -47,9 +46,6 @@ export function ChatPanel() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [pinLoadingByMessageId, setPinLoadingByMessageId] = useState<Record<string, boolean>>({});
   const [showPinnedPanel, setShowPinnedPanel] = useState(true);
-  const [loadingPinnedMessages, setLoadingPinnedMessages] = useState(false);
-  const [pinnedMessagesError, setPinnedMessagesError] = useState<string | null>(null);
-  const [pinnedMessagesFromApi, setPinnedMessagesFromApi] = useState<Message[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -67,7 +63,7 @@ export function ChatPanel() {
     return wsMessages[activeChannelId] || [];
   }, [activeChannelId, wsMessages]);
 
-  const pinnedMessagesInMemory = useMemo(() => {
+  const pinnedMessages = useMemo(() => {
     return messages
       .filter((message) => !!message.pinned_at)
       .sort((a, b) => {
@@ -76,26 +72,6 @@ export function ChatPanel() {
         return bTs - aTs;
       });
   }, [messages]);
-
-  const pinnedMessages = useMemo(() => {
-    if (pinnedMessagesFromApi.length === 0) {
-      return pinnedMessagesInMemory;
-    }
-
-    const byId = new Map<string, Message>();
-    for (const msg of pinnedMessagesFromApi) {
-      byId.set(msg.id, msg);
-    }
-    for (const msg of pinnedMessagesInMemory) {
-      if (!byId.has(msg.id)) {
-        byId.set(msg.id, msg);
-      }
-    }
-
-    return Array.from(byId.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [pinnedMessagesFromApi, pinnedMessagesInMemory]);
 
   // Connect WebSocket on mount
   useEffect(() => {
@@ -284,30 +260,6 @@ export function ChatPanel() {
     }));
   };
 
-  const loadPinnedMessages = useCallback(async () => {
-    if (!activeServerId || !activeChannelId) {
-      setPinnedMessagesFromApi([]);
-      setPinnedMessagesError(null);
-      return;
-    }
-
-    setLoadingPinnedMessages(true);
-    setPinnedMessagesError(null);
-    try {
-      const list = await messagesApi.listPinned(activeServerId, activeChannelId, 1, 50);
-      setPinnedMessagesFromApi(list);
-    } catch (e) {
-      setPinnedMessagesError(getErrorMessage(e));
-      setPinnedMessagesFromApi([]);
-    } finally {
-      setLoadingPinnedMessages(false);
-    }
-  }, [activeChannelId, activeServerId]);
-
-  useEffect(() => {
-    void loadPinnedMessages();
-  }, [loadPinnedMessages]);
-
   const togglePin = async (messageId: string, isPinned: boolean) => {
     if (!activeServerId || !activeChannelId) return;
 
@@ -332,7 +284,6 @@ export function ChatPanel() {
           : message
       );
       setMessages(activeChannelId, patchedMessages);
-      await loadPinnedMessages();
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
@@ -341,7 +292,7 @@ export function ChatPanel() {
   };
 
   const jumpToMessage = (messageId: string): boolean => {
-    if (typeof document === "undefined") return false;
+    if (typeof document === "undefined") return;
     const element = document.getElementById(`message-${messageId}`);
     if (!element) return false;
 
@@ -470,7 +421,6 @@ export function ChatPanel() {
               size="sm"
               variant="outline"
               className="h-6 px-2 text-[11px]"
-              disabled={loadingPinnedMessages}
               onClick={() => setShowPinnedPanel((prev) => !prev)}
             >
               {showPinnedPanel ? (
@@ -486,10 +436,6 @@ export function ChatPanel() {
               )}
             </Button>
           </div>
-
-          {pinnedMessagesError && (
-            <div className="mb-2 text-[11px] text-red-600">{pinnedMessagesError}</div>
-          )}
 
           {showPinnedPanel && (
             <div className="max-h-24 overflow-y-auto space-y-1">
