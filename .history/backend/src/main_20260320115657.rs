@@ -139,11 +139,12 @@ fn run_supervisor() -> anyhow::Result<()> {
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Load env first so the supervisor can read PORT from .env.
+async fn run_backend() -> anyhow::Result<()> {
+    // Load environment variables
     dotenvy::dotenv().ok();
 
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     if should_use_supervisor() {
         return run_supervisor();
     }
@@ -159,7 +160,7 @@ async fn main() -> anyhow::Result<()> {
     run_backend().await
 }
 
-async fn run_backend() -> anyhow::Result<()> {
+async fn _run_backend_inner() -> anyhow::Result<()> {
     // Load configuration
     let config = config::Config::from_env()?;
     tracing::info!("Configuration loaded");
@@ -205,4 +206,8 @@ async fn run_backend() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn run_backend() -> anyhow::Result<()> {
+    _run_backend_inner().await
 }
