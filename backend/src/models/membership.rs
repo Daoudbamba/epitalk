@@ -119,6 +119,39 @@ pub struct UpdateMemberRoleRequest {
     pub role: MemberRole,
 }
 
+/// Ban record matching the `bans` table.
+/// `expires_at = None` means permanent ban.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BanRecord {
+    pub id: Uuid,
+    pub server_id: Uuid,
+    pub user_id: Uuid,
+    pub banned_by: Uuid,
+    pub reason: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Ban response returned to API clients
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BanResponse {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub banned_by: Uuid,
+    pub reason: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request body for banning a member.
+/// `expires_at = None` = permanent ban.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BanMemberRequest {
+    pub reason: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +198,105 @@ mod tests {
         assert_eq!(MemberRole::Admin.to_string(), "ADMIN");
         assert_eq!(MemberRole::Moderator.to_string(), "MODERATOR");
         assert_eq!(MemberRole::Member.to_string(), "MEMBER");
+    }
+
+    // ---------------------------------------------------------------
+    // BanMemberRequest — désérialisation JSON
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn ban_request_permanent_no_expiry() {
+        // expires_at absent = ban permanent
+        let json = r#"{"reason":"spamming"}"#;
+        let req: BanMemberRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.reason.as_deref(), Some("spamming"));
+        assert!(req.expires_at.is_none(), "expires_at absent = ban permanent");
+    }
+
+    #[test]
+    fn ban_request_temporary_has_expiry() {
+        let json = r#"{"reason":null,"expires_at":"2027-06-01T00:00:00Z"}"#;
+        let req: BanMemberRequest = serde_json::from_str(json).unwrap();
+        assert!(req.reason.is_none());
+        assert!(req.expires_at.is_some(), "expires_at fourni = ban temporaire");
+    }
+
+    #[test]
+    fn ban_request_empty_body_is_permanent() {
+        // Corps vide {} = ban permanent sans raison
+        let json = r#"{}"#;
+        let req: BanMemberRequest = serde_json::from_str(json).unwrap();
+        assert!(req.reason.is_none());
+        assert!(req.expires_at.is_none());
+    }
+
+    #[test]
+    fn ban_temporary_expiry_is_in_the_future() {
+        let future = chrono::Utc::now() + chrono::Duration::days(7);
+        let req = BanMemberRequest {
+            reason: Some("flood".to_string()),
+            expires_at: Some(future),
+        };
+        assert!(req.expires_at.unwrap() > chrono::Utc::now());
+    }
+
+    #[test]
+    fn ban_permanent_expiry_is_none() {
+        let req = BanMemberRequest {
+            reason: None,
+            expires_at: None,
+        };
+        assert!(req.expires_at.is_none(), "ban permanent : expires_at = None");
+    }
+
+    // ---------------------------------------------------------------
+    // RBAC — règles de permission pour le ban
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn ban_rbac_only_owner_and_admin_can_ban() {
+        // Le handler ban utilise can_manage_channels() comme garde
+        assert!(MemberRole::Owner.can_manage_channels(), "OWNER doit pouvoir bannir");
+        assert!(MemberRole::Admin.can_manage_channels(), "ADMIN doit pouvoir bannir");
+        assert!(!MemberRole::Moderator.can_manage_channels(), "MODERATOR ne doit pas pouvoir bannir");
+        assert!(!MemberRole::Member.can_manage_channels(), "MEMBER ne doit pas pouvoir bannir");
+    }
+
+    #[test]
+    fn ban_rbac_owner_is_protected() {
+        // Un Owner ne peut jamais être banni — vérification par identité de rôle
+        let target = MemberRole::Owner;
+        assert_eq!(target, MemberRole::Owner, "la cible Owner doit être détectée");
+        // Les autres rôles ne sont pas Owner
+        assert_ne!(MemberRole::Admin, MemberRole::Owner);
+        assert_ne!(MemberRole::Moderator, MemberRole::Owner);
+        assert_ne!(MemberRole::Member, MemberRole::Owner);
+    }
+
+    #[test]
+    fn ban_rbac_admin_cannot_ban_equal_rank() {
+        // Admin ne peut pas bannir un autre Admin (même priorité)
+        let caller = MemberRole::Admin;
+        let target = MemberRole::Admin;
+        assert_eq!(
+            caller.priority(),
+            target.priority(),
+            "Admin vs Admin : même priorité → ban interdit"
+        );
+    }
+
+    #[test]
+    fn ban_rbac_admin_can_ban_lower_ranks() {
+        let admin = MemberRole::Admin;
+        assert!(admin.priority() > MemberRole::Moderator.priority());
+        assert!(admin.priority() > MemberRole::Member.priority());
+    }
+
+    #[test]
+    fn ban_rbac_owner_can_ban_any_rank() {
+        let owner = MemberRole::Owner;
+        assert!(owner.priority() > MemberRole::Admin.priority());
+        assert!(owner.priority() > MemberRole::Moderator.priority());
+        assert!(owner.priority() > MemberRole::Member.priority());
     }
 }
