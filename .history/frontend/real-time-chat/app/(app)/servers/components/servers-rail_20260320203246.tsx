@@ -3,14 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
-import { useChannelStore } from "@/store/channel.store";
 import { useAuthStore } from "@/store/auth.store";
-import { channelsApi, serversApi } from "@/lib/api";
+import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 import type { Invite, Server } from "@/lib/api/schemas/servers.schema";
 import { UserSettings } from "./user-settings";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
-import { CreateChannelModal } from "@/components/forms/create-channel-modal";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 function initials(name: string) {
@@ -41,9 +39,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
-  const activeChannelId = useChannelStore((s) => s.activeChannelId);
-  const setChannels = useChannelStore((s) => s.setChannels);
-  const setActiveChannel = useChannelStore((s) => s.setActiveChannel);
   const currentUser = useAuthStore((s) => s.user);
 
   const activeServer = useMemo(
@@ -55,7 +50,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const [openSettings, setOpenSettings] = useState(false);
   const [openCreateServer, setOpenCreateServer] = useState(false);
-  const [openCreateChannel, setOpenCreateChannel] = useState(false);
   const [inviteInput, setInviteInput] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [loadingJoin, setLoadingJoin] = useState(false);
@@ -188,32 +182,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const onCreateServer = () => {
     setOpenCreateServer(true);
-  };
-
-  const onCreateChannel = () => {
-    if (!activeServerId) {
-      setErr("Selectionne un serveur avant de creer un channel.");
-      return;
-    }
-    setOpenCreateChannel(true);
-  };
-
-  const handleChannelCreated = async () => {
-    if (!activeServerId) return;
-
-    const data = await channelsApi.listByServer(activeServerId);
-    setChannels(data);
-
-    const stillExists = data.some((channel) => channel.id === activeChannelId);
-    if ((!activeChannelId || !stillExists) && data.length > 0) {
-      setActiveChannel(data[0].id);
-    }
-    if (data.length === 0) {
-      setActiveChannel(null);
-    }
-
-    await onRefresh();
-    setOk("Channel cree.");
   };
 
   const onJoin = async () => {
@@ -384,18 +352,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
         onClick={onCreateServer}
         className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border-2 border-dashed border-[#023BFC]/30 hover:border-[#023BFC] text-[#023BFC] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105"
         title="Creer un serveur"
-      >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-      </button>
-
-      {/* Add channel */}
-      <button
-        onClick={onCreateChannel}
-        disabled={!activeServerId}
-        className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border-2 border-dashed border-[#10B981]/30 hover:border-[#10B981] text-[#10B981] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-        title={activeServerId ? "Creer un channel" : "Selectionne un serveur"}
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -773,14 +729,6 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
         open={openCreateServer}
         onOpenChange={setOpenCreateServer}
         onSuccess={onRefresh}
-      />
-
-      {/* Modal creation channel */}
-      <CreateChannelModal
-        open={openCreateChannel}
-        onOpenChange={setOpenCreateChannel}
-        serverId={activeServerId}
-        onSuccess={handleChannelCreated}
       />
     </aside>
   );
