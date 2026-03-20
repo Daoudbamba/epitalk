@@ -47,7 +47,7 @@ export function ChannelsSidebar() {
   const handleUnauthorized = (e: unknown): boolean => {
     if (e instanceof ApiError && e.status === 401) {
       logout();
-      router.replace("/login");
+      window.location.href = "/login";
       return true;
     }
     return false;
