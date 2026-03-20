@@ -25,7 +25,13 @@ import {
   EyeOff,
   KeyRound,
   Mail,
+  Palette,
+  Sun,
+  Moon,
+  Monitor,
+  Type,
 } from "lucide-react";
+import { useAppearanceStore, type Theme, type FontSize } from "@/store/appearance.store";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import type { UpdateProfileInput } from "@/lib/api/auth.api";
@@ -42,12 +48,27 @@ const STATUS_OPTIONS = [
   { value: "OFFLINE" as const, label: "Hors ligne", color: "#EF4444", dot: "bg-red-500" },
 ];
 
-type Section = "profile" | "privacy" | "notifications";
+type Section = "profile" | "appearance" | "privacy" | "notifications";
 
 const NAV_ITEMS: { key: Section; label: string; icon: React.ReactNode }[] = [
   { key: "profile", label: "Profil", icon: <User className="w-4 h-4" /> },
+  { key: "appearance", label: "Apparence", icon: <Palette className="w-4 h-4" /> },
   { key: "privacy", label: "Confidentialité", icon: <Shield className="w-4 h-4" /> },
   { key: "notifications", label: "Notifications", icon: <Bell className="w-4 h-4" /> },
+];
+
+const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode; preview: string; desc: string }[] = [
+  { value: "light", label: "Clair", icon: <Sun className="w-5 h-5" />, preview: "bg-white border-[#E5E7EB]", desc: "Thème lumineux par défaut" },
+  { value: "ash", label: "Cendré", icon: <Monitor className="w-5 h-5" />, preview: "bg-[#E8E6E1] border-[#C5C2BB]", desc: "Gris chaud et reposant" },
+  { value: "dim", label: "Sombre", icon: <Moon className="w-5 h-5" />, preview: "bg-[#1E2028] border-[#2F3340]", desc: "Sombre mais pas trop" },
+  { value: "dark", label: "Dark", icon: <Moon className="w-5 h-5" />, preview: "bg-[#0F1117] border-[#1A1D26]", desc: "Noir profond" },
+];
+
+const FONT_SIZE_OPTIONS: { value: FontSize; label: string; example: string }[] = [
+  { value: "sm", label: "Petit", example: "text-sm" },
+  { value: "base", label: "Normal", example: "text-base" },
+  { value: "lg", label: "Grand", example: "text-lg" },
+  { value: "xl", label: "Très grand", example: "text-xl" },
 ];
 
 export default function SettingsPage() {
@@ -56,6 +77,11 @@ export default function SettingsPage() {
   const logout = useAuthStore((s) => s.logout);
   const setUser = useAuthStore((s) => s.setUser);
   const disconnect = useWebSocketStore((s) => s.disconnect);
+
+  const theme = useAppearanceStore((s) => s.theme);
+  const fontSize = useAppearanceStore((s) => s.fontSize);
+  const setTheme = useAppearanceStore((s) => s.setTheme);
+  const setFontSize = useAppearanceStore((s) => s.setFontSize);
 
   const [section, setSection] = useState<Section>("profile");
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -295,14 +321,14 @@ export default function SettingsPage() {
   const currentStatus = STATUS_OPTIONS.find((s) => s.value === (user.status || "ONLINE"));
 
   return (
-    <div className="h-full flex bg-[#F7F8FA]">
+    <div className="h-full flex bg-[var(--surface)]">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-[#E5E7EB] flex flex-col">
+      <aside className="w-64 bg-[var(--card)] border-r border-[var(--border)] flex flex-col">
         {/* Back */}
-        <div className="p-4 border-b border-[#E5E7EB]">
+        <div className="p-4 border-b border-[var(--border)]">
           <Link
             href="/servers"
-            className="flex items-center gap-2 text-sm text-[#6B7280] hover:text-[#023BFC] transition-colors"
+            className="flex items-center gap-2 text-sm text-[var(--muted-foreground)] hover:text-[#023BFC] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Retour
@@ -310,7 +336,7 @@ export default function SettingsPage() {
         </div>
 
         {/* User mini card */}
-        <div className="p-4 border-b border-[#E5E7EB]">
+        <div className="p-4 border-b border-[var(--border)]">
           <div className="flex items-center gap-3">
             <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center flex-shrink-0">
               {avatarUrl ? (
@@ -321,12 +347,12 @@ export default function SettingsPage() {
                 </span>
               )}
               {currentStatus && (
-                <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${currentStatus.dot}`} />
+                <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
               )}
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-[#1A1A2E] truncate">{user.username}</div>
-              <div className="text-xs text-[#6B7280]">{currentStatus?.label}</div>
+              <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
+              <div className="text-xs text-[var(--muted-foreground)]">{currentStatus?.label}</div>
             </div>
           </div>
         </div>
@@ -340,7 +366,7 @@ export default function SettingsPage() {
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 section === item.key
                   ? "bg-[#023BFC]/10 text-[#023BFC]"
-                  : "text-[#6B7280] hover:bg-[#F7F8FA] hover:text-[#1A1A2E]"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
               }`}
             >
               {item.icon}
@@ -350,7 +376,7 @@ export default function SettingsPage() {
         </nav>
 
         {/* Logout */}
-        <div className="p-3 border-t border-[#E5E7EB]">
+        <div className="p-3 border-t border-[var(--border)]">
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-all"
@@ -365,13 +391,13 @@ export default function SettingsPage() {
       <main className="flex-1 min-h-0 overflow-y-auto">
         {section === "profile" && (
           <div className="max-w-2xl mx-auto p-8 space-y-8">
-            <h1 className="text-2xl font-bold text-[#1A1A2E]">Mon profil</h1>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Mon profil</h1>
 
             {/* Banner + Avatar side by side */}
             <div className="flex gap-4 items-start">
               {/* Banner rectangle */}
               <div className="flex-1">
-                <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide mb-2 block">Bannière</label>
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-2 block">Bannière</label>
                 <div
                   className="h-28 rounded-2xl"
                   style={{
@@ -381,9 +407,9 @@ export default function SettingsPage() {
               </div>
               {/* Avatar square */}
               <div>
-                <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide mb-2 block">Avatar</label>
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-2 block">Avatar</label>
                 <div className="relative w-28 h-28">
-                  <div className="w-28 h-28 rounded-2xl border-2 border-[#E5E7EB] shadow-lg overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
+                  <div className="w-28 h-28 rounded-2xl border-2 border-[var(--border)] shadow-lg overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
                     ) : (
@@ -421,7 +447,7 @@ export default function SettingsPage() {
                     </div>
                   )}
                   {currentStatus && (
-                    <span className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-3 border-white ${currentStatus.dot}`} />
+                    <span className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-3 border-[var(--card)] ${currentStatus.dot}`} />
                   )}
                 </div>
               </div>
@@ -429,12 +455,12 @@ export default function SettingsPage() {
 
             {/* Aperçu du profil */}
             <div>
-              <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide mb-3 block">
+              <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-3 block">
                 Aperçu — tel que vu par les autres
               </label>
               <div className="flex gap-6 items-start">
                 {/* Normal / full card preview */}
-                <div className="w-72 rounded-2xl border border-[#E5E7EB] bg-white shadow-lg overflow-hidden flex-shrink-0">
+                <div className="w-72 rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-lg overflow-hidden flex-shrink-0">
                   <div
                     className="h-20"
                     style={{
@@ -443,7 +469,7 @@ export default function SettingsPage() {
                   />
                   <div className="px-4 -mt-8 pb-4">
                     <div className="relative inline-block">
-                      <div className="w-16 h-16 rounded-full border-4 border-white shadow overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-full border-4 border-[var(--card)] shadow overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
                         {avatarUrl ? (
                           <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
                         ) : (
@@ -453,18 +479,18 @@ export default function SettingsPage() {
                         )}
                       </div>
                       {currentStatus && (
-                        <span className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${currentStatus.dot}`} />
+                        <span className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
                       )}
                     </div>
                     <div className="mt-2">
-                      <div className="font-bold text-[#1A1A2E]">{user.username}</div>
+                      <div className="font-bold text-[var(--foreground)]">{user.username}</div>
                       {user.bio && (
-                        <p className="text-xs text-[#6B7280] mt-1 whitespace-pre-wrap line-clamp-3">{user.bio}</p>
+                        <p className="text-xs text-[var(--muted-foreground)] mt-1 whitespace-pre-wrap line-clamp-3">{user.bio}</p>
                       )}
                       {user.created_at && (
-                        <div className="mt-2 pt-2 border-t border-[#E5E7EB]">
-                          <span className="text-[10px] text-[#6B7280] uppercase tracking-wide">Membre depuis</span>
-                          <div className="text-xs font-medium text-[#1A1A2E]">
+                        <div className="mt-2 pt-2 border-t border-[var(--border)]">
+                          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide">Membre depuis</span>
+                          <div className="text-xs font-medium text-[var(--foreground)]">
                             {new Date(user.created_at).toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" })}
                           </div>
                         </div>
@@ -475,8 +501,8 @@ export default function SettingsPage() {
 
                 {/* Mini preview (member list style) */}
                 <div className="flex-1 space-y-3">
-                  <span className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wide">Vue compacte</span>
-                  <div className="flex items-center gap-3 rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm">
+                  <span className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Vue compacte</span>
+                  <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 shadow-sm">
                     <div className="relative flex-shrink-0">
                       <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
                         {avatarUrl ? (
@@ -488,12 +514,12 @@ export default function SettingsPage() {
                         )}
                       </div>
                       {currentStatus && (
-                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${currentStatus.dot}`} />
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
                       )}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-[#1A1A2E] truncate">{user.username}</div>
-                      <div className="text-xs text-[#6B7280] truncate">{currentStatus?.label}</div>
+                      <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
+                      <div className="text-xs text-[var(--muted-foreground)] truncate">{currentStatus?.label}</div>
                     </div>
                   </div>
                 </div>
@@ -508,21 +534,21 @@ export default function SettingsPage() {
             )}
 
             {/* Account Data — Discord style */}
-            <div className="rounded-2xl border border-[#E5E7EB] bg-white overflow-hidden">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
               {/* Username row */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
                 <div>
-                  <div className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Nom d&apos;utilisateur</div>
-                  <div className="mt-0.5 text-sm font-semibold text-[#1A1A2E]">{user.username}</div>
+                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Nom d&apos;utilisateur</div>
+                  <div className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">{user.username}</div>
                 </div>
               </div>
 
               {/* Email row */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
                 <div>
-                  <div className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">E-mail</div>
+                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">E-mail</div>
                   <div className="mt-0.5 flex items-center gap-2">
-                    <span className="text-sm font-semibold text-[#1A1A2E]">
+                    <span className="text-sm font-semibold text-[var(--foreground)]">
                       {emailRevealed
                         ? user.email
                         : user.email.replace(/^(.{2})(.*)(@.*)$/, (_, a, b, c) => a + "*".repeat(b.length) + c)}
@@ -539,23 +565,23 @@ export default function SettingsPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => { setEditingEmail(true); setNewEmail(user.email); setEmailPassword(""); setError(null); }}
-                  className="rounded-lg border-[#E5E7EB] text-[#1A1A2E] text-xs h-8 px-3"
+                  className="rounded-lg border-[var(--border)] text-[var(--foreground)] text-xs h-8 px-3"
                 >
                   Modifier
                 </Button>
               </div>
 
               {/* Password row */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
                 <div>
-                  <div className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Mot de passe</div>
-                  <div className="mt-0.5 text-sm text-[#1A1A2E]">••••••••••</div>
+                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Mot de passe</div>
+                  <div className="mt-0.5 text-sm text-[var(--foreground)]">••••••••••</div>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => { setEditingPassword(true); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setError(null); }}
-                  className="rounded-lg border-[#E5E7EB] text-[#1A1A2E] text-xs h-8 px-3"
+                  className="rounded-lg border-[var(--border)] text-[var(--foreground)] text-xs h-8 px-3"
                 >
                   Modifier
                 </Button>
@@ -564,8 +590,8 @@ export default function SettingsPage() {
               {/* Member since row */}
               {user.created_at && (
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Membre depuis</div>
-                  <div className="mt-0.5 text-sm font-semibold text-[#1A1A2E]">
+                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Membre depuis</div>
+                  <div className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
                     {new Date(user.created_at).toLocaleDateString("fr-FR", {
                       year: "numeric",
                       month: "long",
@@ -579,38 +605,38 @@ export default function SettingsPage() {
             {/* Email edit modal */}
             {editingEmail && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+                <div className="bg-[var(--card)] rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-[#023BFC]/10 flex items-center justify-center">
                       <Mail className="w-5 h-5 text-[#023BFC]" />
                     </div>
-                    <h3 className="text-lg font-bold text-[#1A1A2E]">Modifier l&apos;adresse e-mail</h3>
+                    <h3 className="text-lg font-bold text-[var(--foreground)]">Modifier l&apos;adresse e-mail</h3>
                   </div>
                   {error && (
                     <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
                   )}
                   <div>
-                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Nouvelle adresse e-mail</label>
+                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Nouvelle adresse e-mail</label>
                     <input
                       type="email"
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Mot de passe actuel</label>
+                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Mot de passe actuel</label>
                     <div className="relative mt-1">
                       <input
                         type={showEmailPassword ? "text" : "password"}
                         value={emailPassword}
                         onChange={(e) => setEmailPassword(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 pr-10 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
                       />
                       <button
                         type="button"
                         onClick={() => setShowEmailPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#1A1A2E]"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                       >
                         {showEmailPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -620,7 +646,7 @@ export default function SettingsPage() {
                     <Button
                       variant="outline"
                       onClick={() => { setEditingEmail(false); setError(null); }}
-                      className="rounded-xl border-[#E5E7EB] text-[#6B7280]"
+                      className="rounded-xl border-[var(--border)] text-[var(--muted-foreground)]"
                     >
                       Annuler
                     </Button>
@@ -651,67 +677,67 @@ export default function SettingsPage() {
             {/* Password edit modal */}
             {editingPassword && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+                <div className="bg-[var(--card)] rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-[#023BFC]/10 flex items-center justify-center">
                       <KeyRound className="w-5 h-5 text-[#023BFC]" />
                     </div>
-                    <h3 className="text-lg font-bold text-[#1A1A2E]">Modifier le mot de passe</h3>
+                    <h3 className="text-lg font-bold text-[var(--foreground)]">Modifier le mot de passe</h3>
                   </div>
                   {error && (
                     <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
                   )}
                   <div>
-                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Mot de passe actuel</label>
+                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Mot de passe actuel</label>
                     <div className="relative mt-1">
                       <input
                         type={showCurrentPassword ? "text" : "password"}
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 pr-10 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
                       />
                       <button
                         type="button"
                         onClick={() => setShowCurrentPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#1A1A2E]"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                       >
                         {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Nouveau mot de passe</label>
+                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Nouveau mot de passe</label>
                     <div className="relative mt-1">
                       <input
                         type={showNewPassword ? "text" : "password"}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 pr-10 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
                         placeholder="Min. 8 caractères"
                       />
                       <button
                         type="button"
                         onClick={() => setShowNewPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#1A1A2E]"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                       >
                         {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">Confirmer le nouveau mot de passe</label>
+                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Confirmer le nouveau mot de passe</label>
                     <input
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
                     />
                   </div>
                   <div className="flex gap-2 justify-end pt-2">
                     <Button
                       variant="outline"
                       onClick={() => { setEditingPassword(false); setError(null); }}
-                      className="rounded-xl border-[#E5E7EB] text-[#6B7280]"
+                      className="rounded-xl border-[var(--border)] text-[var(--muted-foreground)]"
                     >
                       Annuler
                     </Button>
@@ -744,15 +770,15 @@ export default function SettingsPage() {
             )}
 
             {/* Divider */}
-            <div className="h-px bg-[#E5E7EB]" />
+            <div className="h-px bg-[var(--border)]" />
 
             {/* Edit form */}
-            <h2 className="text-lg font-bold text-[#1A1A2E]">Modifier le profil</h2>
+            <h2 className="text-lg font-bold text-[var(--foreground)]">Modifier le profil</h2>
 
             <div className="space-y-5">
               {/* Username */}
               <div>
-                <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
                   Nom d&apos;utilisateur
                 </label>
                 <input
@@ -760,13 +786,13 @@ export default function SettingsPage() {
                   value={editUsername}
                   onChange={(e) => setEditUsername(e.target.value)}
                   maxLength={32}
-                  className="mt-1 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all"
+                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all"
                 />
               </div>
 
               {/* Bio / Notes with emoji picker */}
               <div>
-                <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
                   Notes / Bio
                 </label>
                 <div className="relative">
@@ -777,12 +803,12 @@ export default function SettingsPage() {
                     maxLength={500}
                     rows={3}
                     placeholder="Écris quelque chose à propos de toi..."
-                    className="mt-1 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 pr-10 text-sm text-[#1A1A2E] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all resize-none"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all resize-none"
                   />
                   <button
                     type="button"
                     onClick={() => setShowEmojiPicker((v) => !v)}
-                    className="absolute right-2 top-3 p-1.5 rounded-lg hover:bg-[#F7F8FA] text-[#6B7280] hover:text-[#023BFC] transition-colors"
+                    className="absolute right-2 top-3 p-1.5 rounded-lg hover:bg-[var(--surface)] text-[var(--muted-foreground)] hover:text-[#023BFC] transition-colors"
                     title="Ajouter un emoji"
                   >
                     <Smile className="w-4 h-4" />
@@ -800,12 +826,12 @@ export default function SettingsPage() {
                     </div>
                   )}
                 </div>
-                <div className="text-xs text-[#6B7280] mt-1 text-right">{editBio.length}/500</div>
+                <div className="text-xs text-[var(--muted-foreground)] mt-1 text-right">{editBio.length}/500</div>
               </div>
 
               {/* Status */}
               <div>
-                <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
                   Statut
                 </label>
                 <div className="mt-1.5 grid grid-cols-2 gap-2">
@@ -816,7 +842,7 @@ export default function SettingsPage() {
                       className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                         editStatus === opt.value
                           ? "border-[#023BFC] bg-[#023BFC]/5 text-[#023BFC]"
-                          : "border-[#E5E7EB] bg-white text-[#6B7280] hover:border-[#023BFC]/30"
+                          : "border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:border-[#023BFC]/30"
                       }`}
                     >
                       <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />
@@ -828,7 +854,7 @@ export default function SettingsPage() {
 
               {/* Banner Colors */}
               <div>
-                <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
                   Couleurs de la bannière
                 </label>
                 <div
@@ -839,38 +865,38 @@ export default function SettingsPage() {
                 />
                 <div className="flex gap-3 mt-2">
                   <div className="flex-1">
-                    <label className="text-xs text-[#6B7280]">Couleur 1</label>
+                    <label className="text-xs text-[var(--muted-foreground)]">Couleur 1</label>
                     <div className="flex items-center gap-2 mt-1">
                       <input
                         type="color"
                         value={editColor1}
                         onChange={(e) => setEditColor1(e.target.value)}
-                        className="w-8 h-8 rounded-lg border border-[#E5E7EB] cursor-pointer"
+                        className="w-8 h-8 rounded-lg border border-[var(--border)] cursor-pointer"
                       />
                       <input
                         type="text"
                         value={editColor1}
                         onChange={(e) => setEditColor1(e.target.value)}
                         maxLength={7}
-                        className="flex-1 rounded-lg border border-[#E5E7EB] bg-white px-2 py-1.5 text-xs font-mono text-[#1A1A2E] outline-none focus:border-[#023BFC]"
+                        className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs font-mono text-[var(--foreground)] outline-none focus:border-[#023BFC]"
                       />
                     </div>
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-[#6B7280]">Couleur 2</label>
+                    <label className="text-xs text-[var(--muted-foreground)]">Couleur 2</label>
                     <div className="flex items-center gap-2 mt-1">
                       <input
                         type="color"
                         value={editColor2}
                         onChange={(e) => setEditColor2(e.target.value)}
-                        className="w-8 h-8 rounded-lg border border-[#E5E7EB] cursor-pointer"
+                        className="w-8 h-8 rounded-lg border border-[var(--border)] cursor-pointer"
                       />
                       <input
                         type="text"
                         value={editColor2}
                         onChange={(e) => setEditColor2(e.target.value)}
                         maxLength={7}
-                        className="flex-1 rounded-lg border border-[#E5E7EB] bg-white px-2 py-1.5 text-xs font-mono text-[#1A1A2E] outline-none focus:border-[#023BFC]"
+                        className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs font-mono text-[var(--foreground)] outline-none focus:border-[#023BFC]"
                       />
                     </div>
                   </div>
@@ -879,7 +905,7 @@ export default function SettingsPage() {
 
               {/* Avatar upload */}
               <div className="relative">
-                <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
                   Photo de profil
                 </label>
                 <div className="mt-2 flex items-center gap-3">
@@ -906,7 +932,7 @@ export default function SettingsPage() {
                         onClick={() => photoInputRef.current?.click()}
                         disabled={uploading}
                         variant="outline"
-                        className="rounded-xl border-[#E5E7EB] hover:border-[#023BFC] hover:bg-[#023BFC]/5 text-[#1A1A2E] text-sm px-3 h-9 gap-2"
+                        className="rounded-xl border-[var(--border)] hover:border-[#023BFC] hover:bg-[#023BFC]/5 text-[var(--foreground)] text-sm px-3 h-9 gap-2"
                       >
                         <ImageIcon className="w-4 h-4" />
                         {uploading ? "Upload..." : "Photo"}
@@ -918,14 +944,14 @@ export default function SettingsPage() {
                         className={`rounded-xl text-sm px-3 h-9 gap-2 ${
                           showGifPicker
                             ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#7C3AED]"
-                            : "border-[#E5E7EB] hover:border-[#7C3AED] hover:bg-[#7C3AED]/5 text-[#1A1A2E]"
+                            : "border-[var(--border)] hover:border-[#7C3AED] hover:bg-[#7C3AED]/5 text-[var(--foreground)]"
                         }`}
                       >
                         <Play className="w-4 h-4" />
                         GIF animé
                       </Button>
                     </div>
-                    <span className="text-xs text-[#6B7280]">
+                    <span className="text-xs text-[var(--muted-foreground)]">
                       Photo : fichier JPG, PNG, WebP — GIF : recherche Tenor / Giphy
                     </span>
                   </div>
@@ -933,21 +959,21 @@ export default function SettingsPage() {
 
                 {/* GIF Picker Panel */}
                 {showGifPicker && (
-                  <div ref={gifPickerRef} className="mt-3 rounded-2xl border border-[#7C3AED]/30 bg-white shadow-lg overflow-hidden">
+                  <div ref={gifPickerRef} className="mt-3 rounded-2xl border border-[#7C3AED]/30 bg-[var(--card)] shadow-lg overflow-hidden">
                     {/* Search bar */}
-                    <div className="flex items-center gap-2 p-3 border-b border-[#E5E7EB]">
-                      <Search className="w-4 h-4 text-[#6B7280] flex-shrink-0" />
+                    <div className="flex items-center gap-2 p-3 border-b border-[var(--border)]">
+                      <Search className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
                       <input
                         value={gifQuery}
                         onChange={(e) => setGifQuery(e.target.value)}
                         placeholder="Rechercher un GIF (ex: cat, hello, dance...)"
                         autoFocus
-                        className="flex-1 text-sm text-[#1A1A2E] placeholder-[#6B7280] outline-none bg-transparent"
+                        className="flex-1 text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] outline-none bg-transparent"
                       />
                       {gifLoading && <Loader2 className="w-4 h-4 text-[#7C3AED] animate-spin flex-shrink-0" />}
                       <button
                         onClick={() => { setShowGifPicker(false); setGifQuery(""); setGifResults([]); }}
-                        className="p-1 rounded-lg hover:bg-[#F7F8FA] text-[#6B7280] hover:text-[#1A1A2E] transition-colors"
+                        className="p-1 rounded-lg hover:bg-[var(--surface)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -955,7 +981,7 @@ export default function SettingsPage() {
                     {/* Results grid */}
                     <div className="p-2 grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto">
                       {gifResults.length === 0 && !gifLoading && (
-                        <div className="col-span-4 py-8 text-center text-sm text-[#6B7280]">
+                        <div className="col-span-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
                           {gifQuery ? "Aucun GIF trouvé" : "Tapez pour rechercher des GIFs"}
                         </div>
                       )}
@@ -971,7 +997,7 @@ export default function SettingsPage() {
                       ))}
                     </div>
                     {uploading && (
-                      <div className="p-3 border-t border-[#E5E7EB] flex items-center justify-center gap-2 text-sm text-[#7C3AED]">
+                      <div className="p-3 border-t border-[var(--border)] flex items-center justify-center gap-2 text-sm text-[#7C3AED]">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Application du GIF...
                       </div>
@@ -1001,12 +1027,89 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {section === "appearance" && (
+          <div className="max-w-2xl mx-auto p-8 space-y-8">
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Apparence</h1>
+
+            {/* Theme selection */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Palette className="w-5 h-5 text-[var(--muted-foreground)]" />
+                <h2 className="text-lg font-semibold text-[var(--foreground)]">Thème</h2>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {THEME_OPTIONS.map((opt) => {
+                  const active = theme === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setTheme(opt.value)}
+                      className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 ${
+                        active
+                          ? "border-[#023BFC] ring-2 ring-[#023BFC]/20"
+                          : "border-[var(--border)] hover:border-[#023BFC]/40"
+                      }`}
+                    >
+                      <div className={`w-full h-16 rounded-xl ${opt.preview} border mb-3`} />
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--muted-foreground)]">{opt.icon}</span>
+                        <span className="font-semibold text-sm text-[var(--foreground)]">{opt.label}</span>
+                      </div>
+                      <p className="text-xs text-[var(--muted-foreground)] mt-1">{opt.desc}</p>
+                      {active && (
+                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-[#023BFC] flex items-center justify-center">
+                          <Check className="w-3 h-3 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Font size selection */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Type className="w-5 h-5 text-[var(--muted-foreground)]" />
+                <h2 className="text-lg font-semibold text-[var(--foreground)]">Taille de la police</h2>
+              </div>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
+                {FONT_SIZE_OPTIONS.map((opt) => {
+                  const active = fontSize === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setFontSize(opt.value)}
+                      className={`w-full flex items-center justify-between px-5 py-4 border-b border-[var(--border)] last:border-b-0 transition-all ${
+                        active ? "bg-[#023BFC]/5" : "hover:bg-[var(--surface)]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          active ? "border-[#023BFC]" : "border-[var(--border)]"
+                        }`}>
+                          {active && <div className="w-2.5 h-2.5 rounded-full bg-[#023BFC]" />}
+                        </div>
+                        <span className={`font-medium text-[var(--foreground)] ${opt.example}`}>{opt.label}</span>
+                      </div>
+                      <span className={`text-[var(--muted-foreground)] ${opt.example}`}>Aa</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                La taille de police s&apos;applique aux messages et au contenu du serveur.
+              </p>
+            </div>
+          </div>
+        )}
+
         {section === "privacy" && (
           <div className="max-w-2xl mx-auto p-8 space-y-6">
-            <h1 className="text-2xl font-bold text-[#1A1A2E]">Confidentialité</h1>
-            <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 text-center space-y-3">
-              <Shield className="w-12 h-12 mx-auto text-[#6B7280]/40" />
-              <p className="text-[#6B7280] text-sm">
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Confidentialité</h1>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center space-y-3">
+              <Shield className="w-12 h-12 mx-auto text-[var(--muted-foreground)]/40" />
+              <p className="text-[var(--muted-foreground)] text-sm">
                 Les paramètres de confidentialité seront bientôt disponibles.
               </p>
             </div>
@@ -1015,10 +1118,10 @@ export default function SettingsPage() {
 
         {section === "notifications" && (
           <div className="max-w-2xl mx-auto p-8 space-y-6">
-            <h1 className="text-2xl font-bold text-[#1A1A2E]">Notifications</h1>
-            <div className="rounded-2xl border border-[#E5E7EB] bg-white p-8 text-center space-y-3">
-              <Bell className="w-12 h-12 mx-auto text-[#6B7280]/40" />
-              <p className="text-[#6B7280] text-sm">
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">Notifications</h1>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center space-y-3">
+              <Bell className="w-12 h-12 mx-auto text-[var(--muted-foreground)]/40" />
+              <p className="text-[var(--muted-foreground)] text-sm">
                 Les paramètres de notification seront bientôt disponibles.
               </p>
             </div>
@@ -1046,13 +1149,13 @@ function InfoField({
   mono?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-[#E5E7EB] p-3 bg-white">
-      <label className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">{label}</label>
+    <div className="rounded-xl border border-[var(--border)] p-3 bg-[var(--card)]">
+      <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">{label}</label>
       <div className="flex items-center justify-between mt-1">
-        <span className={`${mono ? "font-mono text-sm truncate pr-2" : "font-semibold"} text-[#1A1A2E]`}>{value}</span>
+        <span className={`${mono ? "font-mono text-sm truncate pr-2" : "font-semibold"} text-[var(--foreground)]`}>{value}</span>
         <button
           onClick={() => onCopy(value, field)}
-          className="text-[#6B7280] hover:text-[#023BFC] transition-colors flex-shrink-0"
+          className="text-[var(--muted-foreground)] hover:text-[#023BFC] transition-colors flex-shrink-0"
           title="Copier"
         >
           {copiedField === field ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}

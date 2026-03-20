@@ -7,6 +7,9 @@ import { Plus, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2,
 import { useWebSocketStore, type WsMessage } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useDmStore } from "@/store/dm.store";
+import { useAppearanceStore } from "@/store/appearance.store";
+
+const FONT_SIZE_MAP = { sm: "14px", base: "16px", lg: "18px", xl: "20px" } as const;
 
 function dmConversationId(a: string, b: string): string {
   return a < b ? `dm:${a}:${b}` : `dm:${b}:${a}`;
@@ -28,6 +31,8 @@ export function DmChatPanel() {
   const joinDm = useWebSocketStore((s) => s.joinDm);
   const dmMessages = useWebSocketStore((s) => s.dmMessages);
   const socket = useWebSocketStore((s) => s.socket);
+  const fontSize = useAppearanceStore((s) => s.fontSize);
+  const chatFontSize = FONT_SIZE_MAP[fontSize] || "16px";
 
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
 
@@ -205,12 +210,12 @@ export function DmChatPanel() {
 
   if (!activePeerId) {
     return (
-      <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden items-center justify-center">
-        <div className="text-center text-zinc-400">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-zinc-100 flex items-center justify-center">
-            <Send className="w-8 h-8 text-zinc-300" />
+      <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden items-center justify-center">
+        <div className="text-center text-[var(--muted-foreground)]">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--surface)] flex items-center justify-center">
+            <Send className="w-8 h-8 text-[var(--muted-foreground)]" />
           </div>
-          <p className="text-lg font-semibold text-zinc-600 mb-1">Messages privés</p>
+          <p className="text-lg font-semibold text-[var(--muted-foreground)] mb-1">Messages privés</p>
           <p className="text-sm">Sélectionne une conversation pour commencer.</p>
         </div>
       </div>
@@ -218,20 +223,20 @@ export function DmChatPanel() {
   }
 
   return (
-    <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden">
+    <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden">
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm shrink-0">
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center text-[10px] font-semibold text-white mr-3">
           {(peerUsername ?? "?").slice(0, 2).toUpperCase()}
         </div>
-        <h2 className="font-bold text-md text-zinc-800 dark:text-zinc-100">
+        <h2 className="font-bold text-md text-[var(--foreground)]">
           {peerUsername}
         </h2>
       </div>
 
       {/* --- MESSAGES --- */}
       <div className="flex-1 overflow-y-auto flex flex-col py-4">
-        {!isConnected ? (
+        {messages.length === 0 && !isConnected ? (
           <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
             Connexion au serveur...
@@ -251,9 +256,9 @@ export function DmChatPanel() {
                   className="group relative flex items-start px-4 py-2 hover:bg-black/5 transition w-full"
                 >
                   {/* Action buttons — top-right, visible on hover */}
-                  <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-0.5 bg-white border border-zinc-200 rounded-md shadow-sm px-1 py-0.5 z-10">
+                  <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-0.5 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm px-1 py-0.5 z-10">
                     <button
-                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:bg-zinc-100 rounded transition"
+                      className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-indigo-600 hover:bg-[var(--surface)] rounded transition"
                       onClick={() => {
                         setReplyTo(msg.id);
                         setReplyToUsername(messageUsername);
@@ -267,7 +272,7 @@ export function DmChatPanel() {
                     </button>
                     {isAuthor && (
                       <button
-                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-emerald-600 hover:bg-zinc-100 rounded transition"
+                        className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-emerald-600 hover:bg-[var(--surface)] rounded transition"
                         onClick={() => {
                           setIsEditing(true);
                           setEditingMessageId(msg.id);
@@ -282,7 +287,7 @@ export function DmChatPanel() {
                     )}
                     {isAuthor && conversationId && (
                       <button
-                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-red-600 hover:bg-zinc-100 rounded transition"
+                        className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-red-600 hover:bg-[var(--surface)] rounded transition"
                         onClick={() => deleteDm(conversationId, msg.id)}
                         title="Supprimer"
                       >
@@ -290,7 +295,7 @@ export function DmChatPanel() {
                       </button>
                     )}
                     <button
-                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-amber-500 hover:bg-zinc-100 rounded transition"
+                      className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-amber-500 hover:bg-[var(--surface)] rounded transition"
                       onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
                       title="Réaction"
                     >
@@ -300,7 +305,7 @@ export function DmChatPanel() {
 
                   {/* Quick emoji picker */}
                   {emojiPickerMsgId === msg.id && (
-                    <div className="absolute -top-3 right-4 z-20 flex items-center gap-1 bg-white border border-zinc-200 rounded-lg shadow-lg px-2 py-1">
+                    <div className="absolute -top-3 right-4 z-20 flex items-center gap-1 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg px-2 py-1">
                       {QUICK_EMOJIS.map((emoji) => (
                         <button
                           key={emoji}
@@ -319,7 +324,7 @@ export function DmChatPanel() {
                         </button>
                       ))}
                       <button
-                        className="ml-1 text-zinc-400 hover:text-zinc-600 text-xs"
+                        className="ml-1 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] text-xs"
                         onClick={() => setEmojiPickerMsgId(null)}
                       >
                         <X className="h-3.5 w-3.5" />
@@ -328,17 +333,17 @@ export function DmChatPanel() {
                   )}
 
                   <div className="mr-4">
-                    <div className="w-10 h-10 rounded-full bg-zinc-200 flex items-center justify-center text-xs font-semibold text-zinc-700">
+                    <div className="w-10 h-10 rounded-full bg-[var(--muted)] flex items-center justify-center text-xs font-semibold text-[var(--foreground)]">
                       {messageUsername.slice(0, 2).toUpperCase()}
                     </div>
                   </div>
 
                   <div className="flex flex-col w-full">
                     <div className="flex items-center gap-x-2">
-                      <span className="font-semibold text-sm text-zinc-800">
+                      <span className="font-semibold text-sm text-[var(--foreground)]">
                         {messageUsername}
                       </span>
-                      <span className="text-xs text-zinc-500">
+                      <span className="text-xs text-[var(--muted-foreground)]">
                         {new Date(msg.created_at).toLocaleString()}
                       </span>
                       {msg.edited_at && (
@@ -349,7 +354,7 @@ export function DmChatPanel() {
                     {msg.reply_to && (() => {
                       const original = messages.find((m) => m.id === msg.reply_to);
                       return (
-                        <div className="text-xs text-zinc-500 italic mb-1 bg-zinc-100 p-2 rounded-md">
+                        <div className="text-xs text-[var(--muted-foreground)] italic mb-1 bg-[var(--surface)] p-2 rounded-md">
                           Réponse à {original ? getUsernameById(original.author_id, original.username) : msg.reply_to.slice(0, 8)}:
                           <div className="truncate max-w-full">
                             {original ? original.content : "message introuvable"}
@@ -362,7 +367,7 @@ export function DmChatPanel() {
                       const gifMessage = parseGifContent(msg.content);
                       if (gifMessage) {
                         return (
-                          <div className="mt-2 rounded-md border border-zinc-200 p-2 bg-zinc-50">
+                          <div className="mt-2 rounded-md border border-[var(--border)] p-2 bg-[var(--surface)]">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={gifMessage.gif.url}
@@ -370,13 +375,13 @@ export function DmChatPanel() {
                               className="h-36 w-full rounded-md object-cover"
                             />
                             {gifMessage.caption && (
-                              <p className="mt-1 text-sm text-zinc-600">{gifMessage.caption}</p>
+                              <p className="mt-1 text-sm text-[var(--muted-foreground)]">{gifMessage.caption}</p>
                             )}
                           </div>
                         );
                       }
                       return (
-                        <p className="text-sm text-zinc-600 whitespace-pre-wrap">
+                        <p className="text-[var(--muted-foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
                           {msg.content}
                         </p>
                       );
@@ -401,7 +406,7 @@ export function DmChatPanel() {
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition ${
                                 hasReacted
                                   ? "bg-indigo-100 border-indigo-300 text-indigo-700"
-                                  : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200"
+                                  : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
                               }`}
                               title={data.users.join(", ")}
                               onClick={() => {
@@ -428,10 +433,15 @@ export function DmChatPanel() {
           </div>
         )}
 
+        {!isConnected && messages.length > 0 && (
+          <div className="px-4 py-1 text-xs text-[var(--muted-foreground)] flex items-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Reconnexion en cours...
+          </div>
+        )}
+
         {error && <div className="px-4 mt-2 text-xs text-red-500">{error}</div>}
       </div>
-
-      {/* --- INPUT --- */}
       <div className="p-4 mb-2 shrink-0">
         {((replyTo && !isEditing) || isEditing) && (
           <div className="mb-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-700 flex items-center justify-between">
@@ -451,7 +461,7 @@ export function DmChatPanel() {
           <div className="relative flex-1">
             <button
               type="button"
-              className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 bg-zinc-500 hover:bg-zinc-600 transition rounded-full p-1 flex items-center justify-center text-white"
+              className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 bg-[var(--muted-foreground)] hover:bg-[var(--muted-foreground)] transition rounded-full p-1 flex items-center justify-center text-white"
               disabled
               title="Fonction à venir"
             >
@@ -463,7 +473,7 @@ export function DmChatPanel() {
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={!activePeerId || sending || !isConnected}
-              className="px-14 pr-32 py-6 bg-zinc-200/90 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-zinc-600 placeholder:text-zinc-500"
+              className="px-14 pr-32 py-6 bg-[var(--muted)]/90 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[var(--muted-foreground)] placeholder:text-[var(--muted-foreground)]"
               placeholder={
                 !isConnected
                   ? "Connexion en cours..."
@@ -473,7 +483,7 @@ export function DmChatPanel() {
 
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-x-3">
               <span title="Fonction à venir">
-                <Gift className="h-5 w-5 text-zinc-500 hover:text-zinc-600 transition cursor-not-allowed" />
+                <Gift className="h-5 w-5 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] transition cursor-not-allowed" />
               </span>
 
               <button
@@ -482,7 +492,7 @@ export function DmChatPanel() {
                 title="GIF"
                 className="h-6 w-6 flex items-center justify-center"
               >
-                <Sticker className="h-5 w-5 text-zinc-500 hover:text-zinc-600 transition cursor-pointer" />
+                <Sticker className="h-5 w-5 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] transition cursor-pointer" />
               </button>
 
               <button
@@ -491,14 +501,14 @@ export function DmChatPanel() {
                 title="Emojis"
                 className="h-6 w-6 flex items-center justify-center"
               >
-                <Smile className="h-5 w-5 text-zinc-500 hover:text-zinc-600 transition cursor-pointer" />
+                <Smile className="h-5 w-5 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] transition cursor-pointer" />
               </button>
               {showInputEmojis && (
-                <div className="absolute bottom-10 right-0 z-50 bg-white border border-zinc-200 rounded-lg shadow-lg px-2 py-2 flex flex-wrap gap-1 w-48">
+                <div className="absolute bottom-10 right-0 z-50 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg px-2 py-2 flex flex-wrap gap-1 w-48">
                   {QUICK_EMOJIS.map((emoji) => (
                     <button
                       key={emoji}
-                      className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-zinc-100"
+                      className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-[var(--surface)]"
                       onClick={() => {
                         setValue((prev) => prev + emoji);
                         setShowInputEmojis(false);
@@ -529,13 +539,13 @@ export function DmChatPanel() {
 
         {/* GIF picker anchored to input bar */}
         {openGifPicker === "input" && (
-          <div className="absolute left-4 right-4 bottom-20 z-50 bg-white border rounded-lg shadow-md p-3 w-[min(90vw,40rem)]">
+          <div className="absolute left-4 right-4 bottom-20 z-50 bg-[var(--card)] border rounded-lg shadow-md p-3 w-[min(90vw,40rem)]">
             <div className="flex gap-2 mb-2">
               <input
                 value={gifQuery}
                 onChange={(e) => setGifQuery(e.target.value)}
                 placeholder="Recherche de GIFs"
-                className="flex-1 px-2 py-1 border rounded bg-zinc-50"
+                className="flex-1 px-2 py-1 border rounded bg-[var(--surface)]"
               />
               <button
                 onClick={async () => {
@@ -578,7 +588,7 @@ export function DmChatPanel() {
               </button>
               <button
                 onClick={() => { setOpenGifPicker(null); setGifResults([]); setGifQuery(""); }}
-                className="px-2 py-1 bg-zinc-200 rounded"
+                className="px-2 py-1 bg-[var(--muted)] rounded"
               >
                 Fermer
               </button>

@@ -158,10 +158,10 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
       ? "border-emerald-200 text-emerald-700 bg-emerald-50"
       : status?.type === "error"
       ? "border-red-200 text-red-700 bg-red-50"
-      : "border-[#023BFC]/20 text-[#023BFC] bg-[#EBF0FF]";
+      : "border-[#023BFC]/20 text-[#023BFC] bg-[var(--accent)]";
 
   return (
-    <aside className="w-[88px] my-4 ml-3 rounded-2xl flex flex-col items-center gap-4 py-6 bg-gradient-to-b from-[#F7F8FA] to-white border border-[#E5E7EB] shadow-lg">
+    <aside className="w-[88px] my-4 ml-3 rounded-2xl flex flex-col items-center gap-4 py-6 bg-gradient-to-b from-[var(--surface)] to-[var(--card)] border border-[var(--border)] shadow-lg">
 
       {/* Logo — navigates to DM */}
       <Link
@@ -172,12 +172,12 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
         <span className="text-white font-bold text-lg">B</span>
       </Link>
       
-      <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
+      <div className="w-10 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
 
       {/* Add server */}
       <button
         onClick={onCreateServer}
-        className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border-2 border-dashed border-[#023BFC]/30 hover:border-[#023BFC] text-[#023BFC] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105"
+        className="w-12 h-12 server-icon bg-[var(--card)] hover:bg-[var(--accent)] border-2 border-dashed border-[#023BFC]/30 hover:border-[#023BFC] text-[#023BFC] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105"
         title="Creer un serveur"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -197,7 +197,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                 "w-12 h-12 transition-all duration-300 flex items-center justify-center font-semibold text-sm",
                 active
                   ? "server-icon-active bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white rounded-2xl"
-                  : "server-icon bg-white text-[#1A1D26] border border-[#E5E7EB] hover:border-[#023BFC]/50 hover:text-[#023BFC]",
+                  : "server-icon bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] hover:border-[#023BFC]/50 hover:text-[#023BFC]",
               ].join(" ")}
               title={s.name}
             >
@@ -207,7 +207,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
         })}
       </div>
 
-      <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
+      <div className="w-10 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
 
       {/* User Settings (Profile) */}
       <div>
@@ -223,7 +223,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
           />
           <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-3xl glass border border-white/30 shadow-2xl overflow-hidden">
             {/* Header with gradient */}
-            <div className="shrink-0 px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E5E7EB]/50 flex items-center bg-gradient-to-r from-[#023BFC]/5 to-transparent">
+            <div className="shrink-0 px-4 sm:px-6 py-4 sm:py-5 border-b border-[var(--border)]/50 flex items-center bg-gradient-to-r from-[#023BFC]/5 to-transparent">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#0066FF] flex items-center justify-center shadow-lg">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -232,17 +232,17 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                   </svg>
                 </div>
                 <div className="min-w-0">
-                  <div className="font-bold text-[#1A1A2E]">Parametres</div>
-                  <div className="text-xs text-[#6B7280] truncate">{activeServer?.name ?? "Aucun serveur selectionne"}</div>
+                  <div className="font-bold text-[var(--foreground)]">Parametres</div>
+                  <div className="text-xs text-[var(--muted-foreground)] truncate">{activeServer?.name ?? "Aucun serveur selectionne"}</div>
                 </div>
               </div>
               <button
                 title="Fermer les paramètres"
                 aria-label="Fermer les paramètres"
-                className="ml-auto w-9 h-9 rounded-xl bg-[#F7F8FA] hover:bg-[#E5E7EB] border border-[#E5E7EB] flex items-center justify-center transition-all duration-300 shrink-0"
+                className="ml-auto w-9 h-9 rounded-xl bg-[var(--surface)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center transition-all duration-300 shrink-0"
                 onClick={() => setOpenSettings(false)}
               >
-                <svg className="w-4 h-4 text-[#6B7280]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-[var(--muted-foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -250,16 +250,16 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
 
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
               {/* Join */}
-              <div className="rounded-2xl border border-[#E5E7EB]/50 p-4 sm:p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
+              <div className="rounded-2xl border border-[var(--border)]/50 p-4 sm:p-5 bg-[var(--card)] hover:bg-[var(--card)] transition-all duration-300 neu-shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center">
                     <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                     </svg>
                   </div>
-                  <div className="text-sm font-bold text-[#1A1A2E]">Rejoindre un serveur</div>
+                  <div className="text-sm font-bold text-[var(--foreground)]">Rejoindre un serveur</div>
                 </div>
-                <div className="text-xs text-[#6B7280] mb-4">
+                <div className="text-xs text-[var(--muted-foreground)] mb-4">
                   Colle un code ou un lien complet d&apos;invitation.
                 </div>
 
@@ -268,7 +268,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                     value={inviteInput}
                     onChange={(e) => setInviteInput(e.target.value)}
                     placeholder="Lien d'invite ou code..."
-                    className="h-11 flex-1 rounded-xl border border-[#E5E7EB] px-4 text-sm bg-white/80 focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 outline-none transition-all duration-300"
+                    className="h-11 flex-1 rounded-xl border border-[var(--border)] px-4 text-sm bg-[var(--card)] focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 outline-none transition-all duration-300"
                   />
                   <Button onClick={onJoin} disabled={loadingJoin || !inviteInput.trim()} className="btn-premium h-11 px-5 shrink-0">
                     {loadingJoin ? "..." : "Rejoindre"}
@@ -277,16 +277,16 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
               </div>
 
               {/* Invite */}
-              <div className="rounded-2xl border border-[#E5E7EB]/50 p-4 sm:p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
+              <div className="rounded-2xl border border-[var(--border)]/50 p-4 sm:p-5 bg-[var(--card)] hover:bg-[var(--card)] transition-all duration-300 neu-shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#023BFC] to-[#0066FF] flex items-center justify-center">
                     <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                   </div>
-                  <div className="text-sm font-bold text-[#1A1A2E]">Inviter sur mon serveur</div>
+                  <div className="text-sm font-bold text-[var(--foreground)]">Inviter sur mon serveur</div>
                 </div>
-                <div className="text-xs text-[#6B7280] mb-4">
+                <div className="text-xs text-[var(--muted-foreground)] mb-4">
                   Génère un lien d&apos;invitation à partager.
                 </div>
 
@@ -296,14 +296,14 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                     onClick={onInvite}
                     disabled={loadingInvite || !activeServerId}
                     title={isOwner ? "Generer" : "Reserve au createur"}
-                    className="h-11 px-5 rounded-xl border-[#E5E7EB] hover:border-[#023BFC] hover:bg-[#023BFC]/5 transition-all duration-300"
+                    className="h-11 px-5 rounded-xl border-[var(--border)] hover:border-[#023BFC] hover:bg-[#023BFC]/5 transition-all duration-300"
                   >
                     {loadingInvite ? "..." : "Generer une invitation"}
                   </Button>
 
                   {inviteLink && (
                     <>
-                      <div className="w-full sm:flex-1 sm:w-auto min-w-0 text-xs rounded-xl border border-[#E5E7EB] px-4 py-3 bg-[#F7F8FA] font-mono overflow-hidden text-ellipsis text-[#1A1A2E] break-all">
+                      <div className="w-full sm:flex-1 sm:w-auto min-w-0 text-xs rounded-xl border border-[var(--border)] px-4 py-3 bg-[var(--surface)] font-mono overflow-hidden text-ellipsis text-[var(--foreground)] break-all">
                         {inviteLink}
                       </div>
                       <Button variant="outline" onClick={onCopyInvite} className="h-11 px-4 rounded-xl border-[#023BFC] text-[#023BFC] hover:bg-[#023BFC] hover:text-white transition-all duration-300">

@@ -72,26 +72,26 @@ export function CreateChannelModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px] bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl border-0 overflow-hidden p-0">
+      <DialogContent className="sm:max-w-[425px] bg-[var(--card)] backdrop-blur-xl shadow-2xl rounded-2xl border-0 overflow-hidden p-0">
         {/* Decorative header bar */}
         <div className="h-1.5 bg-gradient-to-r from-[#023BFC] via-[#3D6AFF] to-[#023BFC]" />
         
         <form onSubmit={handleSubmit} className="p-6">
           <DialogHeader className="mb-6">
-            <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-[#1A1A2E]">
+            <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-[var(--foreground)]">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg">
                 <Hash className="h-5 w-5 text-white" />
               </div>
               Créer un channel
             </DialogTitle>
-            <DialogDescription className="text-[#6B7280] mt-2">
+            <DialogDescription className="text-[var(--muted-foreground)] mt-2">
               Les channels sont des espaces de discussion au sein de votre serveur.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="channel-name" className="text-sm font-medium text-[#1A1A2E]">
+              <Label htmlFor="channel-name" className="text-sm font-medium text-[var(--foreground)]">
                 Nom du channel
               </Label>
               <div className="flex items-center gap-2">
@@ -103,10 +103,10 @@ export function CreateChannelModal({
                   placeholder="général"
                   disabled={loading}
                   autoFocus
-                  className="flex-1 h-12 px-4 rounded-xl border-[#E5E7EB] focus:border-[#023BFC] focus:ring-[#023BFC]/20 transition-all duration-200 bg-[#F7F8FA]"
+                  className="flex-1 h-12 px-4 rounded-xl border-[var(--border)] focus:border-[#023BFC] focus:ring-[#023BFC]/20 transition-all duration-200 bg-[var(--surface)]"
                 />
               </div>
-              <p className="text-xs text-[#6B7280]">
+              <p className="text-xs text-[var(--muted-foreground)]">
                 Utilisez des lettres minuscules et des tirets
               </p>
             </div>
@@ -127,7 +127,7 @@ export function CreateChannelModal({
               variant="outline"
               onClick={handleClose}
               disabled={loading}
-              className="h-11 px-6 rounded-xl border-[#E5E7EB] hover:bg-[#F7F8FA] transition-all duration-200"
+              className="h-11 px-6 rounded-xl border-[var(--border)] hover:bg-[var(--surface)] transition-all duration-200"
             >
               Annuler
             </Button>
