@@ -211,15 +211,10 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
       <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
 
-      {/* User Settings (Profile / Logout) */}
-      <div className="mt-auto">
-        <UserSettings />
-      </div>
-
-      {/* Settings button (bottom) - Server settings */}
+      {/* Settings button - Server settings */}
       <button
         onClick={() => setOpenSettings(true)}
-        className="w-12 h-12 server-icon bg-white hover:bg-[#F7F8FA] border border-[#E5E7EB] text-[#6B7280] hover:text-[#023BFC] flex items-center justify-center transition-all duration-300"
+        className="mt-auto w-12 h-12 server-icon bg-white hover:bg-[#F7F8FA] border border-[#E5E7EB] text-[#6B7280] hover:text-[#023BFC] flex items-center justify-center transition-all duration-300"
         title="Parametres serveur"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -227,6 +222,11 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       </button>
+
+      {/* User Settings (Profile) */}
+      <div>
+        <UserSettings />
+      </div>
 
       {/* Modal settings - Premium glassmorphism */}
       {openSettings && (

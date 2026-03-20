@@ -1,6 +1,7 @@
 //! User repository
 
 use crate::error::{AppError, AppResult};
+use crate::models::user::UserStatus;
 use crate::models::User;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -12,7 +13,8 @@ impl UserRepository {
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, username, created_at, updated_at
+            SELECT id, email, password_hash, username, avatar_url, bio,
+                   banner_color_1, banner_color_2, status, created_at, updated_at
             FROM users
             WHERE id = $1
             "#,
@@ -28,7 +30,8 @@ impl UserRepository {
     pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, username, created_at, updated_at
+            SELECT id, email, password_hash, username, avatar_url, bio,
+                   banner_color_1, banner_color_2, status, created_at, updated_at
             FROM users
             WHERE email = $1
             "#,
@@ -44,7 +47,8 @@ impl UserRepository {
     pub async fn find_by_username(pool: &PgPool, username: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, username, created_at, updated_at
+            SELECT id, email, password_hash, username, avatar_url, bio,
+                   banner_color_1, banner_color_2, status, created_at, updated_at
             FROM users
             WHERE username = $1
             "#,
@@ -67,7 +71,8 @@ impl UserRepository {
             r#"
             INSERT INTO users (email, password_hash, username)
             VALUES ($1, $2, $3)
-            RETURNING id, email, password_hash, username, created_at, updated_at
+            RETURNING id, email, password_hash, username, avatar_url, bio,
+                      banner_color_1, banner_color_2, status, created_at, updated_at
             "#,
         )
         .bind(email)
@@ -87,23 +92,39 @@ impl UserRepository {
         Ok(user)
     }
 
-    /// Update user
-    #[allow(dead_code)] // For future user profile updates
-    pub async fn update(
+    /// Update user profile
+    pub async fn update_profile(
         pool: &PgPool,
         id: Uuid,
-        username: &str,
+        username: Option<&str>,
+        bio: Option<&str>,
+        avatar_url: Option<&str>,
+        banner_color_1: Option<&str>,
+        banner_color_2: Option<&str>,
+        status: Option<&UserStatus>,
     ) -> AppResult<User> {
         let user = sqlx::query_as::<_, User>(
             r#"
             UPDATE users
-            SET username = $2, updated_at = NOW()
+            SET username      = COALESCE($2, username),
+                bio           = COALESCE($3, bio),
+                avatar_url    = COALESCE($4, avatar_url),
+                banner_color_1 = COALESCE($5, banner_color_1),
+                banner_color_2 = COALESCE($6, banner_color_2),
+                status        = COALESCE($7, status),
+                updated_at    = NOW()
             WHERE id = $1
-            RETURNING id, email, password_hash, username, created_at, updated_at
+            RETURNING id, email, password_hash, username, avatar_url, bio,
+                      banner_color_1, banner_color_2, status, created_at, updated_at
             "#,
         )
         .bind(id)
         .bind(username)
+        .bind(bio)
+        .bind(avatar_url)
+        .bind(banner_color_1)
+        .bind(banner_color_2)
+        .bind(status)
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;

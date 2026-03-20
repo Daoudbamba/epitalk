@@ -28,6 +28,11 @@ export const UserSchema = z.object({
   id: z.string(),
   username: z.string(),
   email: z.string(),
+  avatar_url: z.string().nullable().optional(),
+  bio: z.string().nullable().optional(),
+  banner_color_1: z.string().nullable().optional(),
+  banner_color_2: z.string().nullable().optional(),
+  status: z.enum(["ONLINE", "IDLE", "DND", "OFFLINE"]).optional(),
   created_at: z.string().optional(),
 });
 

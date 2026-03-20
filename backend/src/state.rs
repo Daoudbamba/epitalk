@@ -91,6 +91,7 @@ mod tests {
             jwt_secret: "test-secret-min-32-chars--------------".into(),
             jwt_expiration_hours: 24,
             port: 3000,
+            upload_dir: "./uploads".into(),
         };
 
         let state = AppState::new(pool, cfg.clone());

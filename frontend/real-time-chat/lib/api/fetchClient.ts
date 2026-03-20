@@ -3,6 +3,10 @@ import { ApiError, parseApiError } from "./errors";
 export class FetchClient {
   constructor(private baseUrl: string = "") {}
 
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   private getToken(): string | null {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("token");

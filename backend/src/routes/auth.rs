@@ -1,9 +1,9 @@
 //! Authentication routes
 //!
-//! Handles user registration, login, token refresh, and profile retrieval.
+//! Handles user registration, login, token refresh, profile retrieval & update.
 
 use axum::{
-    extract::State,
+    extract::{DefaultBodyLimit, Multipart, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -16,6 +16,7 @@ use validator::Validate;
 use crate::{
     auth::{PasswordService, RequireAuth},
     error::{AppError, AppResult},
+    models::user::UserStatus,
     models::User,
     repositories::UserRepository,
     state::AppState,
@@ -26,7 +27,12 @@ pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/register", post(register))
         .route("/login", post(login))
-        .route("/me", get(me))
+        .route("/me", get(me).patch(update_profile))
+        .route(
+            "/me/avatar",
+            post(upload_avatar).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route("/me/avatar-url", post(set_avatar_from_url))
         .route("/refresh", post(refresh_token))
 }
 
@@ -67,6 +73,11 @@ pub struct UserResponse {
     pub id: Uuid,
     pub email: String,
     pub username: String,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub banner_color_1: Option<String>,
+    pub banner_color_2: Option<String>,
+    pub status: UserStatus,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -76,6 +87,11 @@ impl From<User> for UserResponse {
             id: user.id,
             email: user.email,
             username: user.username,
+            avatar_url: user.avatar_url,
+            bio: user.bio,
+            banner_color_1: user.banner_color_1,
+            banner_color_2: user.banner_color_2,
+            status: user.status,
             created_at: user.created_at,
         }
     }
@@ -143,6 +159,11 @@ mod tests {
             email: "user@example.com".into(),
             password_hash: "hash".into(),
             username: "user123".into(),
+            avatar_url: None,
+            bio: Some("Hello".into()),
+            banner_color_1: Some("#023BFC".into()),
+            banner_color_2: Some("#3D6AFF".into()),
+            status: UserStatus::Online,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -152,6 +173,22 @@ mod tests {
         assert_eq!(resp.email, user.email);
         assert_eq!(resp.username, user.username);
         assert_eq!(resp.created_at, user.created_at);
+        assert_eq!(resp.status, UserStatus::Online);
+    }
+
+    #[test]
+    fn is_valid_hex_color_accepts_valid() {
+        assert!(is_valid_hex_color("#023BFC"));
+        assert!(is_valid_hex_color("#000000"));
+        assert!(is_valid_hex_color("#FFFFFF"));
+    }
+
+    #[test]
+    fn is_valid_hex_color_rejects_invalid() {
+        assert!(!is_valid_hex_color("023BFC"));   // missing #
+        assert!(!is_valid_hex_color("#GGGGGG"));  // invalid hex chars
+        assert!(!is_valid_hex_color("#FFF"));      // too short
+        assert!(!is_valid_hex_color("#FFFFFFFF")); // too long
     }
 }
 
@@ -289,4 +326,291 @@ pub async fn refresh_token(
     };
 
     Ok(Json(response))
+}
+
+// ============================================================================
+// Profile update
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileRequest {
+    pub username: Option<String>,
+    pub bio: Option<String>,
+    pub banner_color_1: Option<String>,
+    pub banner_color_2: Option<String>,
+    pub status: Option<UserStatus>,
+}
+
+/// Validate a hex color string like #RRGGBB
+fn is_valid_hex_color(s: &str) -> bool {
+    if s.len() != 7 {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    if bytes[0] != b'#' {
+        return false;
+    }
+    bytes[1..].iter().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Update current user profile
+///
+/// PATCH /api/auth/me
+#[axum::debug_handler]
+pub async fn update_profile(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Json(payload): Json<UpdateProfileRequest>,
+) -> AppResult<Json<UserResponse>> {
+    // Validate username length if provided
+    if let Some(ref name) = payload.username {
+        let trimmed = name.trim();
+        if trimmed.len() < 3 || trimmed.len() > 32 {
+            return Err(AppError::Validation(
+                "Username must be 3-32 characters".to_string(),
+            ));
+        }
+    }
+
+    // Validate bio length
+    if let Some(ref bio) = payload.bio {
+        if bio.len() > 500 {
+            return Err(AppError::Validation(
+                "Bio must be at most 500 characters".to_string(),
+            ));
+        }
+    }
+
+    // Validate banner colors
+    if let Some(ref c) = payload.banner_color_1 {
+        if !is_valid_hex_color(c) {
+            return Err(AppError::Validation("Invalid banner_color_1 hex color".to_string()));
+        }
+    }
+    if let Some(ref c) = payload.banner_color_2 {
+        if !is_valid_hex_color(c) {
+            return Err(AppError::Validation("Invalid banner_color_2 hex color".to_string()));
+        }
+    }
+
+    let user = UserRepository::update_profile(
+        &state.db,
+        auth.user_id,
+        payload.username.as_deref(),
+        payload.bio.as_deref(),
+        None, // avatar_url updated via upload endpoint
+        payload.banner_color_1.as_deref(),
+        payload.banner_color_2.as_deref(),
+        payload.status.as_ref(),
+    )
+    .await?;
+
+    Ok(Json(user.into()))
+}
+
+/// Upload avatar image (JPEG, PNG, GIF)
+///
+/// POST /api/auth/me/avatar
+#[axum::debug_handler]
+pub async fn upload_avatar(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    mut multipart: Multipart,
+) -> AppResult<Json<UserResponse>> {
+    let upload_dir = state.config.upload_dir.clone();
+
+    // Create uploads directory
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .map_err(|e| AppError::Internal(format!("Cannot create upload dir: {e}")))?;
+
+    let mut avatar_path: Option<String> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Invalid multipart: {e}")))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        if field_name != "avatar" {
+            continue;
+        }
+
+        let content_type = field.content_type().unwrap_or("").to_string();
+        let file_name = field.file_name().unwrap_or("").to_string();
+        let ext = match content_type.as_str() {
+            "image/jpeg" => "jpg",
+            "image/png" => "png",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            _ => {
+                // Fallback: detect from filename extension
+                let lower = file_name.to_lowercase();
+                if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+                    "jpg"
+                } else if lower.ends_with(".png") {
+                    "png"
+                } else if lower.ends_with(".gif") {
+                    "gif"
+                } else if lower.ends_with(".webp") {
+                    "webp"
+                } else {
+                    return Err(AppError::Validation(
+                        "Only JPEG, PNG, GIF and WebP images are allowed".to_string(),
+                    ));
+                }
+            }
+        };
+
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("Failed to read file: {e}")))?;
+
+        // Limit to 10 MB
+        if data.len() > 10 * 1024 * 1024 {
+            return Err(AppError::Validation(
+                "Avatar file must be under 10 MB".to_string(),
+            ));
+        }
+
+        let filename = format!("avatar_{}_{}.{}", auth.user_id, chrono::Utc::now().timestamp(), ext);
+        let filepath = format!("{}/{}", upload_dir, filename);
+
+        tokio::fs::write(&filepath, &data)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to save file: {e}")))?;
+
+        avatar_path = Some(format!("/uploads/{}", filename));
+    }
+
+    let avatar_url = avatar_path.ok_or_else(|| {
+        AppError::BadRequest("No avatar field in multipart form".to_string())
+    })?;
+
+    let user = UserRepository::update_profile(
+        &state.db,
+        auth.user_id,
+        None,
+        None,
+        Some(&avatar_url),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    Ok(Json(user.into()))
+}
+
+/// Set avatar from an external GIF URL (download and save locally)
+///
+/// POST /api/auth/me/avatar-url
+#[derive(Debug, Deserialize)]
+pub struct AvatarUrlRequest {
+    pub url: String,
+}
+
+#[axum::debug_handler]
+pub async fn set_avatar_from_url(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Json(body): Json<AvatarUrlRequest>,
+) -> AppResult<Json<UserResponse>> {
+    // Validate URL
+    let parsed = reqwest::Url::parse(&body.url)
+        .map_err(|_| AppError::Validation("Invalid URL".to_string()))?;
+
+    // Only allow HTTPS URLs from known GIF providers
+    let host = parsed.host_str().unwrap_or("");
+    let allowed_hosts = [
+        "media.tenor.com",
+        "media1.tenor.com",
+        "c.tenor.com",
+        "media.giphy.com",
+        "i.giphy.com",
+        "media0.giphy.com",
+        "media1.giphy.com",
+        "media2.giphy.com",
+        "media3.giphy.com",
+        "media4.giphy.com",
+    ];
+    if !allowed_hosts.iter().any(|h| host == *h) {
+        return Err(AppError::Validation(
+            "URL must be from Tenor or Giphy".to_string(),
+        ));
+    }
+    if parsed.scheme() != "https" {
+        return Err(AppError::Validation("URL must use HTTPS".to_string()));
+    }
+
+    // Download the GIF
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(parsed.clone())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to download GIF: {e}")))?;
+
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let data = resp
+        .bytes()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to read GIF data: {e}")))?;
+
+    if data.len() > 10 * 1024 * 1024 {
+        return Err(AppError::Validation(
+            "GIF must be under 10 MB".to_string(),
+        ));
+    }
+
+    // Determine extension from content-type or URL path
+    let ext = if content_type.contains("gif") {
+        "gif"
+    } else if parsed.path().to_lowercase().contains(".gif") {
+        "gif"
+    } else if content_type.contains("webp") {
+        "webp"
+    } else {
+        "gif" // Default to gif for Tenor/Giphy URLs
+    };
+
+    let upload_dir = state.config.upload_dir.clone();
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .map_err(|e| AppError::Internal(format!("Cannot create upload dir: {e}")))?;
+
+    let filename = format!(
+        "avatar_{}_{}.{}",
+        auth.user_id,
+        chrono::Utc::now().timestamp(),
+        ext
+    );
+    let filepath = format!("{}/{}", upload_dir, filename);
+
+    tokio::fs::write(&filepath, &data)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to save file: {e}")))?;
+
+    let avatar_url = format!("/uploads/{}", filename);
+
+    let user = UserRepository::update_profile(
+        &state.db,
+        auth.user_id,
+        None,
+        None,
+        Some(&avatar_url),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    Ok(Json(user.into()))
 }

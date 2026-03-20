@@ -10,6 +10,14 @@ import {
   type AuthResponse,
 } from "./schemas/auth.schema";
 
+export interface UpdateProfileInput {
+  username?: string;
+  bio?: string;
+  banner_color_1?: string;
+  banner_color_2?: string;
+  status?: "ONLINE" | "IDLE" | "DND" | "OFFLINE";
+}
+
 export class AuthAPI {
   private client: FetchClient;
 
@@ -31,6 +39,38 @@ export class AuthAPI {
 
   async me(): Promise<User> {
     const response = await this.client.get<User>("/auth/me");
+    return UserSchema.parse(response);
+  }
+
+  async updateProfile(data: UpdateProfileInput): Promise<User> {
+    const response = await this.client.patch<User>("/auth/me", data);
+    return UserSchema.parse(response);
+  }
+
+  async uploadAvatar(file: File): Promise<User> {
+    const formData = new FormData();
+    formData.append("avatar", file);
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const baseUrl = this.client.getBaseUrl();
+
+    const res = await fetch(`${baseUrl}/auth/me/avatar`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      throw new Error(payload?.error || "Upload failed");
+    }
+
+    const response = await res.json();
+    return UserSchema.parse(response);
+  }
+
+  async setAvatarFromUrl(url: string): Promise<User> {
+    const response = await this.client.post<User>("/auth/me/avatar-url", { url });
     return UserSchema.parse(response);
   }
 
