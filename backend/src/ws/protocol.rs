@@ -50,6 +50,29 @@ pub enum ServerEvent {
         created_at: String,
     },
 
+    MessageUpdated {
+        id: String,
+        channel_id: String,
+        author_id: String,
+        username: String,
+        content: String,
+        edited_at: String,
+    },
+
+    MessagePinned {
+        message_id: String,
+        channel_id: String,
+        pinned_by: String,
+        pinned_at: String,
+    },
+
+    MessageUnpinned {
+        message_id: String,
+        channel_id: String,
+        unpinned_by: String,
+        unpinned_at: String,
+    },
+
     UserJoined {
         user_id: String,
         channel_id: String,
@@ -169,5 +192,43 @@ mod tests {
 
         assert_eq!(value["type"], "MessageNew");
         assert_eq!(value["payload"]["content"], "hello");
+    }
+
+    #[test]
+    fn server_event_serialization_updated_and_pin_variants() {
+        let updated = ServerEvent::MessageUpdated {
+            id: "m1".into(),
+            channel_id: "chan".into(),
+            author_id: "user".into(),
+            username: "alice".into(),
+            content: "edited".into(),
+            edited_at: "2026-03-20T00:00:00Z".into(),
+        };
+        let pinned = ServerEvent::MessagePinned {
+            message_id: "m1".into(),
+            channel_id: "chan".into(),
+            pinned_by: "mod".into(),
+            pinned_at: "2026-03-20T00:00:01Z".into(),
+        };
+        let unpinned = ServerEvent::MessageUnpinned {
+            message_id: "m1".into(),
+            channel_id: "chan".into(),
+            unpinned_by: "mod".into(),
+            unpinned_at: "2026-03-20T00:00:02Z".into(),
+        };
+
+        let updated_v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&updated).unwrap()).unwrap();
+        let pinned_v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&pinned).unwrap()).unwrap();
+        let unpinned_v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&unpinned).unwrap()).unwrap();
+
+        assert_eq!(updated_v["type"], "MessageUpdated");
+        assert_eq!(updated_v["payload"]["content"], "edited");
+        assert_eq!(pinned_v["type"], "MessagePinned");
+        assert_eq!(pinned_v["payload"]["message_id"], "m1");
+        assert_eq!(unpinned_v["type"], "MessageUnpinned");
+        assert_eq!(unpinned_v["payload"]["message_id"], "m1");
     }
 }

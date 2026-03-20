@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Gift, Sticker, Send, Loader2 } from "lucide-react";
+import { Plus, Smile, Gift, Sticker, Send, Loader2, Pin } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
@@ -206,6 +206,20 @@ export function ChatPanel() {
                     <span className="text-xs text-zinc-500 dark:text-zinc-400">
                       {new Date(msg.created_at).toLocaleString()}
                     </span>
+                    {msg.edited_at && (
+                      <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                        modifie
+                      </span>
+                    )}
+                    {msg.pinned_at && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-300/80 bg-amber-100/80 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                        title={`Epingle le ${new Date(msg.pinned_at).toLocaleString()}`}
+                      >
+                        <Pin className="h-3 w-3" />
+                        epingle
+                      </span>
+                    )}
                   </div>
 
                   <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
