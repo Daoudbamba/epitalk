@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Plus, Smile, Gift, Sticker, Send, Loader2, Pin, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { messagesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
-import type { Message } from "@/lib/api/schemas/messages.schema";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
@@ -21,12 +20,14 @@ export function ChatPanel() {
 
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
 
   const members = useMemberStore((s) => s.members);
 
   // WebSocket store
   const isConnected = useWebSocketStore((s) => s.isConnected);
   const connect = useWebSocketStore((s) => s.connect);
+  const disconnect = useWebSocketStore((s) => s.disconnect);
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
   const wsMessages = useWebSocketStore((s) => s.messages);
@@ -45,9 +46,6 @@ export function ChatPanel() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [pinLoadingByMessageId, setPinLoadingByMessageId] = useState<Record<string, boolean>>({});
   const [showPinnedPanel, setShowPinnedPanel] = useState(true);
-  const [loadingPinnedMessages, setLoadingPinnedMessages] = useState(false);
-  const [pinnedMessagesError, setPinnedMessagesError] = useState<string | null>(null);
-  const [pinnedMessagesFromApi, setPinnedMessagesFromApi] = useState<Message[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -65,7 +63,7 @@ export function ChatPanel() {
     return wsMessages[activeChannelId] || [];
   }, [activeChannelId, wsMessages]);
 
-  const pinnedMessagesInMemory = useMemo(() => {
+  const pinnedMessages = useMemo(() => {
     return messages
       .filter((message) => !!message.pinned_at)
       .sort((a, b) => {
@@ -75,32 +73,26 @@ export function ChatPanel() {
       });
   }, [messages]);
 
-  const pinnedMessages = useMemo(() => {
-    if (pinnedMessagesFromApi.length === 0) {
-      return pinnedMessagesInMemory;
-    }
+  // Connect WebSocket on mount
+  useEffect(() => {
+    if (!hasHydrated) return;
 
-    const byId = new Map<string, Message>();
-    for (const msg of pinnedMessagesFromApi) {
-      byId.set(msg.id, msg);
-    }
-    for (const msg of pinnedMessagesInMemory) {
-      if (!byId.has(msg.id)) {
-        byId.set(msg.id, msg);
+    let latestToken = token;
+    if (typeof window !== "undefined") {
+      const persistedToken = localStorage.getItem("token");
+      if (persistedToken !== token) {
+        latestToken = persistedToken;
       }
     }
 
-    return Array.from(byId.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [pinnedMessagesFromApi, pinnedMessagesInMemory]);
-
-  // Connect WebSocket on mount
-  useEffect(() => {
-    if (token && !isConnected) {
-      connect(token);
+    if (latestToken && !isConnected) {
+      connect(latestToken);
     }
-  }, [token, isConnected, connect]);
+
+    if (!latestToken && isConnected) {
+      disconnect();
+    }
+  }, [connect, disconnect, hasHydrated, isConnected, token]);
 
   // Join channel when it changes
   useEffect(() => {
@@ -115,7 +107,7 @@ export function ChatPanel() {
   }, [messages]);
 
   // Get username from message, members or fallback to author_id
-  const getUsernameById = (authorId: string, msgUsername?: string): string => {
+  const getUsernameById = useCallback((authorId: string, msgUsername?: string): string => {
     // Check if username is provided in the message itself
     if (msgUsername) return msgUsername;
     // Check if it's the current user
@@ -129,7 +121,7 @@ export function ChatPanel() {
     }
     // Fallback: use first part of UUID
     return authorId.slice(0, 8);
-  };
+  }, [members, user]);
 
   const onSend = async () => {
     if (!activeChannelId || !canLoad) return;
@@ -196,7 +188,7 @@ export function ChatPanel() {
     if (names.length === 1) return `${names[0]} est en train d'écrire...`;
     if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
     return `${names.length} personnes écrivent...`;
-  }, [currentTypingUsers]);
+  }, [currentTypingUsers, getUsernameById]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -268,30 +260,6 @@ export function ChatPanel() {
     }));
   };
 
-  const loadPinnedMessages = useCallback(async () => {
-    if (!activeServerId || !activeChannelId) {
-      setPinnedMessagesFromApi([]);
-      setPinnedMessagesError(null);
-      return;
-    }
-
-    setLoadingPinnedMessages(true);
-    setPinnedMessagesError(null);
-    try {
-      const list = await messagesApi.listPinned(activeServerId, activeChannelId, 1, 50);
-      setPinnedMessagesFromApi(list);
-    } catch (e) {
-      setPinnedMessagesError(getErrorMessage(e));
-      setPinnedMessagesFromApi([]);
-    } finally {
-      setLoadingPinnedMessages(false);
-    }
-  }, [activeChannelId, activeServerId]);
-
-  useEffect(() => {
-    void loadPinnedMessages();
-  }, [loadPinnedMessages]);
-
   const togglePin = async (messageId: string, isPinned: boolean) => {
     if (!activeServerId || !activeChannelId) return;
 
@@ -316,7 +284,6 @@ export function ChatPanel() {
           : message
       );
       setMessages(activeChannelId, patchedMessages);
-      await loadPinnedMessages();
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
@@ -325,7 +292,7 @@ export function ChatPanel() {
   };
 
   const jumpToMessage = (messageId: string): boolean => {
-    if (typeof document === "undefined") return false;
+    if (typeof document === "undefined") return;
     const element = document.getElementById(`message-${messageId}`);
     if (!element) return false;
 
@@ -454,7 +421,6 @@ export function ChatPanel() {
               size="sm"
               variant="outline"
               className="h-6 px-2 text-[11px]"
-              disabled={loadingPinnedMessages}
               onClick={() => setShowPinnedPanel((prev) => !prev)}
             >
               {showPinnedPanel ? (
@@ -470,10 +436,6 @@ export function ChatPanel() {
               )}
             </Button>
           </div>
-
-          {pinnedMessagesError && (
-            <div className="mb-2 text-[11px] text-red-600">{pinnedMessagesError}</div>
-          )}
 
           {showPinnedPanel && (
             <div className="max-h-24 overflow-y-auto space-y-1">

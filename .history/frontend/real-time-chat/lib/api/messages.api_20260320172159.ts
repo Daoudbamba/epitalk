@@ -10,32 +10,6 @@ export function createMessagesApi(client: FetchClient) {
       return MessageListSchema.parse(data);
     },
 
-    search: async (
-      serverId: string,
-      channelId: string,
-      query: string,
-      page = 1,
-      perPage = 50
-    ): Promise<Message[]> => {
-      const q = encodeURIComponent(query.trim());
-      const data = await client.get<Message[]>(
-        `/servers/${serverId}/channels/${channelId}/messages/search?q=${q}&page=${page}&per_page=${perPage}`
-      );
-      return MessageListSchema.parse(data);
-    },
-
-    listPinned: async (
-      serverId: string,
-      channelId: string,
-      page = 1,
-      perPage = 50
-    ): Promise<Message[]> => {
-      const data = await client.get<Message[]>(
-        `/servers/${serverId}/channels/${channelId}/messages/pinned?page=${page}&per_page=${perPage}`
-      );
-      return MessageListSchema.parse(data);
-    },
-
     send: async (
       serverId: string,
       channelId: string,
