@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useAuthStore } from "@/store/auth.store";
-import { channelsApi, serversApi } from "@/lib/api";
+import { serversApi } from "@/lib/api";
+import { channelsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 import type { Invite, Server } from "@/lib/api/schemas/servers.schema";
 import { UserSettings } from "./user-settings";
@@ -41,6 +42,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
+  const channels = useChannelStore((s) => s.channels);
   const activeChannelId = useChannelStore((s) => s.activeChannelId);
   const setChannels = useChannelStore((s) => s.setChannels);
   const setActiveChannel = useChannelStore((s) => s.setActiveChannel);
