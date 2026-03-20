@@ -77,6 +77,17 @@ impl MessageRepo {
         let _ = collection.create_index(idx_channel, None).await;
         let _ = collection.create_index(idx_created, None).await;
 
+        // Text index for content to support full-text search
+        let idx_text = IndexModel::builder()
+            .keys(doc! { "content": "text" })
+            .options(
+                IndexOptions::builder()
+                    .name("content_text".to_string())
+                    .build(),
+            )
+            .build();
+        let _ = collection.create_index(idx_text, None).await;
+
         println!("✅ MongoDB indexes created");
     }
 
@@ -256,11 +267,10 @@ impl MessageRepo {
         let skip = if page == 0 { 0 } else { (page - 1) * per_page };
         let limit = per_page;
 
-        // Build a case-insensitive regex search on the content field
-        // Note: query is used as-is in the regex. For production consider escaping special regex chars.
+        // Prefer text search if possible (faster & better relevance). Fall back to regex if needed.
         let filter = doc! {
             "channel_id": channel_id,
-            "content": { "$regex": query, "$options": "i" }
+            "$text": { "$search": query }
         };
 
         let options = FindOptions::builder()

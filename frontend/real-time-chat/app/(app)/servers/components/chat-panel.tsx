@@ -358,11 +358,24 @@ export function ChatPanel() {
                         if (!activeServerId || !activeChannelId) return;
                         setSearchLoading(true);
                         try {
-                          const res = await fetch(
-                            `/api/servers/${activeServerId}/channels/${activeChannelId}/messages/search?q=${encodeURIComponent(
-                              searchQuery || "",
-                            )}&per_page=12`,
-                          );
+                          const url = `/api/servers/${activeServerId}/channels/${activeChannelId}/messages/search?q=${encodeURIComponent(
+                            searchQuery || "",
+                          )}&per_page=12`;
+                          // Attach Authorization header from localStorage (client-side)
+                          const headers: Record<string, string> = {
+                            "Content-Type": "application/json",
+                          };
+                          try {
+                            const localToken =
+                              typeof window !== "undefined"
+                                ? localStorage.getItem("token")
+                                : null;
+                            if (localToken)
+                              headers["Authorization"] = `Bearer ${localToken}`;
+                          } catch {
+                            /* ignore */
+                          }
+                          const res = await fetch(url, { headers });
                           if (!res.ok) {
                             setSearchResults([]);
                             return;
@@ -384,11 +397,23 @@ export function ChatPanel() {
                     if (!activeServerId || !activeChannelId) return;
                     setSearchLoading(true);
                     try {
-                      const res = await fetch(
-                        `/api/servers/${activeServerId}/channels/${activeChannelId}/messages/search?q=${encodeURIComponent(
-                          searchQuery || "",
-                        )}&per_page=12`,
-                      );
+                      const url = `/api/servers/${activeServerId}/channels/${activeChannelId}/messages/search?q=${encodeURIComponent(
+                        searchQuery || "",
+                      )}&per_page=12`;
+                      const headers: Record<string, string> = {
+                        "Content-Type": "application/json",
+                      };
+                      try {
+                        const localToken =
+                          typeof window !== "undefined"
+                            ? localStorage.getItem("token")
+                            : null;
+                        if (localToken)
+                          headers["Authorization"] = `Bearer ${localToken}`;
+                      } catch {
+                        /* ignore */
+                      }
+                      const res = await fetch(url, { headers });
                       if (!res.ok) {
                         setSearchResults([]);
                         return;
