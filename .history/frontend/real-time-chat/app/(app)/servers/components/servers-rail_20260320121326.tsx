@@ -363,23 +363,22 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
               )}
             </div>
           </div>
-        </div>
-      )}
 
-      <ConfirmActionDialog
-        open={openDangerConfirm}
-        onOpenChange={setOpenDangerConfirm}
-        title={isOwner ? "Supprimer ce serveur ?" : "Quitter ce serveur ?"}
-        description={
-          isOwner
-            ? "Le serveur et ses données associées seront supprimés définitivement."
-            : "Vous serez retiré de ce serveur."
-        }
-        confirmLabel={isOwner ? "Supprimer" : "Quitter"}
-        confirmVariant={isOwner ? "destructive" : "default"}
-        loading={loadingDanger}
-        onConfirm={confirmLeaveOrDelete}
-      />
+        <ConfirmActionDialog
+          open={openDangerConfirm}
+          onOpenChange={setOpenDangerConfirm}
+          title={isOwner ? "Supprimer ce serveur ?" : "Quitter ce serveur ?"}
+          description={
+            isOwner
+              ? "Le serveur et ses données associées seront supprimés définitivement."
+              : "Vous serez retiré de ce serveur."
+          }
+          confirmLabel={isOwner ? "Supprimer" : "Quitter"}
+          confirmVariant={isOwner ? "destructive" : "default"}
+          loading={loadingDanger}
+          onConfirm={confirmLeaveOrDelete}
+        />
+      )}
 
       {/* Modal creation serveur */}
       <CreateServerModal

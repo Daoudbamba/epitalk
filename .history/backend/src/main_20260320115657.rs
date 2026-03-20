@@ -139,11 +139,12 @@ fn run_supervisor() -> anyhow::Result<()> {
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Load env first so the supervisor can read PORT from .env.
+async fn run_backend() -> anyhow::Result<()> {
+    // Load environment variables
     dotenvy::dotenv().ok();
 
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     if should_use_supervisor() {
         return run_supervisor();
     }
@@ -159,7 +160,7 @@ async fn main() -> anyhow::Result<()> {
     run_backend().await
 }
 
-async fn run_backend() -> anyhow::Result<()> {
+async fn _run_backend_inner() -> anyhow::Result<()> {
     // Load configuration
     let config = config::Config::from_env()?;
     tracing::info!("Configuration loaded");
@@ -168,8 +169,10 @@ async fn run_backend() -> anyhow::Result<()> {
     let pg_pool = db::postgres::create_pool(&config.database_url).await?;
     tracing::info!("PostgreSQL connected");
 
-    // Initialize MongoDB (optional - check if MONGO_URL is set)
-    let state = if let Ok(mongo_url) = std::env::var("MONGO_URL") {
+    // Initialize MongoDB (optional - accept both MONGO_URL and MONGODB_URI)
+    let mongo_url = std::env::var("MONGO_URL").or_else(|_| std::env::var("MONGODB_URI"));
+
+    let state = if let Ok(mongo_url) = mongo_url {
         tracing::info!("Connecting to MongoDB...");
         let mongo_client = mongodb::Client::with_uri_str(&mongo_url).await?;
         let mongo_db = mongo_client.database("epitalk_messages");
@@ -178,7 +181,7 @@ async fn run_backend() -> anyhow::Result<()> {
         let base_state = state::AppState::new(pg_pool, config.clone());
         Arc::new(base_state.with_mongodb(mongo_db))
     } else {
-        tracing::warn!("MONGO_URL not set, WebSocket messages will not be persisted");
+        tracing::warn!("MONGO_URL/MONGODB_URI not set, WebSocket messages will not be persisted");
         Arc::new(state::AppState::new(pg_pool, config.clone()))
     };
 
@@ -203,4 +206,8 @@ async fn run_backend() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn run_backend() -> anyhow::Result<()> {
+    _run_backend_inner().await
 }
