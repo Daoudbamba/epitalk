@@ -1,5 +1,5 @@
 import type { FetchClient } from "./fetchClient";
-import type { Server, Channel, Member, Invite } from "./schemas/servers.schema";
+import type { Server, Channel, Member, Invite, Ban, BanMemberRequest } from "./schemas/servers.schema";
 
 export function createServersApi(client: FetchClient) {
   return {
@@ -36,6 +36,21 @@ export function createServersApi(client: FetchClient) {
       client.patch<Member>(`/servers/${serverId}/members/${memberId}/role`, { role }),
     kickMember: (serverId: string, memberId: string) =>
       client.delete<void>(`/servers/${serverId}/members/${memberId}`),
+        banMember: (
+      serverId: string,
+      memberId: string,
+      payload?: BanMemberRequest
+    ) =>
+      client.post<Ban>(`/servers/${serverId}/members/${memberId}/ban`, {
+        reason: payload?.reason ?? null,
+        expires_at: payload?.expires_at ?? null,
+      }),
+    unbanMember: (serverId: string, memberId: string) =>
+      client.delete<{ unbanned: boolean }>(
+        `/servers/${serverId}/members/${memberId}/ban`
+      ),
+    listBans: (serverId: string) =>
+      client.get<Ban[]>(`/servers/${serverId}/members/bans`),
 
     // Invites
     createInvite: (serverId: string, expiresInHours?: number, maxUses?: number) =>
