@@ -41,6 +41,10 @@ impl MessageService {
         Ok(self.repo.find_by_channel(channel_id, page, per_page).await)
     }
 
+    pub async fn search_messages(&self, channel_id: &str, q: &str, page: u64, per_page: u64) -> Result<Vec<MessageDb>, ()> {
+        Ok(self.repo.search_in_channel(channel_id, q, page, per_page).await)
+    }
+
     pub async fn get_message_by_id(&self, message_id: &ObjectId) -> Option<MessageDb> {
         self.repo.find_by_id(message_id).await
     }

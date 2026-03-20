@@ -245,7 +245,47 @@ impl MessageRepo {
     }
 
     // ---------------------------------------------------------
-    // 📬 GET DM CONVERSATIONS for a user
+    // � SEARCH IN CHANNEL (case-insensitive, simple regex)
+    // ---------------------------------------------------------
+    pub async fn search_in_channel(&self, channel_id: &str, query: &str, page: u64, per_page: u64) -> Vec<MessageDb> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return vec![],
+        };
+
+        let skip = if page == 0 { 0 } else { (page - 1) * per_page };
+        let limit = per_page;
+
+        // Build a case-insensitive regex search on the content field
+        // Note: query is used as-is in the regex. For production consider escaping special regex chars.
+        let filter = doc! {
+            "channel_id": channel_id,
+            "content": { "$regex": query, "$options": "i" }
+        };
+
+        let options = FindOptions::builder()
+            .sort(doc! { "created_at": -1 })
+            .skip(Some(skip))
+            .limit(Some(limit as i64))
+            .build();
+
+        let mut cursor = match collection.find(filter, options).await {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+
+        let mut messages = Vec::new();
+        while let Some(msg) = cursor.try_next().await.unwrap_or(None) {
+            messages.push(msg);
+        }
+
+        // Return chronological order (oldest first)
+        messages.reverse();
+        messages
+    }
+
+    // ---------------------------------------------------------
+    // �📬 GET DM CONVERSATIONS for a user
     // Returns a list of { conversation_id, last_message, last_message_at, peer_id }
     // ---------------------------------------------------------
     pub async fn find_dm_conversations(&self, user_id: &str) -> Vec<Document> {
