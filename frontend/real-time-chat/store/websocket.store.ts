@@ -8,6 +8,9 @@ export interface WsMessage {
   username?: string;
   content: string;
   created_at: string;
+  edited_at?: string;
+  pinned_by?: string | null;
+  pinned_at?: string | null;
 }
 
 // CLIENT → SERVER events
@@ -22,6 +25,9 @@ type ClientEvent =
 // SERVER → CLIENT events
 type ServerEvent =
   | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string } }
+  | { type: "MessageUpdated"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; edited_at: string } }
+  | { type: "MessagePinned"; payload: { message_id: string; channel_id: string; pinned_by: string; pinned_at: string } }
+  | { type: "MessageUnpinned"; payload: { message_id: string; channel_id: string; unpinned_by: string; unpinned_at: string } }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
   | { type: "UserLeft"; payload: { user_id: string; channel_id: string } }
   | { type: "TypingStart"; payload: { user_id: string; username: string; channel_id: string } }
@@ -266,6 +272,54 @@ function handleServerEvent(
           messages: {
             ...state.messages,
             [channel_id]: [...channelMessages, newMessage],
+          },
+        };
+      });
+      break;
+    }
+
+    case "MessageUpdated": {
+      const { id, channel_id, content, edited_at } = event.payload;
+      set((state) => {
+        const channelMessages = state.messages[channel_id] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [channel_id]: channelMessages.map((message) =>
+              message.id === id ? { ...message, content, edited_at } : message,
+            ),
+          },
+        };
+      });
+      break;
+    }
+
+    case "MessagePinned": {
+      const { message_id, channel_id, pinned_by, pinned_at } = event.payload;
+      set((state) => {
+        const channelMessages = state.messages[channel_id] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [channel_id]: channelMessages.map((message) =>
+              message.id === message_id ? { ...message, pinned_by, pinned_at } : message,
+            ),
+          },
+        };
+      });
+      break;
+    }
+
+    case "MessageUnpinned": {
+      const { message_id, channel_id } = event.payload;
+      set((state) => {
+        const channelMessages = state.messages[channel_id] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [channel_id]: channelMessages.map((message) =>
+              message.id === message_id ? { ...message, pinned_by: null, pinned_at: null } : message,
+            ),
           },
         };
       });
