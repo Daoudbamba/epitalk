@@ -183,6 +183,9 @@ async fn kick_member(
     // Perform kick
     MembershipRepository::delete(&state.db, params.user_id, params.server_id).await?;
 
+    // Apply kick effect immediately on all active WebSocket sessions.
+    state.hub.disconnect_user(&params.user_id.to_string());
+
     Ok(Json(serde_json::json!({ "kicked": true })))
 }
 
@@ -241,6 +244,9 @@ async fn ban_member(
 
     // Also remove the user from the server (banned = no longer a member)
     let _ = MembershipRepository::delete(&state.db, params.user_id, params.server_id).await;
+
+    // Apply ban effect immediately on all active WebSocket sessions.
+    state.hub.disconnect_user(&params.user_id.to_string());
 
     // Build response (we need username)
     let ban_response = sqlx::query_as::<_, BanResponse>(
