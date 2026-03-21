@@ -480,7 +480,7 @@ export function ChatPanel() {
                   <div className="text-sm text-zinc-500">Aucun résultat</div>
                 ) : (
                   <ul className="flex flex-col gap-2">
-                          {searchResults.map((r) => (
+                    {searchResults.map((r) => (
                       <li
                         key={r.id}
                         className="p-2 border rounded hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
