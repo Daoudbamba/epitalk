@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { useDmStore } from "@/store/dm.store";
 import { serversApi } from "@/lib/api";
-import { getErrorMessage } from "@/lib/api/errors";
+import { ApiError, getErrorMessage } from "@/lib/api/errors";
+import type { Ban, Member } from "@/lib/api/schemas/servers.schema";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
 const ROLE_LABELS: Record<string, string> = {
@@ -19,11 +22,18 @@ const ROLE_LABELS: Record<string, string> = {
   Member: "👤 Membre",
 };
 
+type PendingAction =
+  | { kind: "kick"; userId: string; username: string }
+  | { kind: "ban"; userId: string; username: string }
+  | { kind: "unban"; userId: string; username: string }
+  | null;
+
 export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const router = useRouter();
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const currentUser = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const members = useMemberStore((s) => s.members);
   const setMembers = useMemberStore((s) => s.setMembers);
   const membersLoading = useMemberStore((s) => s.loading);
@@ -39,45 +49,115 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const isMemberOfActiveServer = !!server;
   const [loadingKick, setLoadingKick] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState<string | null>(null);
+  const [loadingBan, setLoadingBan] = useState<string | null>(null);
+  const [loadingUnban, setLoadingUnban] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [bans, setBans] = useState<Ban[]>([]);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [banReason, setBanReason] = useState("");
+  const [banMode, setBanMode] = useState<"permanent" | "temporary">("permanent");
+  const [banExpiresAt, setBanExpiresAt] = useState("");
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [memberDetailsById, setMemberDetailsById] = useState<Record<string, Member>>({});
+  const [loadingMemberDetailsId, setLoadingMemberDetailsId] = useState<string | null>(null);
+  const [memberDetailsError, setMemberDetailsError] = useState<string | null>(null);
+
+  const handleUnauthorized = (err: unknown): boolean => {
+    if (err instanceof ApiError && err.status === 401) {
+      logout();
+      router.replace("/login");
+      return true;
+    }
+    return false;
+  };
 
   useEffect(() => {
     if (!activeServerId || !isMemberOfActiveServer) {
       setMembers([]);
+      setBans([]);
       return;
     }
-    const loadMembers = async () => {
+    const loadData = async () => {
       setMembersLoading(true);
       try {
-        const data = await serversApi.listMembers(activeServerId);
-        setMembers(data);
+        const membersData = await serversApi.listMembers(activeServerId);
+        setMembers(membersData);
+        try {
+          const bansData = await serversApi.listBans(activeServerId);
+          setBans(bansData);
+        } catch (banErr) {
+          if (handleUnauthorized(banErr)) return;
+          if (banErr instanceof ApiError && banErr.status === 403) {
+            setActionError(null);
+          } else {
+            setActionError(getErrorMessage(banErr));
+          }
+          setBans([]);
+        }
       } catch (err) {
-        console.error("Failed to load members:", err);
+        if (handleUnauthorized(err)) return;
         setMembers([]);
+        setBans([]);
       } finally {
         setMembersLoading(false);
       }
     };
-    loadMembers();
+    loadData();
   }, [activeServerId, isMemberOfActiveServer, setMembers, setMembersLoading]);
 
-  const onKick = async (memberId: string) => {
+  const reloadMembersAndBans = async () => {
     if (!server) return;
-    const ok = confirm("Expulser ce membre ?");
-    if (!ok) return;
-    setLoadingKick(memberId);
-    setActionError(null);
     try {
-      await serversApi.kickMember(server.id, memberId);
-      const data = await serversApi.listMembers(server.id);
-      setMembers(data);
-      await onRefresh();
+      const [membersData, bansData] = await Promise.all([
+        serversApi.listMembers(server.id),
+        serversApi.listBans(server.id),
+      ]);
+      setMembers(membersData);
+      setBans(bansData);
     } catch (err) {
-      console.error("Kick error:", err);
-      setActionError(getErrorMessage(err));
-    } finally {
-      setLoadingKick(null);
+      if (handleUnauthorized(err)) return;
+      if (err instanceof ApiError && err.status === 403) {
+        setMembers([]);
+        setBans([]);
+        return;
+      }
+      throw err;
     }
+  };
+
+  const onToggleMemberDetails = async (memberId: string) => {
+    if (!server) return;
+
+    if (expandedMemberId === memberId) {
+      setExpandedMemberId(null);
+      setMemberDetailsError(null);
+      return;
+    }
+
+    setExpandedMemberId(memberId);
+    setMemberDetailsError(null);
+
+    if (memberDetailsById[memberId]) {
+      return;
+    }
+
+    setLoadingMemberDetailsId(memberId);
+    try {
+      const detail = await serversApi.getMember(server.id, memberId);
+      setMemberDetailsById((prev) => ({
+        ...prev,
+        [memberId]: detail,
+      }));
+    } catch (err) {
+      if (handleUnauthorized(err)) return;
+      setMemberDetailsError(getErrorMessage(err));
+    } finally {
+      setLoadingMemberDetailsId(null);
+    }
+  };
+
+  const onKick = (memberId: string, username: string) => {
+    setPendingAction({ kind: "kick", userId: memberId, username });
   };
 
   const onChangeRole = async (memberId: string, newRole: string) => {
@@ -86,13 +166,87 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
     setActionError(null);
     try {
       await serversApi.updateMemberRole(server.id, memberId, newRole);
-      const data = await serversApi.listMembers(server.id);
-      setMembers(data);
+      await reloadMembersAndBans();
     } catch (err) {
-      console.error("Role update error:", err);
+      if (handleUnauthorized(err)) return;
       setActionError(getErrorMessage(err));
     } finally {
       setLoadingRole(null);
+    }
+  };
+
+  const onBan = (memberId: string, username: string) => {
+    setBanReason("");
+    setBanMode("permanent");
+    setBanExpiresAt("");
+    setPendingAction({ kind: "ban", userId: memberId, username });
+  };
+
+  const onUnban = (userId: string, username: string) => {
+    setPendingAction({ kind: "unban", userId, username });
+  };
+
+  const confirmPendingAction = async () => {
+    if (!server || !pendingAction) return;
+
+    setActionError(null);
+
+    try {
+      if (pendingAction.kind === "kick") {
+        setLoadingKick(pendingAction.userId);
+        await serversApi.kickMember(server.id, pendingAction.userId);
+        await reloadMembersAndBans();
+        await onRefresh();
+      }
+
+      if (pendingAction.kind === "ban") {
+        let expiresAt: string | null = null;
+        if (banMode === "temporary") {
+          if (!banExpiresAt) {
+            setActionError("Choisis une date de fin pour le ban temporaire.");
+            return;
+          }
+
+          const parsed = new Date(banExpiresAt);
+          if (Number.isNaN(parsed.getTime())) {
+            setActionError("Date de fin invalide.");
+            return;
+          }
+
+          if (parsed.getTime() <= Date.now()) {
+            setActionError("La date de fin doit etre dans le futur.");
+            return;
+          }
+
+          expiresAt = parsed.toISOString();
+        }
+
+        setLoadingBan(pendingAction.userId);
+        await serversApi.banMember(server.id, pendingAction.userId, {
+          reason: banReason.trim() ? banReason.trim() : null,
+          expires_at: expiresAt,
+        });
+        await reloadMembersAndBans();
+        await onRefresh();
+      }
+
+      if (pendingAction.kind === "unban") {
+        setLoadingUnban(pendingAction.userId);
+        await serversApi.unbanMember(server.id, pendingAction.userId);
+        await reloadMembersAndBans();
+      }
+
+      setPendingAction(null);
+      setBanReason("");
+      setBanMode("permanent");
+      setBanExpiresAt("");
+    } catch (err) {
+      if (handleUnauthorized(err)) return;
+      setActionError(getErrorMessage(err));
+    } finally {
+      setLoadingKick(null);
+      setLoadingBan(null);
+      setLoadingUnban(null);
     }
   };
 
@@ -106,6 +260,8 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   }
 
   const isOwner = !!currentUser && server.owner_id === currentUser.id;
+  const currentUserRole = members.find((m) => m.user_id === currentUser?.id)?.role;
+  const canBan = currentUserRole === "Owner" || currentUserRole === "Admin";
 
   // Sort: online first, then by role priority
   const sortedMembers = [...members].sort((a, b) => {
@@ -168,34 +324,50 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
                     </div>
                   </div>
 
-                  {isOwner && !memberIsOwner && (
+                  <div className="flex items-center gap-1">
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => onKick(m.user_id)}
-                      disabled={loadingKick === m.user_id}
-                      title="Expulser"
-                      className="h-6 w-6 p-0 text-xs"
-                    >
-                      {loadingKick === m.user_id ? "..." : "×"}
-                    </Button>
-                  )}
-
-                  {/* DM button — don't show for yourself */}
-                  {currentUser && m.user_id !== currentUser.id && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
                       onClick={() => {
-                        setActivePeer(m.user_id);
-                        router.push("/dm");
+                        void onToggleMemberDetails(m.user_id);
                       }}
-                      title="Message privé"
-                      className="h-6 w-6 p-0 text-xs text-zinc-400 hover:text-[#023BFC]"
+                      disabled={loadingMemberDetailsId === m.user_id}
+                      title="Afficher les details"
+                      className="h-6 px-2 text-[10px]"
                     >
-                      💬
+                      {loadingMemberDetailsId === m.user_id
+                        ? "..."
+                        : expandedMemberId === m.user_id
+                        ? "Masquer"
+                        : "Infos"}
                     </Button>
-                  )}
+
+                    {isOwner && !memberIsOwner && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onKick(m.user_id, m.username || "Utilisateur")}
+                        disabled={loadingKick === m.user_id}
+                        title="Expulser"
+                        className="h-6 w-6 p-0 text-xs"
+                      >
+                        {loadingKick === m.user_id ? "..." : "×"}
+                      </Button>
+                    )}
+
+                    {canBan && !memberIsOwner && m.user_id !== currentUser?.id && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onBan(m.user_id, m.username || "Utilisateur")}
+                        disabled={loadingBan === m.user_id}
+                        title="Bannir"
+                        className="h-6 px-2 text-[10px] border-red-300 text-red-600 hover:bg-red-50"
+                      >
+                        {loadingBan === m.user_id ? "..." : "Ban"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Role management dropdown (owner only, not for other owners) */}
@@ -213,11 +385,154 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
                     ))}
                   </select>
                 )}
+
+                {expandedMemberId === m.user_id && (
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-700">
+                    {memberDetailsError && loadingMemberDetailsId !== m.user_id ? (
+                      <div className="text-red-600">{memberDetailsError}</div>
+                    ) : (
+                      <>
+                        <div>
+                          <span className="font-medium">ID:</span> {m.user_id}
+                        </div>
+                        <div>
+                          <span className="font-medium">Rejoint le:</span>{" "}
+                          {new Date(
+                            (memberDetailsById[m.user_id]?.joined_at ?? m.joined_at)
+                          ).toLocaleString()}
+                        </div>
+                        <div>
+                          <span className="font-medium">Role:</span>{" "}
+                          {ROLE_LABELS[memberDetailsById[m.user_id]?.role ?? m.role] ??
+                            (memberDetailsById[m.user_id]?.role ?? m.role)}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </li>
             );
           })}
         </ul>
       )}
+
+      <div className="mt-6 pt-3 border-t">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">
+          Bannis actifs ({bans.length})
+        </h4>
+        {bans.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Aucun bannissement actif.</p>
+        ) : (
+          <ul className="space-y-2 text-xs">
+            {bans.map((ban) => (
+              <li key={ban.id} className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{ban.username}</div>
+                  <div className="text-[10px] text-muted-foreground truncate">
+                    {ban.reason ? `Raison: ${ban.reason}` : "Sans raison"}
+                  </div>
+                </div>
+                {canBan && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={() => onUnban(ban.user_id, ban.username)}
+                    disabled={loadingUnban === ban.user_id}
+                  >
+                    {loadingUnban === ban.user_id ? "..." : "Unban"}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <ConfirmActionDialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingAction(null);
+            setBanReason("");
+            setBanMode("permanent");
+            setBanExpiresAt("");
+          }
+        }}
+        title={
+          pendingAction?.kind === "kick"
+            ? `Expulser ${pendingAction.username} ?`
+            : pendingAction?.kind === "ban"
+            ? `Bannir ${pendingAction.username} ?`
+            : pendingAction?.kind === "unban"
+            ? `Débannir ${pendingAction.username} ?`
+            : "Confirmer"
+        }
+        description={
+          pendingAction?.kind === "ban"
+            ? "Le membre sera immédiatement retiré du serveur."
+            : "Cette action sera appliquée immédiatement."
+        }
+        confirmLabel={
+          pendingAction?.kind === "kick"
+            ? "Expulser"
+            : pendingAction?.kind === "ban"
+            ? "Bannir"
+            : "Débannir"
+        }
+        confirmVariant={pendingAction?.kind === "unban" ? "default" : "destructive"}
+        loading={
+          pendingAction?.kind === "kick"
+            ? loadingKick === pendingAction.userId
+            : pendingAction?.kind === "ban"
+            ? loadingBan === pendingAction.userId
+            : pendingAction?.kind === "unban"
+            ? loadingUnban === pendingAction.userId
+            : false
+        }
+        onConfirm={confirmPendingAction}
+      >
+        {pendingAction?.kind === "ban" ? (
+          <div className="space-y-2">
+            <label htmlFor="ban-reason" className="text-sm font-medium text-zinc-700">
+              Motif (optionnel)
+            </label>
+            <Input
+              id="ban-reason"
+              value={banReason}
+              onChange={(e) => setBanReason(e.target.value)}
+              placeholder="Ex: harcèlement, spam, insultes"
+            />
+
+            <label htmlFor="ban-mode" className="text-sm font-medium text-zinc-700">
+              Type de ban
+            </label>
+            <select
+              id="ban-mode"
+              value={banMode}
+              onChange={(e) => setBanMode(e.target.value as "permanent" | "temporary")}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="permanent">Permanent</option>
+              <option value="temporary">Temporaire</option>
+            </select>
+
+            {banMode === "temporary" ? (
+              <>
+                <label htmlFor="ban-expires-at" className="text-sm font-medium text-zinc-700">
+                  Fin du ban
+                </label>
+                <Input
+                  id="ban-expires-at"
+                  type="datetime-local"
+                  value={banExpiresAt}
+                  onChange={(e) => setBanExpiresAt(e.target.value)}
+                />
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </ConfirmActionDialog>
     </aside>
   );
 }

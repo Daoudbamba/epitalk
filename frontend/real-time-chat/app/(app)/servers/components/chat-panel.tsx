@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2, X } from "lucide-react";
+import { Plus, Smile, Gift, Sticker, Send, Loader2, Pin, Search, ChevronDown, ChevronUp } from "lucide-react";
+import { messagesApi } from "@/lib/api";
+import { getErrorMessage } from "@/lib/api/errors";
+import type { Message } from "@/lib/api/schemas/messages.schema";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
@@ -33,12 +36,25 @@ export function ChatPanel() {
   const startTyping = useWebSocketStore((s) => s.startTyping);
   const stopTyping = useWebSocketStore((s) => s.stopTyping);
   const typingUsers = useWebSocketStore((s) => s.typingUsers);
+  const setMessages = useWebSocketStore((s) => s.setMessages);
 
   const activeChannelName = useMemo(() => {
     return channels.find((c) => c.id === activeChannelId)?.name ?? null;
   }, [channels, activeChannelId]);
 
   const [sending, setSending] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [pinLoadingByMessageId, setPinLoadingByMessageId] = useState<Record<string, boolean>>({});
+  const [showPinnedPanel, setShowPinnedPanel] = useState(true);
+  const [loadingPinnedMessages, setLoadingPinnedMessages] = useState(false);
+  const [pinnedMessagesError, setPinnedMessagesError] = useState<string | null>(null);
+  const [pinnedMessagesFromApi, setPinnedMessagesFromApi] = useState<Message[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; author_id: string; username?: string; content: string; created_at: string }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -66,6 +82,60 @@ export function ChatPanel() {
     if (!activeChannelId) return [];
     return wsMessages[activeChannelId] || [];
   }, [activeChannelId, wsMessages]);
+
+  const pinnedMessagesInMemory = useMemo(() => {
+    return messages
+      .filter((message) => !!message.pinned_at)
+      .sort((a, b) => {
+        const aTs = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+        const bTs = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+        return bTs - aTs;
+      });
+  }, [messages]);
+
+  const pinnedMessages = useMemo(() => {
+    if (pinnedMessagesFromApi.length === 0) {
+      return pinnedMessagesInMemory;
+    }
+
+    const byId = new Map<string, Message>();
+    for (const msg of pinnedMessagesFromApi) {
+      byId.set(msg.id, msg);
+    }
+    for (const msg of pinnedMessagesInMemory) {
+      if (!byId.has(msg.id)) {
+        byId.set(msg.id, msg);
+      }
+    }
+
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [pinnedMessagesFromApi, pinnedMessagesInMemory]);
+
+  // Connect WebSocket on mount
+  useEffect(() => {
+    if (!hasHydrated) return;
+
+  const pinnedMessages = useMemo(() => {
+    if (pinnedMessagesFromApi.length === 0) {
+      return pinnedMessagesInMemory;
+    }
+
+    const byId = new Map<string, Message>();
+    for (const msg of pinnedMessagesFromApi) {
+      byId.set(msg.id, msg);
+    }
+    for (const msg of pinnedMessagesInMemory) {
+      if (!byId.has(msg.id)) {
+        byId.set(msg.id, msg);
+      }
+    }
+
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [pinnedMessagesFromApi, pinnedMessagesInMemory]);
 
   // Connect WebSocket on mount
   useEffect(() => {
@@ -223,86 +293,294 @@ export function ChatPanel() {
     }
   };
 
-  // Autocomplete/debounced GIF search when picker is open
+  const currentUserRole = useMemo(() => {
+    if (!user) return null;
+    return members.find((m) => m.user_id === user.id)?.role ?? null;
+  }, [members, user]);
+
+  const canModerateMessages =
+    currentUserRole === "Owner" ||
+    currentUserRole === "Admin" ||
+    currentUserRole === "Moderator";
+
+  const startEdit = (messageId: string, content: string) => {
+    setEditingMessageId(messageId);
+    setEditingContent(content);
+    setError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingContent("");
+  };
+
+  const saveEdit = async () => {
+    if (!activeServerId || !activeChannelId || !editingMessageId) return;
+
+    const content = editingContent.trim();
+    if (!content) {
+      setError("Le message ne peut pas etre vide.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setError(null);
+
+    try {
+      await messagesApi.edit(activeServerId, activeChannelId, editingMessageId, content);
+
+      const channelMessages = wsMessages[activeChannelId] || [];
+      const patchedMessages = channelMessages.map((message) =>
+        message.id === editingMessageId
+          ? {
+              ...message,
+              content,
+              edited_at: new Date().toISOString(),
+            }
+          : message
+      );
+      setMessages(activeChannelId, patchedMessages);
+
+      cancelEdit();
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const setPinLoading = (messageId: string, loading: boolean) => {
+    setPinLoadingByMessageId((prev) => ({
+      ...prev,
+      [messageId]: loading,
+    }));
+  };
+
+  const loadPinnedMessages = useCallback(async () => {
+    if (!activeServerId || !activeChannelId) {
+      setPinnedMessagesFromApi([]);
+      setPinnedMessagesError(null);
+      return;
+    }
+
+    setLoadingPinnedMessages(true);
+    setPinnedMessagesError(null);
+    try {
+      const list = await messagesApi.listPinned(activeServerId, activeChannelId, 1, 50);
+      setPinnedMessagesFromApi(list);
+    } catch (e) {
+      setPinnedMessagesError(getErrorMessage(e));
+      setPinnedMessagesFromApi([]);
+    } finally {
+      setLoadingPinnedMessages(false);
+    }
+  }, [activeChannelId, activeServerId]);
+
   useEffect(() => {
-    if (openGifPicker !== "input") return;
+    void loadPinnedMessages();
+  }, [loadPinnedMessages]);
 
-    const query =
-      gifQuery && gifQuery.trim() !== "" ? gifQuery.trim() : "trending";
-    const controller = new AbortController();
-    setGifLoading(true);
+  const togglePin = async (messageId: string, isPinned: boolean) => {
+    if (!activeServerId || !activeChannelId) return;
 
-    const timer = setTimeout(async () => {
+    setPinLoading(messageId, true);
+    setError(null);
+
+    try {
+      if (isPinned) {
+        await messagesApi.unpin(activeServerId, activeChannelId, messageId);
+      } else {
+        await messagesApi.pin(activeServerId, activeChannelId, messageId);
+      }
+
+      const channelMessages = wsMessages[activeChannelId] || [];
+      const patchedMessages = channelMessages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              pinned_by: isPinned ? null : user?.id ?? message.pinned_by,
+              pinned_at: isPinned ? null : new Date().toISOString(),
+            }
+          : message
+      );
+      setMessages(activeChannelId, patchedMessages);
+      await loadPinnedMessages();
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setPinLoading(messageId, false);
+    }
+  };
+
+  const jumpToMessage = (messageId: string): boolean => {
+    if (typeof document === "undefined") return false;
+    const element = document.getElementById(`message-${messageId}`);
+    if (!element) return false;
+
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    element.classList.add("ring-2", "ring-amber-400", "rounded-md");
+    window.setTimeout(() => {
+      element.classList.remove("ring-2", "ring-amber-400", "rounded-md");
+    }, 1200);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!activeServerId || !activeChannelId) {
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setSearchLoading(true);
+      setSearchError(null);
       try {
-        const res = await fetch(
-          `/api/gifs/search?q=${encodeURIComponent(query)}&limit=24`,
-          { signal: controller.signal },
-        );
-        if (!res.ok) {
-          setGifResults([]);
-          setGifLoading(false);
-          return;
+        const result = await messagesApi.search(activeServerId, activeChannelId, query, 1, 30);
+        if (!cancelled) {
+          setSearchResults(result);
         }
-        const json = await res.json();
-        const results: {
-          id: string;
-          url: string;
-          preview?: string;
-          provider?: string;
-        }[] = [];
-        if (json.results) {
-          for (const it of json.results) {
-            const id = it.id || "";
-            const url = it.url || "";
-            const preview = it.preview || undefined;
-            const provider = it.provider || undefined;
-            if (url)
-              results.push({ id: id.toString(), url, preview, provider });
-          }
-        } else if (json.data) {
-          for (const it of json.data) {
-            const id = it.id || "";
-            const url =
-              it.images?.original?.url || it.images?.fixed_width?.url || "";
-            const preview =
-              it.images?.preview_gif?.url ||
-              it.images?.fixed_width_small_still?.url;
-            if (url)
-              results.push({
-                id: id.toString(),
-                url,
-                preview,
-                provider: "giphy",
-              });
-          }
+      } catch (e) {
+        if (!cancelled) {
+          setSearchError(getErrorMessage(e));
+          setSearchResults([]);
         }
-        setGifResults(results);
-      } catch (err: unknown) {
-        // Ignore AbortError (fetch aborted on quick typing / picker close)
-        if (!(err instanceof DOMException) || err.name !== "AbortError") {
-          console.error("GIF search failed", err);
-        }
-        setGifResults([]);
       } finally {
-        setGifLoading(false);
+        if (!cancelled) {
+          setSearchLoading(false);
+        }
       }
     }, 300);
 
     return () => {
-      clearTimeout(timer);
-      controller.abort();
+      cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [gifQuery, openGifPicker]);
+  }, [activeChannelId, activeServerId, searchQuery]);
 
   return (
     <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[#E5E7EB] min-w-0 flex flex-col bg-white shadow-lg overflow-hidden">
       {/* --- HEADER --- */}
-      <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0">
+      <div className="h-12 px-4 flex items-center border-b shadow-sm dark:border-zinc-800 shrink-0 gap-3">
         <span className="text-zinc-500 mr-2 text-2xl">#</span>
         <h2 className="font-bold text-md text-zinc-800 dark:text-zinc-100">
           {activeChannelName ?? "aucun-channel"}
         </h2>
+
+        <div className="ml-auto relative w-72 max-w-[45%]">
+          <Search className="h-4 w-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Rechercher un message..."
+            className="h-8 pl-9 pr-3 bg-zinc-100 border-zinc-200 text-sm"
+            disabled={!canLoad}
+          />
+        </div>
       </div>
+
+      {canLoad && searchQuery.trim().length >= 2 && (
+        <div className="border-b border-indigo-200/70 bg-indigo-50/70 px-4 py-2">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-[12px] font-semibold text-indigo-800">Resultats de recherche</div>
+            {searchLoading && <span className="text-[11px] text-indigo-600">Recherche...</span>}
+          </div>
+
+          {searchError && (
+            <div className="text-[12px] text-red-600">{searchError}</div>
+          )}
+
+          {!searchLoading && !searchError && searchResults.length === 0 && (
+            <div className="text-[12px] text-zinc-600">Aucun message trouve.</div>
+          )}
+
+          {!searchError && searchResults.length > 0 && (
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {searchResults.map((message) => (
+                <button
+                  key={`search-${message.id}`}
+                  type="button"
+                  onClick={() => {
+                    const jumped = jumpToMessage(message.id);
+                    if (!jumped) {
+                      setError("Message trouve mais absent de l'historique charge.");
+                    }
+                  }}
+                  className="w-full rounded-md border border-indigo-200 bg-white/80 px-2 py-1 text-left text-[12px] text-zinc-700 hover:bg-white"
+                  title="Aller au message"
+                >
+                  <span className="font-semibold text-zinc-800">{getUsernameById(message.author_id, message.username)}</span>
+                  <span className="mx-1 text-zinc-400">-</span>
+                  <span className="line-clamp-1">{message.content}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {canLoad && pinnedMessages.length > 0 && (
+        <div className="border-b border-amber-200/70 bg-amber-50/70 px-4 py-2">
+          <div className="mb-2 flex items-center justify-between gap-2 text-[12px] font-semibold text-amber-800">
+            <div className="flex items-center gap-2">
+              <Pin className="h-3.5 w-3.5" />
+              {pinnedMessages.length} message{pinnedMessages.length > 1 ? "s" : ""} epingle
+              {pinnedMessages.length > 1 ? "s" : ""}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-[11px]"
+              disabled={loadingPinnedMessages}
+              onClick={() => setShowPinnedPanel((prev) => !prev)}
+            >
+              {showPinnedPanel ? (
+                <>
+                  <ChevronUp className="h-3 w-3 mr-1" />
+                  Replier
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3 w-3 mr-1" />
+                  Afficher
+                </>
+              )}
+            </Button>
+          </div>
+
+          {pinnedMessagesError && (
+            <div className="mb-2 text-[11px] text-red-600">{pinnedMessagesError}</div>
+          )}
+
+          {showPinnedPanel && (
+            <div className="max-h-24 overflow-y-auto space-y-1">
+              {pinnedMessages.map((message) => (
+                <button
+                  key={message.id}
+                  type="button"
+                  onClick={() => jumpToMessage(message.id)}
+                  className="w-full rounded-md border border-amber-200 bg-white/80 px-2 py-1 text-left text-[12px] text-zinc-700 hover:bg-white"
+                  title="Aller au message"
+                >
+                  <span className="font-semibold text-zinc-800">{getUsernameById(message.author_id, message.username)}</span>
+                  <span className="mx-1 text-zinc-400">-</span>
+                  <span className="line-clamp-1">{message.content}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* --- MESSAGES --- */}
       <div className="flex-1 overflow-y-auto flex flex-col py-4">
@@ -321,184 +599,115 @@ export function ChatPanel() {
           </div>
         ) : (
           <div className="flex flex-col mt-auto">
-            {messages.map((msg) => {
-              const isAuthor = user?.id === msg.author_id;
-              const canDelete = isAuthor || canModerate;
-              const messageUsername = getUsernameById(msg.author_id, msg.username);
-              return (
-                <div
-                  key={msg.id}
-                  className="group relative flex items-start px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
-                >
-                  {/* Action buttons — top-right, visible on hover */}
-                  <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-0.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-sm px-1 py-0.5 z-10">
-                    <button
-                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
-                      onClick={() => {
-                        setReplyTo(msg.id);
-                        setReplyToUsername(messageUsername);
-                        setValue("");
-                      }}
-                      title="Répondre"
-                    >
-                      <CornerUpLeft className="h-4 w-4" />
-                    </button>
-                    {isAuthor && (
-                      <button
-                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-emerald-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
-                        onClick={() => {
-                          setIsEditing(true);
-                          setEditingMessageId(msg.id);
-                          setValue(msg.content);
-                        }}
-                        title="Modifier"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                      </button>
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                id={`message-${msg.id}`}
+                className="group flex items-start p-4 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
+              >
+                <div className="mr-4">
+                  <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
+                    {getUsernameById(msg.author_id, msg.username).slice(0, 2).toUpperCase()}
+                  </div>
+                </div>
+
+                <div className="flex flex-col w-full">
+                  <div className="flex items-center gap-x-2">
+                    <span className="font-semibold text-sm text-zinc-800 dark:text-zinc-100">
+                      {getUsernameById(msg.author_id, msg.username)}
+                    </span>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {new Date(msg.created_at).toLocaleString()}
+                    </span>
+                    {msg.edited_at && (
+                      <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                        modifie
+                      </span>
                     )}
-                    {canDelete && (
-                      <button
-                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-red-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
-                        onClick={() => deleteMessage(activeChannelId || "", msg.id)}
-                        title="Supprimer"
+                    {msg.pinned_at && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-300/80 bg-amber-100/80 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                        title={`Epingle le ${new Date(msg.pinned_at).toLocaleString()}`}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                        <Pin className="h-3 w-3" />
+                        epingle
+                      </span>
                     )}
-                    <button
-                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-amber-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
-                      onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
-                      title="Réaction"
-                    >
-                      <Smile className="h-4 w-4" />
-                    </button>
                   </div>
 
-                  {/* Quick emoji picker */}
-                  {emojiPickerMsgId === msg.id && (
-                    <div className="absolute -top-3 right-4 z-20 flex items-center gap-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg px-2 py-1">
-                      {QUICK_EMOJIS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          className="text-lg hover:scale-125 transition-transform p-0.5"
+                  {editingMessageId === msg.id ? (
+                    <div className="mt-2 space-y-2">
+                      <Input
+                        value={editingContent}
+                        onChange={(e) => setEditingContent(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            void saveEdit();
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelEdit();
+                          }
+                        }}
+                        disabled={savingEdit}
+                        className="h-9 bg-white"
+                        autoFocus
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
                           onClick={() => {
-                            if (socket && socket.readyState === WebSocket.OPEN) {
-                              socket.send(JSON.stringify({
-                                type: "ReactionAdd",
-                                payload: { message_id: msg.id, emoji },
-                              }));
-                            }
-                            setEmojiPickerMsgId(null);
+                            void saveEdit();
                           }}
+                          disabled={savingEdit || !editingContent.trim()}
+                          className="h-8"
                         >
-                          {emoji}
-                        </button>
-                      ))}
-                      <button
-                        className="ml-1 text-zinc-400 hover:text-zinc-600 text-xs"
-                        onClick={() => setEmojiPickerMsgId(null)}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                          {savingEdit ? "..." : "Sauvegarder"}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={cancelEdit} disabled={savingEdit} className="h-8">
+                          Annuler
+                        </Button>
+                      </div>
                     </div>
+                  ) : (
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
                   )}
 
-                  <div className="mr-4">
-                    <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
-                      {messageUsername.slice(0, 2).toUpperCase()}
-                    </div>
-                  </div>
+                  {(user?.id === msg.author_id || canModerateMessages) && editingMessageId !== msg.id && (
+                    <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                      {user?.id === msg.author_id && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[11px]"
+                          onClick={() => startEdit(msg.id, msg.content)}
+                        >
+                          Editer
+                        </Button>
+                      )}
 
-                  <div className="flex flex-col w-full">
-                    <div className="flex items-center gap-x-2">
-                      <span className="font-semibold text-sm text-zinc-800 dark:text-zinc-100">
-                        {messageUsername}
-                      </span>
-                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {new Date(msg.created_at).toLocaleString()}
-                      </span>
-                      {msg.edited_at && (
-                        <span className="text-xs text-indigo-500">(édité)</span>
+                      {canModerateMessages && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[11px]"
+                          disabled={!!pinLoadingByMessageId[msg.id]}
+                          onClick={() => {
+                            void togglePin(msg.id, !!msg.pinned_at);
+                          }}
+                        >
+                          {pinLoadingByMessageId[msg.id]
+                            ? "..."
+                            : msg.pinned_at
+                            ? "Desepingler"
+                            : "Epingler"}
+                        </Button>
                       )}
                     </div>
-
-                    {msg.reply_to && (() => {
-                      const original = messages.find((m) => m.id === msg.reply_to);
-                      return (
-                        <div className="text-xs text-zinc-500 italic mb-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-md">
-                          Réponse à {original ? getUsernameById(original.author_id, original.username) : msg.reply_to.slice(0, 8)}:
-                          <div className="truncate max-w-full">
-                            {original ? original.content : "message introuvable"}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {(() => {
-                      const gifMessage = parseGifContent(msg.content);
-                      if (gifMessage) {
-                        return (
-                          <div className="mt-2 rounded-md border border-zinc-200 dark:border-zinc-700 p-2 bg-zinc-50 dark:bg-zinc-900">
-                            <img
-                              src={gifMessage.gif.url}
-                              alt="GIF"
-                              className="h-36 w-full rounded-md object-cover"
-                            />
-                            {gifMessage.caption && (
-                              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                                {gifMessage.caption}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <p className="text-sm text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap">
-                          {msg.content}
-                        </p>
-                      );
-                    })()}
-
-                    {/* Reactions display */}
-                    {msg.reactions && msg.reactions.length > 0 && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {Object.entries(
-                          msg.reactions.reduce<Record<string, { count: number; users: string[]; userIds: string[] }>>((acc, r) => {
-                            if (!acc[r.emoji]) acc[r.emoji] = { count: 0, users: [], userIds: [] };
-                            acc[r.emoji].count++;
-                            acc[r.emoji].users.push(r.username || r.user_id.slice(0, 6));
-                            acc[r.emoji].userIds.push(r.user_id);
-                            return acc;
-                          }, {})
-                        ).map(([emoji, data]) => {
-                          const hasReacted = data.userIds.includes(user?.id || "");
-                          return (
-                            <button
-                              key={emoji}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition ${
-                                hasReacted
-                                  ? "bg-indigo-100 border-indigo-300 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-600 dark:text-indigo-300"
-                                  : "bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400"
-                              }`}
-                              title={data.users.join(", ")}
-                              onClick={() => {
-                                if (socket && socket.readyState === WebSocket.OPEN) {
-                                  socket.send(JSON.stringify({
-                                    type: "ReactionAdd",
-                                    payload: { message_id: msg.id, emoji },
-                                  }));
-                                }
-                              }}
-                            >
-                              <span>{emoji}</span>
-                              <span>{data.count}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })}

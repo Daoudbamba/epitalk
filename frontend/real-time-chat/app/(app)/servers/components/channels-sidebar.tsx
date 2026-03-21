@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { channelsApi } from "@/lib/api";
+import { ApiError, getErrorMessage } from "@/lib/api/errors";
+import { terminateSession } from "@/lib/auth/session";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useAuthStore } from "@/store/auth.store";
-import { CreateChannelModal } from "@/components/forms/create-channel-modal";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
+import type { Channel } from "@/lib/api/schemas/channels.schema";
 
 type Status = { type: "success" | "error" | "info"; text: string } | null;
 
@@ -22,7 +25,9 @@ export function ChannelsSidebar() {
 
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<Status>(null);
-  const [openCreateChannel, setOpenCreateChannel] = useState(false);
+  const [pendingDeleteChannelId, setPendingDeleteChannelId] = useState<string | null>(null);
+  const [channelDetails, setChannelDetails] = useState<Channel | null>(null);
+  const [loadingChannelDetails, setLoadingChannelDetails] = useState(false);
 
   const activeServer = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
@@ -34,6 +39,29 @@ export function ChannelsSidebar() {
   const setOk = (text: string) => setStatus({ type: "success", text });
   const setErr = (text: string) => setStatus({ type: "error", text });
   const setInfo = (text: string) => setStatus({ type: "info", text });
+
+  const handleUnauthorized = (e: unknown): boolean => {
+    if (e instanceof ApiError && e.status === 401) {
+      terminateSession();
+      router.replace("/login");
+      return true;
+    }
+    return false;
+  };
+
+  const loadChannelDetails = async (serverId: string, channelId: string) => {
+    setLoadingChannelDetails(true);
+    try {
+      const details = await channelsApi.get(serverId, channelId);
+      setChannelDetails(details);
+    } catch (e) {
+      if (handleUnauthorized(e)) return;
+      setChannelDetails(null);
+      setErr(getErrorMessage(e));
+    } finally {
+      setLoadingChannelDetails(false);
+    }
+  };
 
   const refresh = async () => {
     if (!activeServerId) {
@@ -67,19 +95,20 @@ export function ChannelsSidebar() {
   useEffect(() => {
     // ✅ serveur changé : reset sélection + reload
     setActiveChannel(null);
+    setChannelDetails(null);
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeServerId]);
 
-  const onCreate = () => {
-    if (!activeServerId) return;
-    setOpenCreateChannel(true);
-  };
+  useEffect(() => {
+    if (!activeServerId || !activeChannelId) {
+      setChannelDetails(null);
+      return;
+    }
 
-  const handleChannelCreated = async () => {
-    await refresh();
-    setOk("Channel créé.");
-  };
+    void loadChannelDetails(activeServerId, activeChannelId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeServerId, activeChannelId]);
 
   const onDelete = async (channelId: string) => {
     if (!activeServerId) return;
@@ -89,23 +118,27 @@ export function ChannelsSidebar() {
       return;
     }
 
-    const ok = confirm("Supprimer ce channel ?");
-    if (!ok) return;
+    setPendingDeleteChannelId(channelId);
+  };
+
+  const confirmDeleteChannel = async () => {
+    if (!activeServerId || !pendingDeleteChannelId) return;
 
     setStatus(null);
     setLoading(true);
 
     try {
-      await channelsApi.delete(activeServerId, channelId);
+      await channelsApi.delete(activeServerId, pendingDeleteChannelId);
 
       // ✅ Si on supprime le channel actif : on choisit un autre channel
-      const remaining = channels.filter((c) => c.id !== channelId);
-      if (activeChannelId === channelId) {
+      const remaining = channels.filter((c) => c.id !== pendingDeleteChannelId);
+      if (activeChannelId === pendingDeleteChannelId) {
         setActiveChannel(remaining[0]?.id ?? null);
       }
 
       await refresh();
       setOk("Channel supprimé.");
+      setPendingDeleteChannelId(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erreur suppression channel");
     } finally {
@@ -138,16 +171,6 @@ export function ChannelsSidebar() {
           </div>
         </div>
 
-        <button
-          onClick={onCreate}
-          disabled={!activeServerId || loading}
-          className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-          title="Créer un channel"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
       </div>
 
       {/* Channels list */}
@@ -222,6 +245,43 @@ export function ChannelsSidebar() {
         )}
       </div>
 
+      {activeServerId && activeChannelId && (
+        <div className="border-t border-[#E5E7EB]/50 px-4 py-3 bg-white/80">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-[#1A1A2E]">Details channel actif</div>
+            <button
+              onClick={() => {
+                if (activeServerId && activeChannelId) {
+                  void loadChannelDetails(activeServerId, activeChannelId);
+                }
+              }}
+              disabled={loadingChannelDetails}
+              className="h-6 px-2 rounded-md border border-[#E5E7EB] text-[11px] text-[#4B5563] hover:text-[#023BFC] hover:border-[#023BFC]/40 disabled:opacity-60"
+            >
+              {loadingChannelDetails ? "..." : "Rafraichir"}
+            </button>
+          </div>
+
+          {loadingChannelDetails ? (
+            <div className="text-[11px] text-[#6B7280]">Chargement...</div>
+          ) : channelDetails ? (
+            <div className="space-y-1 text-[11px] text-[#4B5563]">
+              <div>
+                <span className="font-semibold text-[#1A1A2E]">Nom:</span> #{channelDetails.name}
+              </div>
+              <div>
+                <span className="font-semibold text-[#1A1A2E]">Type:</span> {channelDetails.kind}
+              </div>
+              <div>
+                <span className="font-semibold text-[#1A1A2E]">Cree le:</span> {new Date(channelDetails.created_at).toLocaleString()}
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11px] text-[#6B7280]">Details indisponibles.</div>
+          )}
+        </div>
+      )}
+
       {/* Status with premium styling */}
       {status && (
         <div className={`border-t border-[#E5E7EB]/50 px-5 py-3 text-xs rounded-b-2xl ${statusClasses}`}>
@@ -241,12 +301,17 @@ export function ChannelsSidebar() {
         </div>
       )}
 
-      {/* Modal création channel */}
-      <CreateChannelModal
-        open={openCreateChannel}
-        onOpenChange={setOpenCreateChannel}
-        serverId={activeServerId}
-        onSuccess={handleChannelCreated}
+      <ConfirmActionDialog
+        open={pendingDeleteChannelId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteChannelId(null);
+        }}
+        title="Supprimer ce channel ?"
+        description="Cette action est définitive et ne peut pas être annulée."
+        confirmLabel="Supprimer"
+        confirmVariant="destructive"
+        loading={loading && pendingDeleteChannelId !== null}
+        onConfirm={confirmDeleteChannel}
       />
     </div>
   );

@@ -1,14 +1,17 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
+import { useChannelStore } from "@/store/channel.store";
 import { useAuthStore } from "@/store/auth.store";
-import { serversApi } from "@/lib/api";
+import { channelsApi, serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
+import type { Invite, Server } from "@/lib/api/schemas/servers.schema";
 import { UserSettings } from "./user-settings";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
+import { CreateChannelModal } from "@/components/forms/create-channel-modal";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 function initials(name: string) {
   const cleaned = name.trim();
@@ -38,6 +41,9 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
+  const activeChannelId = useChannelStore((s) => s.activeChannelId);
+  const setChannels = useChannelStore((s) => s.setChannels);
+  const setActiveChannel = useChannelStore((s) => s.setActiveChannel);
   const currentUser = useAuthStore((s) => s.user);
 
   const activeServer = useMemo(
@@ -49,19 +55,165 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const [openSettings, setOpenSettings] = useState(false);
   const [openCreateServer, setOpenCreateServer] = useState(false);
+  const [openCreateChannel, setOpenCreateChannel] = useState(false);
   const [inviteInput, setInviteInput] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [loadingJoin, setLoadingJoin] = useState(false);
   const [loadingInvite, setLoadingInvite] = useState(false);
+  const [loadingInvitesList, setLoadingInvitesList] = useState(false);
+  const [loadingRevokeInviteCode, setLoadingRevokeInviteCode] = useState<string | null>(null);
   const [loadingDanger, setLoadingDanger] = useState(false);
+  const [loadingTransferCandidates, setLoadingTransferCandidates] = useState(false);
+  const [loadingTransfer, setLoadingTransfer] = useState(false);
   const [status, setStatus] = useState<Status>(null);
+  const [openDangerConfirm, setOpenDangerConfirm] = useState(false);
+  const [openRevokeInviteConfirm, setOpenRevokeInviteConfirm] = useState(false);
+  const [openTransferConfirm, setOpenTransferConfirm] = useState(false);
+  const [activeInvites, setActiveInvites] = useState<Invite[]>([]);
+  const [serverDetails, setServerDetails] = useState<Server | null>(null);
+  const [loadingServerDetails, setLoadingServerDetails] = useState(false);
+  const [pendingRevokeInviteCode, setPendingRevokeInviteCode] = useState("");
+  const [transferTargetId, setTransferTargetId] = useState("");
+  const [transferCandidates, setTransferCandidates] = useState<
+    Array<{ user_id: string; username: string; role: string }>
+  >([]);
 
   const setOk = (text: string) => setStatus({ type: "success", text });
   const setErr = (text: string) => setStatus({ type: "error", text });
   const setInfo = (text: string) => setStatus({ type: "info", text });
 
+  const selectedTransferMember = useMemo(
+    () => transferCandidates.find((m) => m.user_id === transferTargetId) ?? null,
+    [transferCandidates, transferTargetId]
+  );
+
+  const loadServerDetails = async (serverId: string) => {
+    setLoadingServerDetails(true);
+    try {
+      const details = await serversApi.get(serverId);
+      setServerDetails(details);
+    } catch (err) {
+      setErr(getErrorMessage(err));
+      setServerDetails(null);
+    } finally {
+      setLoadingServerDetails(false);
+    }
+  };
+
+  const loadActiveInvites = async (serverId: string) => {
+    setLoadingInvitesList(true);
+    try {
+      const data = await serversApi.listActiveInvites(serverId);
+      setActiveInvites(data);
+    } catch (err) {
+      setErr(getErrorMessage(err));
+      setActiveInvites([]);
+    } finally {
+      setLoadingInvitesList(false);
+    }
+  };
+
+  const formatInviteMeta = (invite: Invite): string => {
+    const usesPart = invite.max_uses === null
+      ? `${invite.uses} utilisations`
+      : `${invite.uses}/${invite.max_uses} utilisations`;
+    const expiryPart = invite.expires_at
+      ? `Expire le ${new Date(invite.expires_at).toLocaleString()}`
+      : "Sans expiration";
+    return `${usesPart} • ${expiryPart}`;
+  };
+
+  useEffect(() => {
+    if (!openSettings || !activeServerId || !isOwner) {
+      setActiveInvites([]);
+      setPendingRevokeInviteCode("");
+      return;
+    }
+
+    void loadActiveInvites(activeServerId);
+  }, [activeServerId, isOwner, openSettings]);
+
+  useEffect(() => {
+    if (!openSettings || !activeServerId) {
+      setServerDetails(null);
+      return;
+    }
+
+    void loadServerDetails(activeServerId);
+  }, [activeServerId, openSettings]);
+
+  useEffect(() => {
+    if (!openSettings || !activeServerId || !isOwner || !currentUser) {
+      setTransferCandidates([]);
+      setTransferTargetId("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadTransferCandidates = async () => {
+      setLoadingTransferCandidates(true);
+      try {
+        const members = await serversApi.listMembers(activeServerId);
+        if (cancelled) return;
+
+        const eligible = members.filter(
+          (member) => member.user_id !== currentUser.id && member.role !== "Owner"
+        );
+
+        setTransferCandidates(eligible);
+        setTransferTargetId((prev) => {
+          if (prev && eligible.some((member) => member.user_id === prev)) {
+            return prev;
+          }
+          return eligible[0]?.user_id ?? "";
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setErr(getErrorMessage(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingTransferCandidates(false);
+        }
+      }
+    };
+
+    loadTransferCandidates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeServerId, currentUser, isOwner, openSettings]);
+
   const onCreateServer = () => {
     setOpenCreateServer(true);
+  };
+
+  const onCreateChannel = () => {
+    if (!activeServerId) {
+      setErr("Selectionne un serveur avant de creer un channel.");
+      return;
+    }
+    setOpenCreateChannel(true);
+  };
+
+  const handleChannelCreated = async () => {
+    if (!activeServerId) return;
+
+    const data = await channelsApi.listByServer(activeServerId);
+    setChannels(data);
+
+    const stillExists = data.some((channel) => channel.id === activeChannelId);
+    if ((!activeChannelId || !stillExists) && data.length > 0) {
+      setActiveChannel(data[0].id);
+    }
+    if (data.length === 0) {
+      setActiveChannel(null);
+    }
+
+    await onRefresh();
+    setOk("Channel cree.");
   };
 
   const onJoin = async () => {
@@ -105,6 +257,8 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
       const link = `${window.location.origin}/invite/${invite.code}`;
       setInviteLink(link);
 
+      await loadActiveInvites(activeServerId);
+
       await navigator.clipboard.writeText(link).catch(() => {});
       setOk("Invitation generee (lien copie).");
     } catch (err) {
@@ -126,18 +280,44 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
       return;
     }
 
+    setOpenDangerConfirm(true);
+  };
+
+  const onRevokeInvite = (inviteCode: string) => {
+    setPendingRevokeInviteCode(inviteCode);
+    setOpenRevokeInviteConfirm(true);
+  };
+
+  const confirmRevokeInvite = async () => {
+    if (!activeServerId || !pendingRevokeInviteCode) return;
+
+    setLoadingRevokeInviteCode(pendingRevokeInviteCode);
+    setStatus(null);
+
+    try {
+      await serversApi.deleteInvite(activeServerId, pendingRevokeInviteCode);
+      await loadActiveInvites(activeServerId);
+      setOpenRevokeInviteConfirm(false);
+      setPendingRevokeInviteCode("");
+      setInfo("Invitation revoquee.");
+    } catch (err) {
+      setErr(getErrorMessage(err));
+    } finally {
+      setLoadingRevokeInviteCode(null);
+    }
+  };
+
+  const confirmLeaveOrDelete = async () => {
+    if (!activeServerId || !activeServer) return;
+
     setLoadingDanger(true);
     setStatus(null);
 
     try {
       if (isOwner) {
-        const ok = confirm("Tu es le createur. Supprimer le serveur ?");
-        if (!ok) return;
         await serversApi.delete(activeServerId);
         setInfo("Serveur supprime.");
       } else {
-        const ok = confirm("Quitter ce serveur ?");
-        if (!ok) return;
         await serversApi.leave(activeServerId);
         setInfo("Serveur quitte.");
       }
@@ -150,8 +330,35 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
         const next = after[0]?.id ?? null;
         if (next) setActiveServer(next);
       }
+      setOpenDangerConfirm(false);
     } finally {
       setLoadingDanger(false);
+    }
+  };
+
+  const onTransferOwnership = async () => {
+    if (!activeServerId || !transferTargetId) {
+      setErr("Selectionne un membre eligible.");
+      return;
+    }
+    setOpenTransferConfirm(true);
+  };
+
+  const confirmTransferOwnership = async () => {
+    if (!activeServerId || !transferTargetId) return;
+
+    setLoadingTransfer(true);
+    setStatus(null);
+
+    try {
+      await serversApi.transfer(activeServerId, transferTargetId);
+      await onRefresh();
+      setOpenTransferConfirm(false);
+      setInfo("Propriete du serveur transferee.");
+    } catch (err) {
+      setErr(getErrorMessage(err));
+    } finally {
+      setLoadingTransfer(false);
     }
   };
 
@@ -181,6 +388,18 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
         onClick={onCreateServer}
         className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border-2 border-dashed border-[#023BFC]/30 hover:border-[#023BFC] text-[#023BFC] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105"
         title="Creer un serveur"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+
+      {/* Add channel */}
+      <button
+        onClick={onCreateChannel}
+        disabled={!activeServerId}
+        className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border-2 border-dashed border-[#10B981]/30 hover:border-[#10B981] text-[#10B981] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+        title={activeServerId ? "Creer un channel" : "Selectionne un serveur"}
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -235,7 +454,7 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setOpenSettings(false)}
           />
-          <div className="absolute left-1/2 top-1/2 w-140 max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-3xl glass border border-white/30 shadow-2xl overflow-hidden">
+          <div className="absolute left-1/2 top-1/2 w-140 max-h-[65vh] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-3xl glass border border-white/30 shadow-2xl overflow-hidden flex flex-col">
             {/* Header with gradient */}
             <div className="px-6 py-5 border-b border-[#E5E7EB]/50 flex items-center bg-gradient-to-r from-[#023BFC]/5 to-transparent">
               <div className="flex items-center gap-3">
@@ -262,7 +481,49 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/60 neu-shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-bold text-[#1A1A2E]">Details du serveur</div>
+                    <div className="text-xs text-[#6B7280]">Informations recuperees depuis l'endpoint detail.</div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (activeServerId) {
+                        void loadServerDetails(activeServerId);
+                      }
+                    }}
+                    disabled={loadingServerDetails || !activeServerId}
+                    className="h-8 px-3 text-[11px]"
+                  >
+                    {loadingServerDetails ? "..." : "Rafraichir"}
+                  </Button>
+                </div>
+
+                {loadingServerDetails ? (
+                  <div className="text-xs text-[#6B7280]">Chargement des details...</div>
+                ) : serverDetails ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#1A1A2E]">
+                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2">
+                      <span className="font-semibold">Nom:</span> {serverDetails.name}
+                    </div>
+                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2">
+                      <span className="font-semibold">Membres:</span> {serverDetails.member_count ?? "-"}
+                    </div>
+                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 sm:col-span-2">
+                      <span className="font-semibold">Owner ID:</span> {serverDetails.owner_id}
+                    </div>
+                    <div className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 sm:col-span-2">
+                      <span className="font-semibold">Cree le:</span> {new Date(serverDetails.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-[#6B7280]">Impossible de charger les details du serveur.</div>
+                )}
+              </div>
+
               {/* Join */}
               <div className="rounded-2xl border border-[#E5E7EB]/50 p-5 bg-white/50 hover:bg-white/70 transition-all duration-300 neu-shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
@@ -326,7 +587,107 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
                     </>
                   )}
                 </div>
+
+                <div className="mt-4 rounded-xl border border-[#E5E7EB] bg-white/70 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-xs font-semibold text-[#1A1A2E]">Invitations actives</div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        if (activeServerId) {
+                          void loadActiveInvites(activeServerId);
+                        }
+                      }}
+                      disabled={loadingInvitesList || !activeServerId || !isOwner}
+                      className="h-7 px-2 text-[11px]"
+                    >
+                      {loadingInvitesList ? "..." : "Rafraichir"}
+                    </Button>
+                  </div>
+
+                  {!isOwner ? (
+                    <div className="text-xs text-[#6B7280]">
+                      La gestion des invitations est reservee au createur.
+                    </div>
+                  ) : loadingInvitesList ? (
+                    <div className="text-xs text-[#6B7280]">Chargement des invitations...</div>
+                  ) : activeInvites.length === 0 ? (
+                    <div className="text-xs text-[#6B7280]">Aucune invitation active.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {activeInvites.map((invite) => (
+                        <div key={invite.code} className="flex items-center gap-2 rounded-lg border border-[#E5E7EB] bg-white p-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-mono text-xs text-[#1A1A2E]">{invite.code}</div>
+                            <div className="truncate text-[11px] text-[#6B7280]">{formatInviteMeta(invite)}</div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            onClick={() => onRevokeInvite(invite.code)}
+                            disabled={loadingRevokeInviteCode === invite.code}
+                            className="h-8 px-3 text-[11px] border-red-300 text-red-600 hover:bg-red-50"
+                          >
+                            {loadingRevokeInviteCode === invite.code ? "..." : "Revoquer"}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Danger */}
+              {isOwner && (
+                <div className="rounded-2xl border border-amber-200/60 p-5 bg-amber-50/40 hover:bg-amber-50/60 transition-all duration-300">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-5a3 3 0 00-6 0v5m6 0H7" />
+                      </svg>
+                    </div>
+                    <div className="text-sm font-bold text-amber-800">Transfert de propriete</div>
+                  </div>
+
+                  <div className="text-xs text-amber-700/90 mb-4">
+                    Choisis le nouveau proprietaire. Cette action est sensible et doit etre confirmee.
+                  </div>
+
+                  {loadingTransferCandidates ? (
+                    <div className="text-xs text-amber-700/90 mb-3">Chargement des membres eligibles...</div>
+                  ) : transferCandidates.length === 0 ? (
+                    <div className="text-xs text-amber-700/90 mb-3">
+                      Aucun membre eligible pour recevoir la propriete.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <select
+                        value={transferTargetId}
+                        onChange={(e) => setTransferTargetId(e.target.value)}
+                        className="h-11 w-full rounded-xl border border-amber-200 bg-white/90 px-4 text-sm outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                      >
+                        {transferCandidates.map((member) => (
+                          <option key={member.user_id} value={member.user_id}>
+                            {member.username} ({member.role})
+                          </option>
+                        ))}
+                      </select>
+
+                      <Button
+                        onClick={onTransferOwnership}
+                        disabled={
+                          loadingTransferCandidates ||
+                          loadingTransfer ||
+                          !activeServerId ||
+                          !transferTargetId
+                        }
+                        className="h-11 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 border-0 text-white shadow-lg"
+                      >
+                        {loadingTransfer ? "..." : "Transferer la propriete"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Danger */}
               <div className="rounded-2xl border border-red-200/50 p-5 bg-red-50/30 hover:bg-red-50/50 transition-all duration-300">
@@ -366,11 +727,64 @@ export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
         </div>
       )}
 
+      <ConfirmActionDialog
+        open={openDangerConfirm}
+        onOpenChange={setOpenDangerConfirm}
+        title={isOwner ? "Supprimer ce serveur ?" : "Quitter ce serveur ?"}
+        description={
+          isOwner
+            ? "Le serveur et ses données associées seront supprimés définitivement."
+            : "Vous serez retiré de ce serveur."
+        }
+        confirmLabel={isOwner ? "Supprimer" : "Quitter"}
+        confirmVariant={isOwner ? "destructive" : "default"}
+        loading={loadingDanger}
+        onConfirm={confirmLeaveOrDelete}
+      />
+
+      <ConfirmActionDialog
+        open={openRevokeInviteConfirm}
+        onOpenChange={setOpenRevokeInviteConfirm}
+        title="Revoquer cette invitation ?"
+        description={
+          pendingRevokeInviteCode
+            ? `Le code ${pendingRevokeInviteCode} sera desactive immediatement.`
+            : "Cette invitation sera desactivee immediatement."
+        }
+        confirmLabel="Revoquer"
+        confirmVariant="destructive"
+        loading={loadingRevokeInviteCode === pendingRevokeInviteCode}
+        onConfirm={confirmRevokeInvite}
+      />
+
+      <ConfirmActionDialog
+        open={openTransferConfirm}
+        onOpenChange={setOpenTransferConfirm}
+        title="Transferer la propriete du serveur ?"
+        description={
+          selectedTransferMember
+            ? `Le nouveau proprietaire sera ${selectedTransferMember.username}. Cette action est irreversible depuis cette interface.`
+            : "Confirme le transfert de propriete."
+        }
+        confirmLabel="Confirmer le transfert"
+        confirmVariant="default"
+        loading={loadingTransfer}
+        onConfirm={confirmTransferOwnership}
+      />
+
       {/* Modal creation serveur */}
       <CreateServerModal
         open={openCreateServer}
         onOpenChange={setOpenCreateServer}
         onSuccess={onRefresh}
+      />
+
+      {/* Modal creation channel */}
+      <CreateChannelModal
+        open={openCreateChannel}
+        onOpenChange={setOpenCreateChannel}
+        serverId={activeServerId}
+        onSuccess={handleChannelCreated}
       />
     </aside>
   );

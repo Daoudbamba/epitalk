@@ -1,6 +1,6 @@
 use mongodb::{
-    bson::{doc, oid::ObjectId, to_bson, Document},
-    options::{FindOptions, IndexOptions},
+    bson::{doc, oid::ObjectId},
+    options::{FindOneAndUpdateOptions, FindOptions, IndexOptions, ReturnDocument},
     Collection, IndexModel,
 };
 use futures_util::TryStreamExt;
@@ -25,11 +25,9 @@ pub struct MessageDb {
     pub content: String,
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reactions: Option<Vec<Reaction>>,
+    pub pinned_by: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub edited_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reply_to: Option<ObjectId>,
+    pub pinned_at: Option<String>,
 }
 
 pub struct MessageRepo {
@@ -37,6 +35,20 @@ pub struct MessageRepo {
 }
 
 impl MessageRepo {
+    fn escape_mongo_regex(input: &str) -> String {
+        let mut out = String::with_capacity(input.len());
+        for ch in input.chars() {
+            match ch {
+                '\\' | '.' | '+' | '*' | '?' | '^' | '$' | '(' | ')' | '[' | ']' | '{' | '}' | '|' => {
+                    out.push('\\');
+                    out.push(ch);
+                }
+                _ => out.push(ch),
+            }
+        }
+        out
+    }
+
     pub fn new(collection: Collection<MessageDb>) -> Self {
         let repo = Self { collection: Some(collection) };
         if let Some(ref coll) = repo.collection {
@@ -74,8 +86,19 @@ impl MessageRepo {
             )
             .build();
 
+        // Index: pinned_at DESC (for fast pinned retrieval)
+        let idx_pinned_at = IndexModel::builder()
+            .keys(doc! { "pinned_at": -1 })
+            .options(
+                IndexOptions::builder()
+                    .name("pinned_at_-1".to_string())
+                    .build(),
+            )
+            .build();
+
         let _ = collection.create_index(idx_channel, None).await;
         let _ = collection.create_index(idx_created, None).await;
+        let _ = collection.create_index(idx_pinned_at, None).await;
 
         println!("✅ MongoDB indexes created");
     }
@@ -245,51 +268,180 @@ impl MessageRepo {
     }
 
     // ---------------------------------------------------------
-    // 📬 GET DM CONVERSATIONS for a user
-    // Returns a list of { conversation_id, last_message, last_message_at, peer_id }
+    // 🔎 SEARCH MESSAGES BY CONTENT (channel-scoped, case-insensitive)
     // ---------------------------------------------------------
-    pub async fn find_dm_conversations(&self, user_id: &str) -> Vec<Document> {
+    pub async fn search_by_channel_content(
+        &self,
+        channel_id: &str,
+        query: &str,
+        page: u64,
+        per_page: u64,
+    ) -> Vec<MessageDb> {
         let collection = match self.collection.as_ref() {
             Some(c) => c,
             None => return vec![],
         };
 
-        // Use aggregation pipeline on the raw collection
-        let raw_coll = collection.clone_with_type::<Document>();
+        let skip = if page == 0 { 0 } else { (page - 1) * per_page };
+        let limit = per_page;
+        let escaped_query = Self::escape_mongo_regex(query);
 
-        let pipeline = vec![
-            doc! { "$match": {
-                "$and": [
-                    { "channel_id": { "$regex": "^dm:" } },
-                    { "$or": [
-                        { "channel_id": { "$regex": format!("^dm:{}:", user_id) } },
-                        { "channel_id": { "$regex": format!(":{}$", user_id) } },
-                    ]}
-                ]
-            }},
-            doc! { "$sort": { "created_at": -1 } },
-            doc! { "$group": {
-                "_id": "$channel_id",
-                "last_message": { "$first": "$content" },
-                "last_message_at": { "$first": "$created_at" },
-                "last_author_id": { "$first": "$author_id" },
-            }},
-            doc! { "$sort": { "last_message_at": -1 } },
-        ];
+        let options = FindOptions::builder()
+            .sort(doc! { "created_at": -1 })
+            .skip(Some(skip))
+            .limit(Some(limit as i64))
+            .build();
 
-        let mut cursor = match raw_coll.aggregate(pipeline, None).await {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("Failed to aggregate DM conversations: {e}");
-                return vec![];
+        let filter = doc! {
+            "channel_id": channel_id,
+            "content": {
+                "$regex": escaped_query,
+                "$options": "i",
             }
         };
 
-        let mut results = Vec::new();
-        while let Some(doc) = cursor.try_next().await.unwrap_or(None) {
-            results.push(doc);
+        let mut cursor = match collection.find(filter, options).await {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+
+        let mut messages = Vec::new();
+        while let Some(msg) = cursor.try_next().await.unwrap_or(None) {
+            messages.push(msg);
         }
-        results
+
+        messages.reverse();
+        messages
+    }
+
+    // ---------------------------------------------------------
+    // ✏️ EDIT MESSAGE (author-only)
+    // ---------------------------------------------------------
+    pub async fn update_content(
+        &self,
+        message_id: ObjectId,
+        channel_id: &str,
+        author_id: &str,
+        content: &str,
+    ) -> mongodb::error::Result<Option<MessageDb>> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+
+        let filter = doc! {
+            "_id": message_id,
+            "channel_id": channel_id,
+            "author_id": author_id,
+        };
+        let update = doc! {
+            "$set": {
+                "content": content,
+            }
+        };
+        let options = FindOneAndUpdateOptions::builder()
+            .return_document(Some(ReturnDocument::After))
+            .build();
+
+        collection.find_one_and_update(filter, update, options).await
+    }
+
+    // ---------------------------------------------------------
+    // 📌 PIN / UNPIN MESSAGE
+    // ---------------------------------------------------------
+    pub async fn pin_message(
+        &self,
+        message_id: ObjectId,
+        channel_id: &str,
+        pinned_by: &str,
+        pinned_at: &str,
+    ) -> mongodb::error::Result<Option<MessageDb>> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+
+        let filter = doc! {
+            "_id": message_id,
+            "channel_id": channel_id,
+        };
+        let update = doc! {
+            "$set": {
+                "pinned_by": pinned_by,
+                "pinned_at": pinned_at,
+            }
+        };
+        let options = FindOneAndUpdateOptions::builder()
+            .return_document(Some(ReturnDocument::After))
+            .build();
+
+        collection.find_one_and_update(filter, update, options).await
+    }
+
+    pub async fn unpin_message(
+        &self,
+        message_id: ObjectId,
+        channel_id: &str,
+    ) -> mongodb::error::Result<Option<MessageDb>> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+
+        let filter = doc! {
+            "_id": message_id,
+            "channel_id": channel_id,
+        };
+        let update = doc! {
+            "$unset": {
+                "pinned_by": "",
+                "pinned_at": "",
+            }
+        };
+        let options = FindOneAndUpdateOptions::builder()
+            .return_document(Some(ReturnDocument::After))
+            .build();
+
+        collection.find_one_and_update(filter, update, options).await
+    }
+
+    pub async fn find_pinned_by_channel(
+        &self,
+        channel_id: &str,
+        page: u64,
+        per_page: u64,
+    ) -> Vec<MessageDb> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return vec![],
+        };
+
+        let skip = if page == 0 { 0 } else { (page - 1) * per_page };
+        let limit = per_page;
+
+        let options = FindOptions::builder()
+            .sort(doc! { "pinned_at": -1 })
+            .skip(Some(skip))
+            .limit(Some(limit as i64))
+            .build();
+
+        let filter = doc! {
+            "channel_id": channel_id,
+            "pinned_at": { "$exists": true },
+        };
+
+        let mut cursor = match collection.find(filter, options).await {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+
+        let mut messages = Vec::new();
+        while let Some(msg) = cursor.try_next().await.unwrap_or(None) {
+            messages.push(msg);
+        }
+
+        messages.reverse();
+        messages
     }
 }
 
@@ -306,9 +458,8 @@ mod tests {
             author_id: "user".into(),
             content: "hello".into(),
             created_at: "now".into(),
-            reactions: None,
-            edited_at: None,
-            reply_to: None,
+            pinned_by: None,
+            pinned_at: None,
         };
 
         let res = repo.insert(msg).await;
@@ -320,5 +471,52 @@ mod tests {
         let repo = MessageRepo::new_placeholder();
         let res = repo.find_by_channel("chan", 1, 20).await;
         assert!(res.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_content_on_placeholder_returns_none() {
+        let repo = MessageRepo::new_placeholder();
+        let res = repo
+            .update_content(ObjectId::new(), "chan", "user", "edited")
+            .await
+            .expect("placeholder edit should not error");
+        assert!(res.is_none());
+    }
+
+    #[tokio::test]
+    async fn search_by_channel_content_on_placeholder_returns_empty() {
+        let repo = MessageRepo::new_placeholder();
+        let res = repo
+            .search_by_channel_content("chan", "hello", 1, 20)
+            .await;
+        assert!(res.is_empty());
+    }
+
+    #[test]
+    fn escape_mongo_regex_escapes_special_chars() {
+        let raw = "a+b*(c)?[d]{e}|f.g\\h^i$j";
+        let escaped = MessageRepo::escape_mongo_regex(raw);
+        assert_eq!(escaped, "a\\+b\\*\\(c\\)\\?\\[d\\]\\{e\\}\\|f\\.g\\\\h\\^i\\$j");
+    }
+
+    #[tokio::test]
+    async fn pin_unpin_and_list_pinned_on_placeholder_are_noops() {
+        let repo = MessageRepo::new_placeholder();
+        let id = ObjectId::new();
+
+        let pinned = repo
+            .pin_message(id, "chan", "user", "2026-03-20T00:00:00Z")
+            .await
+            .expect("pin on placeholder should not error");
+        assert!(pinned.is_none());
+
+        let unpinned = repo
+            .unpin_message(id, "chan")
+            .await
+            .expect("unpin on placeholder should not error");
+        assert!(unpinned.is_none());
+
+        let listed = repo.find_pinned_by_channel("chan", 1, 20).await;
+        assert!(listed.is_empty());
     }
 }

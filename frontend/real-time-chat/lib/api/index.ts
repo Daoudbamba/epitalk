@@ -5,11 +5,7 @@ import { createChannelsApi } from "./channels.api";
 import { createMessagesApi } from "./messages.api";
 import { createDmApi } from "./dm.api";
 
-// Use backend URL directly - works in both SSR and CSR
-// NEXT_PUBLIC_ prefix ensures the variable is available on the client side
-const API_BASE_URL = typeof window !== "undefined" 
-  ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080")
-  : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080");
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
   
 const client = new FetchClient(`${API_BASE_URL}/api`);
 
