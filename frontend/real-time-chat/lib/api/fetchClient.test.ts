@@ -9,7 +9,7 @@ function jsonResponse(status: number, body: unknown): Response {
 
 async function createClient() {
   const { FetchClient } = await import("./fetchClient");
-  return new FetchClient("http://localhost:8080/api");
+  return new FetchClient("http://localhost:3001/api");
 }
 
 describe("FetchClient auth refresh flow", () => {

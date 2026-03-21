@@ -4,13 +4,13 @@ Ce document decrit le protocole WebSocket effectivement implemente par le backen
 
 ## Endpoint
 
-- Developpement: `ws://localhost:8080/ws`
+- Developpement: `ws://localhost:3001/ws`
 - Production: definir l'URL via variable frontend `NEXT_PUBLIC_WS_URL`
 
 Connexion avec JWT en query param:
 
 ```text
-ws://localhost:8080/ws?token=<jwt>
+ws://localhost:3001/ws?token=<jwt>
 ```
 
 Le token est valide au handshake. Si invalide/expire, le serveur refuse la connexion.

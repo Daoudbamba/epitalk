@@ -11,9 +11,9 @@ services:
       # Override host-based URLs from .env to use docker network service names
       DATABASE_URL: postgres://epitalk:Epitalk94!@postgres:5432/epitalk
       MONGO_URL: mongodb://mongo:27017/epitalk_messages
-      PORT: 8080
+      PORT: 3001
     ports:
-      - "8080:8080"
+      - "3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,7 +71,7 @@ services:
     container_name: epitalk-adminer
     restart: unless-stopped
     ports:
-      - "8081:8080"
+      - "8081:3001"
     environment:
       ADMINER_DEFAULT_SERVER: postgres
     depends_on:

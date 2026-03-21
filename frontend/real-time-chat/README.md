@@ -12,8 +12,8 @@ Application Next.js du client EpiTalk (chat temps reel).
 Creer ou mettre a jour `frontend/real-time-chat/.env.local` :
 
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:8080
-NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_WS_URL=ws://localhost:3001/ws
 ```
 
 - `NEXT_PUBLIC_API_URL` : base URL HTTP backend (les appels utilisent `${NEXT_PUBLIC_API_URL}/api`)

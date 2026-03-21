@@ -54,7 +54,7 @@ psql -h localhost -U epitalk -d epitalk -f database/migrations/002_seed_data.sql
 
 ### 5. Access Adminer GUI
 
-Open http://localhost:8080 in your browser:
+Open http://localhost:3001 in your browser:
 - **System**: PostgreSQL
 - **Server**: postgres
 - **Username: epitalk
