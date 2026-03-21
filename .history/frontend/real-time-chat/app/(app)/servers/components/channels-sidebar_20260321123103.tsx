@@ -110,17 +110,15 @@ export function ChannelsSidebar({ onCreateChannel }: { onCreateChannel: () => vo
       return;
     }
 
-    const latestChannels = useChannelStore.getState().channels;
-
     // Guard against stale selection during server switch transitions.
-    if (!latestChannels.some((channel) => channel.id === activeChannelId)) {
+    if (!channels.some((channel) => channel.id === activeChannelId)) {
       setChannelDetails(null);
       return;
     }
 
     void loadChannelDetails(activeServerId, activeChannelId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeServerId, activeChannelId]);
+  }, [activeServerId, activeChannelId, channels]);
 
   const onDelete = async (channelId: string) => {
     if (!activeServerId) return;

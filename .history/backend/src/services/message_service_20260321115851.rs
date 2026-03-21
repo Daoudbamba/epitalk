@@ -1,5 +1,5 @@
 use crate::db::message_repo::{MessageDb, MessageRepo};
-use mongodb::bson::{oid::ObjectId, Document};
+use mongodb::bson::oid::ObjectId;
 
 pub struct MessageService {
     repo: MessageRepo,
@@ -106,10 +106,6 @@ impl MessageService {
             .repo
             .find_pinned_by_channel(channel_id, page, per_page)
             .await)
-    }
-
-    pub async fn get_dm_conversations(&self, user_id: &str) -> Vec<Document> {
-        self.repo.get_dm_conversations(user_id).await
     }
 
     pub async fn get_message_by_id(&self, message_id: &ObjectId) -> Option<MessageDb> {

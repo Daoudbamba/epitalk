@@ -97,7 +97,6 @@ export function ChannelsSidebar({ onCreateChannel }: { onCreateChannel: () => vo
 
   useEffect(() => {
     // ✅ serveur changé : reset sélection + reload
-    setChannels([]);
     setActiveChannel(null);
     setChannelDetails(null);
     refresh();
@@ -106,14 +105,6 @@ export function ChannelsSidebar({ onCreateChannel }: { onCreateChannel: () => vo
 
   useEffect(() => {
     if (!activeServerId || !activeChannelId) {
-      setChannelDetails(null);
-      return;
-    }
-
-    const latestChannels = useChannelStore.getState().channels;
-
-    // Guard against stale selection during server switch transitions.
-    if (!latestChannels.some((channel) => channel.id === activeChannelId)) {
       setChannelDetails(null);
       return;
     }

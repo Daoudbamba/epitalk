@@ -666,14 +666,6 @@ pub async fn handle_connection(
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
                 ClientEvent::ReactionAdd { message_id, emoji } => {
-                    let message_oid = match ObjectId::parse_str(&message_id) {
-                        Ok(id) => id,
-                        Err(_) => {
-                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "message_id must be a valid ObjectId");
-                            continue;
-                        }
-                    };
-
                     // Resolve username for the reacting user
                     let username = resolve_username(
                         &user_id_recv,
@@ -683,7 +675,7 @@ pub async fn handle_connection(
                     .await;
 
                     match message_service_recv
-                        .add_reaction(&message_oid, &emoji, &user_id_recv, Some(&username))
+                        .add_reaction(&message_id, &emoji, &user_id_recv, Some(&username))
                         .await
                     {
                         Ok((Some(channel_id), was_added)) => {
@@ -713,16 +705,8 @@ pub async fn handle_connection(
                     }
                 },
                 ClientEvent::ReactionRemove { message_id, emoji } => {
-                    let message_oid = match ObjectId::parse_str(&message_id) {
-                        Ok(id) => id,
-                        Err(_) => {
-                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "message_id must be a valid ObjectId");
-                            continue;
-                        }
-                    };
-
                     match message_service_recv
-                        .remove_reaction(&message_oid, &emoji, &user_id_recv)
+                        .remove_reaction(&message_id, &emoji, &user_id_recv)
                         .await
                     {
                         Ok(Some(channel_id)) => {

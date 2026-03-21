@@ -1,5 +1,5 @@
 use mongodb::{
-    bson::{doc, oid::ObjectId, to_bson, Document},
+    bson::{doc, oid::ObjectId, to_bson},
     options::{FindOneAndUpdateOptions, FindOptions, IndexOptions, ReturnDocument},
     Collection, IndexModel,
 };
@@ -427,50 +427,6 @@ impl MessageRepo {
 
         messages.reverse();
         messages
-    }
-
-    pub async fn get_dm_conversations(&self, user_id: &str) -> Vec<Document> {
-        let collection = match self.collection.as_ref() {
-            Some(c) => c,
-            None => return vec![],
-        };
-
-        let escaped_user_id = Self::escape_mongo_regex(user_id);
-        let conversation_pattern = format!(
-            "^dm:({uid}:[^:]+|[^:]+:{uid})$",
-            uid = escaped_user_id
-        );
-
-        let pipeline = vec![
-            doc! {
-                "$match": {
-                    "channel_id": {
-                        "$regex": conversation_pattern,
-                    }
-                }
-            },
-            doc! { "$sort": { "created_at": -1 } },
-            doc! {
-                "$group": {
-                    "_id": "$channel_id",
-                    "last_message": { "$first": "$content" },
-                    "last_message_at": { "$first": "$created_at" },
-                }
-            },
-            doc! { "$sort": { "last_message_at": -1 } },
-        ];
-
-        let mut cursor = match collection.aggregate(pipeline, None).await {
-            Ok(c) => c,
-            Err(_) => return vec![],
-        };
-
-        let mut conversations = Vec::new();
-        while let Some(doc) = cursor.try_next().await.unwrap_or(None) {
-            conversations.push(doc);
-        }
-
-        conversations
     }
 }
 

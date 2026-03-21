@@ -38,15 +38,7 @@ function extractInviteCode(value: string): string | null {
 
 type Status = { type: "success" | "error" | "info"; text: string } | null;
 
-export function ServersRail({
-  onRefresh,
-  openCreateChannel,
-  onOpenCreateChannelChange,
-}: {
-  onRefresh: () => Promise<void>;
-  openCreateChannel: boolean;
-  onOpenCreateChannelChange: (open: boolean) => void;
-}) {
+export function ServersRail({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
@@ -64,6 +56,7 @@ export function ServersRail({
 
   const [openSettings, setOpenSettings] = useState(false);
   const [openCreateServer, setOpenCreateServer] = useState(false);
+  const [openCreateChannel, setOpenCreateChannel] = useState(false);
   const [inviteInput, setInviteInput] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [loadingJoin, setLoadingJoin] = useState(false);
@@ -196,6 +189,14 @@ export function ServersRail({
 
   const onCreateServer = () => {
     setOpenCreateServer(true);
+  };
+
+  const onCreateChannel = () => {
+    if (!activeServerId) {
+      setErr("Selectionne un serveur avant de creer un channel.");
+      return;
+    }
+    setOpenCreateChannel(true);
   };
 
   const handleChannelCreated = async () => {
@@ -388,6 +389,18 @@ export function ServersRail({
         onClick={onCreateServer}
         className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border-2 border-dashed border-[#023BFC]/30 hover:border-[#023BFC] text-[#023BFC] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105"
         title="Creer un serveur"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+
+      {/* Add channel */}
+      <button
+        onClick={onCreateChannel}
+        disabled={!activeServerId}
+        className="w-12 h-12 server-icon bg-white hover:bg-[#EBF0FF] border-2 border-dashed border-[#10B981]/30 hover:border-[#10B981] text-[#10B981] text-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+        title={activeServerId ? "Creer un channel" : "Selectionne un serveur"}
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -770,7 +783,7 @@ export function ServersRail({
       {/* Modal creation channel */}
       <CreateChannelModal
         open={openCreateChannel}
-        onOpenChange={onOpenCreateChannelChange}
+        onOpenChange={setOpenCreateChannel}
         serverId={activeServerId}
         onSuccess={handleChannelCreated}
       />
