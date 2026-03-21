@@ -715,5 +715,10 @@ function handleServerEvent(
       set({ error: event.payload.message || "Erreur WebSocket" });
       break;
     }
+
+    case "Error": {
+      set({ error: event.payload.message || "Erreur WebSocket" });
+      break;
+    }
   }
 }
