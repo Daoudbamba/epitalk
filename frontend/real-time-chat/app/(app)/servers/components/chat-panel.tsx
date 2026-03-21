@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Gift, Sticker, Send, Loader2, Pin, Search, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Smile, Gift, Sticker, Send, Loader2, Pin, Search, ChevronDown, ChevronUp, X } from "lucide-react";
 import { messagesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 import type { Message } from "@/lib/api/schemas/messages.schema";
@@ -64,7 +64,6 @@ export function ChatPanel() {
   const [value, setValue] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
-  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
   // GIF picker state
@@ -701,8 +700,8 @@ export function ChatPanel() {
                     </div>
                   )}
                 </div>
-              );
-            })}
+              </div>
+              ))}
 
             <div ref={bottomRef} />
           </div>

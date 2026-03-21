@@ -11,6 +11,13 @@ export interface WsMessage {
   username?: string;
   content: string;
   created_at: string;
+  reply_to?: string;
+  reactions?: Array<{
+    emoji: string;
+    user_id: string;
+    username?: string;
+    created_at?: string;
+  }>;
   edited_at?: string;
   pinned_by?: string | null;
   pinned_at?: string | null;
@@ -43,7 +50,7 @@ type ClientEvent =
 
 // SERVER → CLIENT events
 type ServerEvent =
-  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string } }
+  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string; reply_to?: string } }
   | { type: "MessageUpdated"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; edited_at: string } }
   | { type: "MessagePinned"; payload: { message_id: string; channel_id: string; pinned_by: string; pinned_at: string } }
   | { type: "MessageUnpinned"; payload: { message_id: string; channel_id: string; unpinned_by: string; unpinned_at: string } }
@@ -89,9 +96,15 @@ type WebSocketState = {
   connect: (token: string) => void;
   disconnect: () => void;
   sendMessage: (channelId: string, content: string, replyTo?: string) => void;
+  sendDm: (recipientId: string, content: string, replyTo?: string) => void;
   editMessage: (channelId: string, messageId: string, content: string) => void;
+  editDm: (conversationId: string, messageId: string, content: string) => void;
   deleteMessage: (channelId: string, messageId: string) => void;
+  deleteDm: (conversationId: string, messageId: string) => void;
+  sendDmGif: (recipientId: string, gif: { id: string; url: string; preview?: string; provider?: string }, caption?: string | null) => void;
   joinChannel: (channelId: string) => void;
+  joinDm: (peerId: string) => void;
+  leaveDm: (peerId: string) => void;
   leaveChannel: (channelId: string) => void;
   startTyping: (channelId: string) => void;
   stopTyping: (channelId: string) => void;
@@ -324,6 +337,17 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     }
   },
 
+  sendDm: (recipientId: string, content: string, replyTo?: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmSend",
+        payload: { recipient_id: recipientId, content, reply_to: replyTo },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
   editMessage: (channelId: string, messageId: string, content: string) => {
     const { socket } = get();
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -335,12 +359,56 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     }
   },
 
+  editDm: (conversationId: string, messageId: string, content: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmEdit",
+        payload: {
+          conversation_id: conversationId,
+          message_id: messageId,
+          content,
+        },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
   deleteMessage: (channelId: string, messageId: string) => {
     const { socket } = get();
     if (socket && socket.readyState === WebSocket.OPEN) {
       const event: ClientEvent = {
         type: "MessageDelete",
         payload: { channel_id: channelId, message_id: messageId },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  deleteDm: (conversationId: string, messageId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmDelete",
+        payload: {
+          conversation_id: conversationId,
+          message_id: messageId,
+        },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  sendDmGif: (recipientId: string, gif: { id: string; url: string; preview?: string; provider?: string }, caption?: string | null) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmSendGif",
+        payload: {
+          recipient_id: recipientId,
+          gif,
+          caption,
+        },
       };
       socket.send(JSON.stringify(event));
     }
@@ -363,6 +431,32 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
       };
       socket.send(JSON.stringify(event));
       set({ currentChannelId: channelId });
+    }
+  },
+
+  joinDm: (peerId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "JoinDm",
+        payload: { peer_id: peerId },
+      };
+      socket.send(JSON.stringify(event));
+      set({ currentDmPeerId: peerId });
+    }
+  },
+
+  leaveDm: (peerId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "LeaveDm",
+        payload: { peer_id: peerId },
+      };
+      socket.send(JSON.stringify(event));
+    }
+    if (get().currentDmPeerId === peerId) {
+      set({ currentDmPeerId: null });
     }
   },
 

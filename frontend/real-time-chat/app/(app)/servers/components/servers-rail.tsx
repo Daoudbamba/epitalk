@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
