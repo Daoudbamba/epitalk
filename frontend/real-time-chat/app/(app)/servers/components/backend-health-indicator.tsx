@@ -13,7 +13,7 @@ type HealthState =
   | { kind: "ok"; payload: HealthPayload; checkedAt: string }
   | { kind: "error"; message: string; checkedAt: string };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export function BackendHealthIndicator() {
   const [state, setState] = useState<HealthState>({ kind: "loading" });

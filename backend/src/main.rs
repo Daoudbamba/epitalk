@@ -37,7 +37,7 @@ fn configured_port() -> u16 {
     std::env::var("PORT")
         .ok()
         .and_then(|v| v.parse::<u16>().ok())
-        .unwrap_or(3000)
+    .unwrap_or(3001)
 }
 
 fn kill_port_occupant(port: u16) {
