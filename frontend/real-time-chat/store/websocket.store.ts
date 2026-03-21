@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import { authApi } from "@/lib/api";
+import { ApiError } from "@/lib/api/errors";
+import { useAuthStore } from "@/store/auth.store";
 
 // Types basés sur le protocole WebSocket du backend
 export interface WsMessage {
@@ -71,6 +74,9 @@ type ServerEvent =
 type WebSocketState = {
   socket: WebSocket | null;
   isConnected: boolean;
+  connectionState: "idle" | "connecting" | "connected" | "backoff" | "degraded" | "auth_invalid";
+  reconnectAttempt: number;
+  nextRetryDelayMs: number | null;
   messages: Record<string, WsMessage[]>; // channel_id -> messages
   dmMessages: Record<string, WsMessage[]>; // conversation_id -> messages
   currentChannelId: string | null;
@@ -97,10 +103,44 @@ type WebSocketState = {
 };
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
+const MAX_RECONNECT_ATTEMPTS = 5;
+const BASE_RECONNECT_DELAY_MS = 1000;
+const DEGRADED_RECONNECT_DELAY_MS = 30000;
+
+let reconnectAttempts = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function shouldForceAuthLogout(event: CloseEvent): boolean {
+  const reason = event.reason?.toLowerCase() ?? "";
+  return (
+    event.code === 1008 ||
+    reason.includes("unauthorized") ||
+    reason.includes("invalid token") ||
+    reason.includes("expired")
+  );
+}
+
+function getLatestToken(): string | null {
+  if (typeof window !== "undefined") {
+    const fromStorage = localStorage.getItem("token");
+    if (fromStorage) return fromStorage;
+  }
+  return useAuthStore.getState().token;
+}
 
 export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   socket: null,
   isConnected: false,
+  connectionState: "idle",
+  reconnectAttempt: 0,
+  nextRetryDelayMs: null,
   messages: {},
   dmMessages: {},
   currentChannelId: null,
@@ -111,19 +151,16 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   connect: (token: string) => {
     const existingSocket = get().socket;
-    if (existingSocket) {
-      if (existingSocket.readyState === WebSocket.OPEN) {
-        return; // Already connected
-      }
-      // Close any lingering CONNECTING socket to avoid duplicates
-      if (existingSocket.readyState === WebSocket.CONNECTING) {
-        existingSocket.onopen = null;
-        existingSocket.onmessage = null;
-        existingSocket.onerror = null;
-        existingSocket.onclose = null;
-        existingSocket.close();
-      }
+    if (
+      existingSocket &&
+      (existingSocket.readyState === WebSocket.OPEN ||
+        existingSocket.readyState === WebSocket.CONNECTING)
+    ) {
+      return; // Already connected or connecting
     }
+
+    clearReconnectTimer();
+    set({ connectionState: "connecting", nextRetryDelayMs: null, error: null });
 
     const wsUrl = `${WS_URL}?token=${encodeURIComponent(token)}`;
     console.log("🔌 Connecting to WebSocket:", wsUrl);
@@ -131,7 +168,15 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
     socket.onopen = () => {
       console.log("✅ WebSocket connected");
-      set({ socket, isConnected: true, error: null });
+      reconnectAttempts = 0;
+      set({
+        socket,
+        isConnected: true,
+        error: null,
+        connectionState: "connected",
+        reconnectAttempt: 0,
+        nextRetryDelayMs: null,
+      });
 
       // Rejoin current channel if any
       const currentChannel = get().currentChannelId;
@@ -161,22 +206,79 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
     socket.onerror = (error) => {
       console.error("❌ WebSocket error:", error);
-      set({ error: "Erreur de connexion WebSocket" });
+      if (!get().isConnected) {
+        set({ connectionState: "backoff" });
+      }
     };
 
     socket.onclose = (event) => {
       console.log("🔌 WebSocket disconnected:", event.code, event.reason);
       set({ socket: null, isConnected: false });
 
-      // Auto-reconnect after 3 seconds if not intentionally closed
+      // Auto-reconnect with guardrails if not intentionally closed
       if (event.code !== 1000) {
-        setTimeout(() => {
-          const state = get();
-          if (!state.isConnected && token) {
-            console.log("🔄 Attempting to reconnect...");
-            state.connect(token);
+        if (shouldForceAuthLogout(event)) {
+          useAuthStore.getState().logout();
+          reconnectAttempts = 0;
+          clearReconnectTimer();
+          set({
+            error: "Session expirée. Veuillez vous reconnecter.",
+            connectionState: "auth_invalid",
+            reconnectAttempt: 0,
+            nextRetryDelayMs: null,
+          });
+          return;
+        }
+
+        reconnectAttempts += 1;
+
+        void (async () => {
+          try {
+            await authApi.me();
+          } catch (error) {
+            if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+              useAuthStore.getState().logout();
+              reconnectAttempts = 0;
+              clearReconnectTimer();
+              set({
+                error: "Session expirée. Veuillez vous reconnecter.",
+                connectionState: "auth_invalid",
+                reconnectAttempt: 0,
+                nextRetryDelayMs: null,
+              });
+              return;
+            }
           }
-        }, 3000);
+
+          const isDegraded = reconnectAttempts > MAX_RECONNECT_ATTEMPTS;
+          const delay = isDegraded
+            ? DEGRADED_RECONNECT_DELAY_MS
+            : Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1), 15000);
+
+          set({
+            connectionState: isDegraded ? "degraded" : "backoff",
+            reconnectAttempt: reconnectAttempts,
+            nextRetryDelayMs: delay,
+            error: null,
+          });
+
+          clearReconnectTimer();
+          reconnectTimer = setTimeout(() => {
+            const state = get();
+            const latestToken = getLatestToken();
+            if (!state.isConnected && latestToken) {
+              console.log("🔄 Attempting to reconnect...");
+              state.connect(latestToken);
+            }
+          }, delay);
+        })();
+      } else {
+        clearReconnectTimer();
+        set({
+          connectionState: "idle",
+          reconnectAttempt: 0,
+          nextRetryDelayMs: null,
+        });
       }
     };
 
@@ -185,9 +287,23 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   disconnect: () => {
     const { socket } = get();
+    reconnectAttempts = 0;
+    clearReconnectTimer();
     if (socket) {
       socket.close(1000, "User disconnected");
-      set({ socket: null, isConnected: false });
+      set({
+        socket: null,
+        isConnected: false,
+        connectionState: "idle",
+        reconnectAttempt: 0,
+        nextRetryDelayMs: null,
+      });
+    } else {
+      set({
+        connectionState: "idle",
+        reconnectAttempt: 0,
+        nextRetryDelayMs: null,
+      });
     }
   },
 
@@ -577,6 +693,11 @@ function handleServerEvent(
           },
         };
       });
+      break;
+    }
+
+    case "Error": {
+      set({ error: event.payload.message || "Erreur WebSocket" });
       break;
     }
 

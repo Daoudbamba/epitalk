@@ -48,6 +48,20 @@ impl std::ops::Deref for RequireAuth {
     }
 }
 
+/// Extractor that requires a valid JWT signature, but allows expired tokens.
+///
+/// Intended only for token refresh flows.
+#[derive(Debug, Clone)]
+pub struct RequireAuthAllowExpired(pub AuthUser);
+
+impl std::ops::Deref for RequireAuthAllowExpired {
+    type Target = AuthUser;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 #[async_trait]
 impl<S> FromRequestParts<S> for RequireAuth
 where
@@ -85,6 +99,51 @@ where
         let claims = token_data.claims;
 
         Ok(RequireAuth(AuthUser {
+            user_id: claims.sub,
+            email: claims.email.clone(),
+            username: claims.username.clone(),
+            claims,
+        }))
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for RequireAuthAllowExpired
+where
+    AppState: FromRef<S>,
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let app_state = AppState::from_ref(state);
+
+        // Extract Authorization header
+        let auth_header = parts
+            .headers
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| {
+                AppError::Unauthorized("Missing Authorization header".to_string()).into_response()
+            })?;
+
+        // Extract Bearer token
+        let token = auth_header
+            .strip_prefix("Bearer ")
+            .ok_or_else(|| {
+                AppError::Unauthorized("Invalid Authorization header format. Use: Bearer <token>".to_string())
+                    .into_response()
+            })?;
+
+        // Validate token signature, but allow expiration for refresh flow
+        let token_data = app_state
+            .jwt_service
+            .validate_token_allow_expired(token)
+            .map_err(|e| e.into_response())?;
+
+        let claims = token_data.claims;
+
+        Ok(RequireAuthAllowExpired(AuthUser {
             user_id: claims.sub,
             email: claims.email.clone(),
             username: claims.username.clone(),

@@ -21,12 +21,17 @@ export function ChatPanel() {
 
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
 
   const members = useMemberStore((s) => s.members);
 
   // WebSocket store
   const isConnected = useWebSocketStore((s) => s.isConnected);
+  const connectionState = useWebSocketStore((s) => s.connectionState);
+  const reconnectAttempt = useWebSocketStore((s) => s.reconnectAttempt);
+  const nextRetryDelayMs = useWebSocketStore((s) => s.nextRetryDelayMs);
   const connect = useWebSocketStore((s) => s.connect);
+  const disconnect = useWebSocketStore((s) => s.disconnect);
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
   const editMessage = useWebSocketStore((s) => s.editMessage);
   const deleteMessage = useWebSocketStore((s) => s.deleteMessage);
@@ -77,6 +82,30 @@ export function ChatPanel() {
 
   const canLoad = !!activeServerId && !!activeChannelId;
 
+  const connectionStatusLabel = useMemo(() => {
+    if (isConnected) return null;
+
+    const retryInSeconds = nextRetryDelayMs ? Math.max(1, Math.ceil(nextRetryDelayMs / 1000)) : null;
+
+    if (connectionState === "degraded") {
+      return `Serveur indisponible. Nouvelle tentative automatique dans ${retryInSeconds ?? 30}s.`;
+    }
+
+    if (connectionState === "auth_invalid") {
+      return "Session expirée. Reconnecte-toi pour rétablir le temps réel.";
+    }
+
+    if (connectionState === "backoff") {
+      return `Reconnexion en cours (tentative ${Math.max(1, reconnectAttempt)}${retryInSeconds ? `, prochaine dans ${retryInSeconds}s` : ""})...`;
+    }
+
+    if (connectionState === "connecting") {
+      return "Connexion au serveur en cours...";
+    }
+
+    return "Connexion au serveur...";
+  }, [connectionState, isConnected, nextRetryDelayMs, reconnectAttempt]);
+
   // Get messages for current channel
   const messages = useMemo(() => {
     if (!activeChannelId) return [];
@@ -117,32 +146,22 @@ export function ChatPanel() {
   useEffect(() => {
     if (!hasHydrated) return;
 
-  const pinnedMessages = useMemo(() => {
-    if (pinnedMessagesFromApi.length === 0) {
-      return pinnedMessagesInMemory;
-    }
-
-    const byId = new Map<string, Message>();
-    for (const msg of pinnedMessagesFromApi) {
-      byId.set(msg.id, msg);
-    }
-    for (const msg of pinnedMessagesInMemory) {
-      if (!byId.has(msg.id)) {
-        byId.set(msg.id, msg);
+    let latestToken = token;
+    if (typeof window !== "undefined") {
+      const persistedToken = localStorage.getItem("token");
+      if (persistedToken !== token) {
+        latestToken = persistedToken;
       }
     }
 
-    return Array.from(byId.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [pinnedMessagesFromApi, pinnedMessagesInMemory]);
-
-  // Connect WebSocket on mount
-  useEffect(() => {
-    if (token && !isConnected) {
-      connect(token);
+    if (latestToken && !isConnected) {
+      connect(latestToken);
     }
-  }, [token, isConnected, connect]);
+
+    if (!latestToken && isConnected) {
+      disconnect();
+    }
+  }, [connect, disconnect, hasHydrated, isConnected, token]);
 
   // Join channel when it changes
   useEffect(() => {
@@ -162,48 +181,21 @@ export function ChatPanel() {
   }, [messages]);
 
   // Get username from message, members or fallback to author_id
-  const getUsernameById = useCallback(
-    (authorId: string, msgUsername?: string): string => {
-      // Check if username is provided in the message itself
-      if (msgUsername) return msgUsername;
-      // Check if it's the current user
-      if (user && user.id === authorId) {
-        return user.username;
-      }
-      // Check members
-      const member = members.find((m) => m.user_id === authorId);
-      if (member) {
-        return member.username;
-      }
-      // Fallback: use first part of UUID
-      return authorId.slice(0, 8);
-    },
-    [user, members],
-  );
-
-  const parseGifContent = useCallback((content: string) => {
-    try {
-      const parsed = JSON.parse(content);
-      if (
-        parsed &&
-        parsed.type === "gif" &&
-        parsed.gif &&
-        typeof parsed.gif.url === "string"
-      ) {
-        return parsed as {
-          type: "gif";
-          gif: { id: string; url: string; preview?: string; provider?: string };
-          caption?: string;
-        };
-      }
-    } catch {
-      // Not JSON
+  const getUsernameById = useCallback((authorId: string, msgUsername?: string): string => {
+    // Check if username is provided in the message itself
+    if (msgUsername) return msgUsername;
+    // Check if it's the current user
+    if (user && user.id === authorId) {
+      return user.username;
     }
-    return null;
-  }, []);
-
-  const currentMemberRole = members.find((m) => m.user_id === user?.id)?.role;
-  const canModerate = currentMemberRole === "Owner" || currentMemberRole === "Admin" || currentMemberRole === "Moderator";
+    // Check members
+    const member = members.find((m) => m.user_id === authorId);
+    if (member) {
+      return member.username;
+    }
+    // Fallback: use first part of UUID
+    return authorId.slice(0, 8);
+  }, [members, user]);
 
   const onSend = async () => {
     if (!activeChannelId || !canLoad) return;
@@ -591,7 +583,7 @@ export function ChatPanel() {
         ) : !isConnected ? (
           <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Connexion au serveur...
+            {connectionStatusLabel ?? "Connexion au serveur..."}
           </div>
         ) : messages.length === 0 ? (
           <div className="px-4 text-sm text-muted-foreground">
@@ -981,7 +973,7 @@ export function ChatPanel() {
         {!isConnected && canLoad && (
           <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
             <Loader2 className="h-3 w-3 animate-spin" />
-            Reconnexion en cours...
+            {connectionStatusLabel ?? "Reconnexion en cours..."}
           </div>
         )}
       </div>

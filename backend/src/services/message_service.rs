@@ -16,8 +16,7 @@ impl MessageService {
         author_id: String,
         content: String,
         created_at: String,
-        reply_to: Option<ObjectId>,
-    ) -> ObjectId {
+    ) -> mongodb::error::Result<ObjectId> {
         let msg = MessageDb {
             id: None,
             channel_id,
@@ -28,7 +27,7 @@ impl MessageService {
             pinned_at: None,
         };
 
-        self.repo.insert(msg).await.unwrap()
+        self.repo.insert(msg).await
     }
 
     pub async fn get_history(

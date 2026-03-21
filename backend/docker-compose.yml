@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   # =============================================================================
   # Backend Application
@@ -13,8 +11,9 @@ services:
       # Override host-based URLs from .env to use docker network service names
       DATABASE_URL: postgres://epitalk:Epitalk94!@postgres:5432/epitalk
       MONGO_URL: mongodb://mongo:27017/epitalk_messages
+      PORT: 8080
     ports:
-      - "3000:3000"
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy

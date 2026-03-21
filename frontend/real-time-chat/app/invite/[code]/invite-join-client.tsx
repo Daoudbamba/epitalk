@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { serversApi } from "@/lib/api";
+import { ApiError } from "@/lib/api/errors";
+import { terminateSession } from "@/lib/auth/session";
 
 export default function InviteJoinClient({ code }: { code: string }) {
   const router = useRouter();
@@ -21,6 +23,11 @@ export default function InviteJoinClient({ code }: { code: string }) {
       router.push("/servers");
       router.refresh();
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        terminateSession();
+        router.replace("/login");
+        return;
+      }
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {
       setLoading(false);

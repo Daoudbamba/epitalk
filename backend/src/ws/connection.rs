@@ -249,23 +249,6 @@ pub async fn handle_connection(
                         None => continue,
                     };
 
-                    let reply_to_oid = if let Some(reply_id) = &reply_to {
-                        match ObjectId::parse_str(reply_id) {
-                            Ok(oid) => Some(oid),
-                            Err(_) => {
-                                send_error(
-                                    &hub_recv,
-                                    &conn_id,
-                                    "INVALID_REPLY_TO",
-                                    "reply_to must be a valid message id",
-                                );
-                                continue;
-                            }
-                        }
-                    } else {
-                        None
-                    };
-
                     let server_uuid = match Uuid::parse_str(&server_id) {
                         Ok(id) => id,
                         Err(_) => {
@@ -301,7 +284,7 @@ pub async fn handle_connection(
                     );
                     let created_at = chrono::Utc::now().to_rfc3339();
 
-                    let id = message_service_recv
+                    let id = match message_service_recv
                         .create_message(
                             channel_id.clone(),
                             user_id_recv.clone(),
@@ -309,7 +292,24 @@ pub async fn handle_connection(
                             created_at.clone(),
                             reply_to_oid,
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(id) => id,
+                        Err(e) => {
+                            tracing::error!(
+                                channel = %channel_id,
+                                user = %user_id_recv,
+                                "Failed to persist message in MongoDB: {e}"
+                            );
+                            send_error(
+                                &hub_recv,
+                                &conn_id,
+                                "MESSAGE_PERSIST_FAILED",
+                                "failed to persist message",
+                            );
+                            continue;
+                        },
+                    };
 
                     tracing::info!("💾 Message saved to MongoDB with id={}", id.to_hex());
 

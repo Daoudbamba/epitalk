@@ -1,5 +1,7 @@
 use axum::{
     extract::{ws::WebSocketUpgrade, Query, State},
+    http::StatusCode,
+    Json,
     response::IntoResponse,
 };
 use serde::Deserialize;
@@ -23,7 +25,16 @@ pub async fn ws_handler(
     // 1. Validate JWT
     let claims = match validate_token(&params.token, &state.config.jwt_secret) {
         Ok(c) => c,
-        Err(_) => return "Unauthorized".into_response(),
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "error": "Unauthorized",
+                    "message": "Invalid or expired WebSocket token"
+                })),
+            )
+                .into_response();
+        },
     };
 
     let user_id = claims.sub;

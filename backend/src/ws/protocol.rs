@@ -167,6 +167,29 @@ pub enum ServerEvent {
         unpinned_at: String,
     },
 
+    MessageUpdated {
+        id: String,
+        channel_id: String,
+        author_id: String,
+        username: String,
+        content: String,
+        edited_at: String,
+    },
+
+    MessagePinned {
+        message_id: String,
+        channel_id: String,
+        pinned_by: String,
+        pinned_at: String,
+    },
+
+    MessageUnpinned {
+        message_id: String,
+        channel_id: String,
+        unpinned_by: String,
+        unpinned_at: String,
+    },
+
     UserJoined {
         user_id: String,
         channel_id: String,
