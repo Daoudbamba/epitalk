@@ -22,7 +22,7 @@ impl Config {
                 .unwrap_or_else(|_| "super_secret_jwt_key_change_in_production_min_32_chars".into()),
             jwt_expiration_hours,
             port: std::env::var("PORT")
-                .unwrap_or_else(|_| "3000".into())
+                .unwrap_or_else(|_| "3001".into())
                 .parse()?,
         })
     }
@@ -45,7 +45,7 @@ mod tests {
         assert_eq!(cfg.database_url, "postgres://epitalk:Epitalk94!@localhost:5432/epitalk");
         assert_eq!(cfg.jwt_secret, "super_secret_jwt_key_change_in_production_min_32_chars");
         assert_eq!(cfg.jwt_expiration_hours, 168);
-        assert_eq!(cfg.port, 3000);
+        assert_eq!(cfg.port, 3001);
     }
 
     #[test]

@@ -52,6 +52,16 @@ export function ChatPanel() {
     return wsMessages[activeChannelId] || [];
   }, [activeChannelId, wsMessages]);
 
+  // Debug: log chat state when messages / channel change
+  useEffect(() => {
+    console.log("📚 ChatPanel state", {
+      activeServerId,
+      activeChannelId,
+      isConnected,
+      messageCount: messages.length,
+    });
+  }, [activeServerId, activeChannelId, isConnected, messages.length]);
+
   // Connect WebSocket on mount
   useEffect(() => {
     if (token && !isConnected) {
@@ -59,12 +69,12 @@ export function ChatPanel() {
     }
   }, [token, isConnected, connect]);
 
-  // Join channel when it changes
+  // Join channel & (re)load history when ready and we have no messages yet
   useEffect(() => {
-    if (activeChannelId && isConnected) {
+    if (activeChannelId && isConnected && messages.length === 0) {
       joinChannel(activeChannelId);
     }
-  }, [activeChannelId, isConnected, joinChannel]);
+  }, [activeChannelId, isConnected, joinChannel, messages.length]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
