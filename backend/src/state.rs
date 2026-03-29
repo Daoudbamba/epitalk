@@ -50,9 +50,10 @@ impl AppState {
                     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                     let changed = presence_clone.scan_for_idle();
                     for user_id in changed {
+                        // After threshold we now consider the user offline
                         let event = crate::ws::protocol::ServerEvent::PresenceUpdated {
                             user_id: user_id.clone(),
-                            status: "idle".to_string(),
+                            status: "offline".to_string(),
                             last_activity: chrono::Utc::now().to_rfc3339(),
                         };
                         hub_for_scan.broadcast_all(event).await;

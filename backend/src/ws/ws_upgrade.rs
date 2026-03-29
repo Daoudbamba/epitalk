@@ -37,22 +37,6 @@ pub async fn ws_handler(
         let conn_id = Uuid::new_v4();
         let user_id_str = user_id.to_string();
 
-        // Register connection in presence service (stores conn id + last activity)
-        presence.add_connection(&user_id_str, &conn_id.to_string());
-
-        // Broadcast both legacy UserOnline and structured PresenceUpdated
-        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
-            user_id: user_id_str.clone(),
-        };
-        hub.broadcast_all(online_event).await;
-
-        let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
-            user_id: user_id_str.clone(),
-            status: "online".to_string(),
-            last_activity: chrono::Utc::now().to_rfc3339(),
-        };
-        hub.broadcast_all(presence_event).await;
-
         handle_connection(
             socket,
             hub,

@@ -248,20 +248,28 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
       // Restore persisted presence status (optimistic local update + notify server)
       try {
-  const stored = window.localStorage.getItem("presence_status") || "online";
-  const storedStatus = stored as "online" | "idle" | "dnd" | "offline";
+        const stored =
+          window.localStorage.getItem("presence_status") || "online";
+        const storedStatus = stored as "online" | "idle" | "dnd" | "offline";
         // Apply optimistic presence locally so UI shows immediately
         const authUser = useAuthStore.getState().user;
         if (authUser) {
           set((s) => {
             const newPresence = { ...s.presence };
-            newPresence[authUser.id] = { status: storedStatus, last_activity: new Date().toISOString() };
+            newPresence[authUser.id] = {
+              status: storedStatus,
+              last_activity: new Date().toISOString(),
+            };
             return { presence: newPresence };
           });
         }
         // Send PresenceSet to server so server becomes authoritative
-  const evt: ClientEvent = { type: "PresenceSet", payload: { status: storedStatus } };
-        if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(evt));
+        const evt: ClientEvent = {
+          type: "PresenceSet",
+          payload: { status: storedStatus },
+        };
+        if (socket && socket.readyState === WebSocket.OPEN)
+          socket.send(JSON.stringify(evt));
       } catch (e) {
         console.warn("Failed to restore presence from localStorage:", e);
       }
@@ -542,7 +550,10 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     if (authUser) {
       set((s) => {
         const newPresence = { ...s.presence };
-        newPresence[authUser.id] = { status, last_activity: new Date().toISOString() };
+        newPresence[authUser.id] = {
+          status,
+          last_activity: new Date().toISOString(),
+        };
         return { presence: newPresence };
       });
     }

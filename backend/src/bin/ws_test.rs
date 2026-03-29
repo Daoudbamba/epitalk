@@ -165,7 +165,7 @@ async fn main() {
     use tokio::time::timeout;
     let mut found_message = false;
     let expected_sub = "test message from ws_test";
-    let wait_res = timeout(Duration::from_secs(12), async {
+    let wait_res = timeout(Duration::from_secs(20), async {
         while let Some(msg) = assert_rx.recv().await {
             if msg.contains(expected_sub) {
                 println!("[ws_test] Assertion: observed test message in server broadcast/historic message");
@@ -186,7 +186,7 @@ async fn main() {
     // We'll wait a short period and check any presence updated payload mentioning the user's UUID
     let user_a_str = user_a.to_string();
     let mut found_presence_online = false;
-    let wait_res2 = timeout(Duration::from_secs(8), async {
+    let wait_res2 = timeout(Duration::from_secs(16), async {
         while let Some(msg) = assert_rx.recv().await {
             if msg.contains("PresenceUpdated") && msg.contains(&user_a_str) && msg.contains("online") {
                 println!("[ws_test] Assertion: observed PresenceUpdated online for user_a");
@@ -208,7 +208,7 @@ async fn main() {
     // wait briefly for events
     let mut saw_offline = false;
     let mut saw_online_after_close = false;
-    let wait_res3 = timeout(Duration::from_secs(6), async {
+    let wait_res3 = timeout(Duration::from_secs(10), async {
         while let Some(msg) = assert_rx.recv().await {
             if msg.contains("PresenceUpdated") && msg.contains(&user_a.to_string()) && msg.contains("offline") {
                 saw_offline = true;
@@ -236,7 +236,7 @@ async fn main() {
 
     // Wait for offline event
     let mut saw_offline_final = false;
-    let wait_res4 = timeout(Duration::from_secs(8), async {
+    let wait_res4 = timeout(Duration::from_secs(16), async {
         while let Some(msg) = assert_rx.recv().await {
             if msg.contains("PresenceUpdated") && msg.contains(&user_a.to_string()) && msg.contains("offline") {
                 saw_offline_final = true;

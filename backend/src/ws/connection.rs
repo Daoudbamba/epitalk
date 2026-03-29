@@ -127,7 +127,30 @@ pub async fn handle_connection(
 ) {
     // Canal interne pour envoyer des messages au client
     let (tx, rx) = mpsc::unbounded_channel();
+    // Register connection in hub so broadcast messages reach this socket
     hub.register_connection(&user_id, conn_id, tx);
+
+    // Register connection in presence service (stores conn id + last activity)
+    // and broadcast presence so other connected clients become aware.
+    // We do this here (after registering the connection) to avoid a race where
+    // broadcasts happen before the new socket is registered and thus the
+    // event is not received by clients already connected.
+    let conn_id_str = conn_id.to_string();
+    let changed = presence.add_connection(&user_id, &conn_id_str);
+    if changed {
+        // Broadcast both legacy UserOnline and structured PresenceUpdated
+        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
+            user_id: user_id.clone(),
+        };
+        hub.broadcast_all(online_event).await;
+
+        let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+            user_id: user_id.clone(),
+            status: "online".to_string(),
+            last_activity: chrono::Utc::now().to_rfc3339(),
+        };
+        hub.broadcast_all(presence_event).await;
+    }
 
     let mut rx = UnboundedReceiverStream::new(rx);
     let (mut sender, mut receiver) = socket.split();
