@@ -21,6 +21,8 @@ import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
+import { messagesApi } from "@/lib/api";
+import type { Message } from "@/lib/api/schemas/messages.schema";
 
 export function ChatPanel() {
   const activeServerId = useServerStore((s) => s.activeServerId);
@@ -42,6 +44,7 @@ export function ChatPanel() {
   const editMessage = useWebSocketStore((s) => s.editMessage);
   const deleteMessage = useWebSocketStore((s) => s.deleteMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
+  const setMessages = useWebSocketStore((s) => s.setMessages);
   const wsMessages = useWebSocketStore((s) => s.messages);
   const socket = useWebSocketStore((s) => s.socket);
   const startTyping = useWebSocketStore((s) => s.startTyping);
@@ -148,10 +151,22 @@ export function ChatPanel() {
 
   // Join channel when it changes
   useEffect(() => {
-    if (activeChannelId && isConnected) {
-      joinChannel(activeChannelId);
+    if (activeChannelId && isConnected && activeServerId) {
+      // Load initial history via REST so the UI shows messages immediately on reload
+      (async () => {
+        try {
+          const data = await messagesApi.list(activeServerId, activeChannelId);
+          // messagesApi returns Message[] compatible with WsMessage shape
+          setMessages(activeChannelId, data as Message[]);
+        } catch (err) {
+          console.warn("Failed to load initial messages via REST:", err);
+        } finally {
+          // Then join the WS channel to receive live updates
+          joinChannel(activeChannelId);
+        }
+      })();
     }
-  }, [activeChannelId, isConnected, joinChannel]);
+  }, [activeChannelId, isConnected, joinChannel, activeServerId, setMessages]);
 
   // Scroll to bottom when messages change
   useEffect(() => {

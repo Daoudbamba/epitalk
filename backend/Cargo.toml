@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["James <james@epitech.eu>"]
 description = "EpiTalk Backend - Full REST API for authentication, RBAC, servers, channels, members & invites"
+default-run = "epitalk-backend"
 
 [dependencies]
 # Web framework
@@ -16,6 +17,7 @@ tower-http = { version = "0.5", features = ["cors", "trace"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 tokio-stream = "0.1"
+url = "2"
 
 # Concurrent data structures
 dashmap = "5"

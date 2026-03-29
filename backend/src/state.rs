@@ -39,6 +39,28 @@ impl AppState {
         // Create presence service
         let presence = Arc::new(PresenceService::new());
 
+        // Spawn a background scanner that marks idle users after threshold
+        {
+            let presence_clone = presence.clone();
+            let hub_clone = Arc::new(Hub::new());
+            // We want to broadcast to the real hub: use hub (not hub_clone)
+            let hub_for_scan = hub.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    let changed = presence_clone.scan_for_idle();
+                    for user_id in changed {
+                        let event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                            user_id: user_id.clone(),
+                            status: "idle".to_string(),
+                            last_activity: chrono::Utc::now().to_rfc3339(),
+                        };
+                        hub_for_scan.broadcast_all(event).await;
+                    }
+                }
+            });
+        }
+
         // Create typing service
         let typing_service = Arc::new(TypingService::new());
 

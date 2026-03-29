@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useDmStore } from "@/store/dm.store";
-import { useAuthStore } from "@/store/auth.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { MessageSquare } from "lucide-react";
 
@@ -13,8 +12,7 @@ export function DmSidebar() {
   const fetchConversations = useDmStore((s) => s.fetchConversations);
   const loading = useDmStore((s) => s.loading);
 
-  const user = useAuthStore((s) => s.user);
-  const onlineUsers = useWebSocketStore((s) => s.onlineUsers);
+  const presence = useWebSocketStore((s) => s.presence);
 
   useEffect(() => {
     fetchConversations();
@@ -50,7 +48,8 @@ export function DmSidebar() {
 
         {conversations.map((conv) => {
           const active = conv.peer_id === activePeerId;
-          const isOnline = onlineUsers.includes(conv.peer_id);
+          const status = presence?.[conv.peer_id]?.status ?? "offline";
+          const isOnline = status === "online";
 
           return (
             <button
@@ -65,25 +64,41 @@ export function DmSidebar() {
             >
               {/* Avatar */}
               <div className="relative shrink-0">
-                <div className={[
-                  "w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold",
-                  active
-                    ? "bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white"
-                    : "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-100",
-                ].join(" ")}>
+                <div
+                  className={[
+                    "w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold",
+                    active
+                      ? "bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] text-white"
+                      : "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-100",
+                  ].join(" ")}
+                >
                   {conv.peer_username.slice(0, 2).toUpperCase()}
                 </div>
-                {/* Online indicator */}
-                {isOnline && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#2b2d31] rounded-full" />
-                )}
+                {/* Presence indicator */}
+                <div
+                  className={[
+                    "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-2 border-white dark:border-[#2b2d31] rounded-full",
+                    status === "online"
+                      ? "bg-emerald-500"
+                      : status === "idle"
+                        ? "bg-red-500"
+                        : status === "dnd"
+                          ? "bg-amber-500"
+                          : "bg-gray-400",
+                  ].join(" ")}
+                  title={status}
+                />
               </div>
 
               <div className="flex-1 min-w-0 text-left">
-                <div className={[
-                  "text-sm font-semibold truncate",
-                  active ? "text-[#023BFC]" : "text-zinc-800 dark:text-zinc-100",
-                ].join(" ")}>
+                <div
+                  className={[
+                    "text-sm font-semibold truncate",
+                    active
+                      ? "text-[#023BFC]"
+                      : "text-zinc-800 dark:text-zinc-100",
+                  ].join(" ")}
+                >
                   {conv.peer_username}
                 </div>
                 <div className="text-xs text-zinc-400 truncate max-w-[160px]">
