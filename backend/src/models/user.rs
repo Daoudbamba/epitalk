@@ -37,6 +37,7 @@ pub struct User {
     pub banner_color_1: Option<String>,
     pub banner_color_2: Option<String>,
     pub status: UserStatus,
+    pub theme: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -53,6 +54,7 @@ pub struct UserResponse {
     pub banner_color_1: Option<String>,
     pub banner_color_2: Option<String>,
     pub status: UserStatus,
+    pub theme: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -67,6 +69,7 @@ impl From<User> for UserResponse {
             banner_color_1: user.banner_color_1,
             banner_color_2: user.banner_color_2,
             status: user.status,
+            theme: user.theme,
             created_at: user.created_at,
         }
     }

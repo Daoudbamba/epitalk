@@ -80,6 +80,7 @@ pub struct UserResponse {
     pub banner_color_1: Option<String>,
     pub banner_color_2: Option<String>,
     pub status: UserStatus,
+    pub theme: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -94,6 +95,7 @@ impl From<User> for UserResponse {
             banner_color_1: user.banner_color_1,
             banner_color_2: user.banner_color_2,
             status: user.status,
+            theme: user.theme,
             created_at: user.created_at,
         }
     }
@@ -166,6 +168,7 @@ mod tests {
             banner_color_1: Some("#023BFC".into()),
             banner_color_2: Some("#3D6AFF".into()),
             status: UserStatus::Online,
+            theme: "light".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -341,6 +344,7 @@ pub struct UpdateProfileRequest {
     pub banner_color_1: Option<String>,
     pub banner_color_2: Option<String>,
     pub status: Option<UserStatus>,
+    pub theme: Option<String>,
 }
 
 /// Validate a hex color string like #RRGGBB
@@ -395,6 +399,15 @@ pub async fn update_profile(
         }
     }
 
+    // Validate theme
+    if let Some(ref t) = payload.theme {
+        if !["light", "ash", "dim", "dark"].contains(&t.as_str()) {
+            return Err(AppError::Validation(
+                "Theme must be one of: light, ash, dim, dark".to_string(),
+            ));
+        }
+    }
+
     let user = UserRepository::update_profile(
         &state.db,
         auth.user_id,
@@ -404,6 +417,7 @@ pub async fn update_profile(
         payload.banner_color_1.as_deref(),
         payload.banner_color_2.as_deref(),
         payload.status.as_ref(),
+        payload.theme.as_deref(),
     )
     .await?;
 
@@ -496,6 +510,7 @@ pub async fn upload_avatar(
         None,
         None,
         Some(&avatar_url),
+        None,
         None,
         None,
         None,
@@ -608,6 +623,7 @@ pub async fn set_avatar_from_url(
         None,
         None,
         Some(&avatar_url),
+        None,
         None,
         None,
         None,

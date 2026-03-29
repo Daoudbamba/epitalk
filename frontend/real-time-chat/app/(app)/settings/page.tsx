@@ -78,10 +78,18 @@ export default function SettingsPage() {
   const setUser = useAuthStore((s) => s.setUser);
   const disconnect = useWebSocketStore((s) => s.disconnect);
 
-  const theme = useAppearanceStore((s) => s.theme);
+  const theme = (user?.theme as Theme) || "light";
   const fontSize = useAppearanceStore((s) => s.fontSize);
-  const setTheme = useAppearanceStore((s) => s.setTheme);
   const setFontSize = useAppearanceStore((s) => s.setFontSize);
+
+  const handleSetTheme = async (t: Theme) => {
+    try {
+      const updated = await authApi.updateProfile({ theme: t });
+      setUser(updated);
+    } catch (e) {
+      console.error("Failed to update theme", e);
+    }
+  };
 
   const [section, setSection] = useState<Section>("profile");
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -1043,7 +1051,7 @@ export default function SettingsPage() {
                   return (
                     <button
                       key={opt.value}
-                      onClick={() => setTheme(opt.value)}
+                      onClick={() => handleSetTheme(opt.value)}
                       className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 ${
                         active
                           ? "border-[#023BFC] ring-2 ring-[#023BFC]/20"
