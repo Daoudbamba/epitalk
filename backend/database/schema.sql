@@ -37,6 +37,7 @@ CREATE TABLE users (
     banner_color_1 TEXT DEFAULT '#023BFC',
     banner_color_2 TEXT DEFAULT '#3D6AFF',
     status user_status NOT NULL DEFAULT 'ONLINE',
+    theme TEXT NOT NULL DEFAULT 'light',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

@@ -16,6 +16,7 @@ export interface UpdateProfileInput {
   banner_color_1?: string;
   banner_color_2?: string;
   status?: "ONLINE" | "IDLE" | "DND" | "OFFLINE";
+  theme?: string;
 }
 
 export class AuthAPI {

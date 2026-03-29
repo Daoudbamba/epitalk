@@ -33,6 +33,7 @@ export const UserSchema = z.object({
   banner_color_1: z.string().nullable().optional(),
   banner_color_2: z.string().nullable().optional(),
   status: z.enum(["ONLINE", "IDLE", "DND", "OFFLINE"]).optional(),
+  theme: z.string().optional(),
   created_at: z.string().optional(),
 });
 

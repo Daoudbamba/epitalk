@@ -14,7 +14,7 @@ impl UserRepository {
         let user = sqlx::query_as::<_, User>(
             r#"
             SELECT id, email, password_hash, username, avatar_url, bio,
-                   banner_color_1, banner_color_2, status, created_at, updated_at
+                   banner_color_1, banner_color_2, status, theme, created_at, updated_at
             FROM users
             WHERE id = $1
             "#,
@@ -31,7 +31,7 @@ impl UserRepository {
         let user = sqlx::query_as::<_, User>(
             r#"
             SELECT id, email, password_hash, username, avatar_url, bio,
-                   banner_color_1, banner_color_2, status, created_at, updated_at
+                   banner_color_1, banner_color_2, status, theme, created_at, updated_at
             FROM users
             WHERE email = $1
             "#,
@@ -48,7 +48,7 @@ impl UserRepository {
         let user = sqlx::query_as::<_, User>(
             r#"
             SELECT id, email, password_hash, username, avatar_url, bio,
-                   banner_color_1, banner_color_2, status, created_at, updated_at
+                   banner_color_1, banner_color_2, status, theme, created_at, updated_at
             FROM users
             WHERE username = $1
             "#,
@@ -72,7 +72,7 @@ impl UserRepository {
             INSERT INTO users (email, password_hash, username)
             VALUES ($1, $2, $3)
             RETURNING id, email, password_hash, username, avatar_url, bio,
-                      banner_color_1, banner_color_2, status, created_at, updated_at
+                      banner_color_1, banner_color_2, status, theme, created_at, updated_at
             "#,
         )
         .bind(email)
@@ -102,6 +102,7 @@ impl UserRepository {
         banner_color_1: Option<&str>,
         banner_color_2: Option<&str>,
         status: Option<&UserStatus>,
+        theme: Option<&str>,
     ) -> AppResult<User> {
         let user = sqlx::query_as::<_, User>(
             r#"
@@ -112,10 +113,11 @@ impl UserRepository {
                 banner_color_1 = COALESCE($5, banner_color_1),
                 banner_color_2 = COALESCE($6, banner_color_2),
                 status        = COALESCE($7, status),
+                theme         = COALESCE($8, theme),
                 updated_at    = NOW()
             WHERE id = $1
             RETURNING id, email, password_hash, username, avatar_url, bio,
-                      banner_color_1, banner_color_2, status, created_at, updated_at
+                      banner_color_1, banner_color_2, status, theme, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -125,6 +127,7 @@ impl UserRepository {
         .bind(banner_color_1)
         .bind(banner_color_2)
         .bind(status)
+        .bind(theme)
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
@@ -144,7 +147,7 @@ impl UserRepository {
             SET email = $2, updated_at = NOW()
             WHERE id = $1
             RETURNING id, email, password_hash, username, avatar_url, bio,
-                      banner_color_1, banner_color_2, status, created_at, updated_at
+                      banner_color_1, banner_color_2, status, theme, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -176,7 +179,7 @@ impl UserRepository {
             SET password_hash = $2, updated_at = NOW()
             WHERE id = $1
             RETURNING id, email, password_hash, username, avatar_url, bio,
-                      banner_color_1, banner_color_2, status, created_at, updated_at
+                      banner_color_1, banner_color_2, status, theme, created_at, updated_at
             "#,
         )
         .bind(id)
