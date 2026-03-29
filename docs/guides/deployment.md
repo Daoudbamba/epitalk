@@ -8,7 +8,7 @@ Ce guide couvre le déploiement du backend Discord Clone en production.
 
 | Environnement | URL | Trigger |
 | ------------- | --- | ------- |
-| Development | localhost:8080 | Local |
+| Development | localhost:3001 | Local |
 | Staging | staging.discord-clone.example.com | Push sur `main` |
 | Production | api.discord-clone.example.com | Tag `v*.*.*` |
 
@@ -50,7 +50,7 @@ Créer un fichier `.env.production` :
 ```bash
 # Server
 HOST=0.0.0.0
-PORT=8080
+PORT=3001
 RUST_LOG=info
 
 # Database
@@ -77,7 +77,7 @@ services:
     image: ghcr.io/epitechmscpropromo2028/t-jsf-600-par_20/backend:latest
     restart: always
     ports:
-      - "8080:8080"
+      - "3001:3001"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - MONGODB_URI=${MONGODB_URI}
@@ -85,7 +85,7 @@ services:
     volumes:
       - ./secrets:/secrets:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -163,7 +163,7 @@ Le workflow `.github/workflows/deploy.yml` gère le déploiement automatique.
 
 ```nginx
 upstream backend {
-    server 127.0.0.1:8080;
+    server 127.0.0.1:3001;
     keepalive 32;
 }
 
@@ -295,9 +295,9 @@ Avec Nginx upstream :
 
 ```nginx
 upstream backend {
-    server backend1:8080;
-    server backend2:8080;
-    server backend3:8080;
+    server backend1:3001;
+    server backend2:3001;
+    server backend3:3001;
     keepalive 32;
 }
 ```

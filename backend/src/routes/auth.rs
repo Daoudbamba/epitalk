@@ -14,7 +14,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    auth::{PasswordService, RequireAuth},
+    auth::{PasswordService, RequireAuth, RequireAuthAllowExpired},
     error::{AppError, AppResult},
     models::user::UserStatus,
     models::User,
@@ -311,7 +311,7 @@ pub async fn me(
 #[axum::debug_handler]
 pub async fn refresh_token(
     State(state): State<Arc<AppState>>,
-    auth: RequireAuth,
+    auth: RequireAuthAllowExpired,
 ) -> AppResult<Json<AuthResponse>> {
     // Get fresh user data
     let user = UserRepository::find_by_id(&state.db, auth.user_id)

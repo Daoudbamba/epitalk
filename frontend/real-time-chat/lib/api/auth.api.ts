@@ -100,6 +100,7 @@ export class AuthAPI {
     // Logout cote client - supprimer le token du localStorage
     if (typeof window !== "undefined") {
       localStorage.removeItem("token");
+      localStorage.removeItem("auth-storage");
     }
   }
 }

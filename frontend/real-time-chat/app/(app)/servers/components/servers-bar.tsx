@@ -8,6 +8,7 @@ import { getErrorMessage } from "@/lib/api/errors";
 import { useMemo, useState } from "react";
 import { UserSettings } from "./user-settings";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 
 function extractInviteCode(value: string): string | null {
   const v = value.trim();
@@ -43,6 +44,8 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [dangerLoading, setDangerLoading] = useState(false);
+  const [openDangerConfirm, setOpenDangerConfirm] = useState(false);
 
   const [status, setStatus] = useState<Status>(null);
 
@@ -111,28 +114,37 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const onLeaveOrDelete = async () => {
     if (!activeServerId || !activeServer) return;
 
+    setOpenDangerConfirm(true);
+  };
+
+  const confirmLeaveOrDelete = async () => {
+    if (!activeServerId || !activeServer) return;
+
     setStatus(null);
+    setDangerLoading(true);
 
-    if (isOwner) {
-      const ok = confirm("Tu es le créateur. Supprimer le serveur ?");
-      if (!ok) return;
-      await serversApi.delete(activeServerId);
-      setInfo("Serveur supprimé.");
-    } else {
-      const ok = confirm("Quitter ce serveur ?");
-      if (!ok) return;
-      await serversApi.leave(activeServerId);
-      setInfo("Serveur quitté.");
-    }
+    try {
+      if (isOwner) {
+        await serversApi.delete(activeServerId);
+        setInfo("Serveur supprimé.");
+      } else {
+        await serversApi.leave(activeServerId);
+        setInfo("Serveur quitté.");
+      }
 
-    await onRefresh();
+      await onRefresh();
 
-    // recaler un serveur actif si celui-ci a disparu
-    const after = useServerStore.getState().servers;
-    const stillThere = after.some((s) => s.id === activeServerId);
-    if (!stillThere) {
-      const next = after[0]?.id ?? null;
-      if (next) setActiveServer(next);
+      // recaler un serveur actif si celui-ci a disparu
+      const after = useServerStore.getState().servers;
+      const stillThere = after.some((s) => s.id === activeServerId);
+      if (!stillThere) {
+        const next = after[0]?.id ?? null;
+        if (next) setActiveServer(next);
+      }
+
+      setOpenDangerConfirm(false);
+    } finally {
+      setDangerLoading(false);
     }
   };
 
@@ -239,6 +251,21 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
         open={openCreateServer}
         onOpenChange={setOpenCreateServer}
         onSuccess={onRefresh}
+      />
+
+      <ConfirmActionDialog
+        open={openDangerConfirm}
+        onOpenChange={setOpenDangerConfirm}
+        title={isOwner ? "Supprimer ce serveur ?" : "Quitter ce serveur ?"}
+        description={
+          isOwner
+            ? "Le serveur et son contenu seront supprimés définitivement."
+            : "Vous serez retiré de ce serveur."
+        }
+        confirmLabel={isOwner ? "Supprimer" : "Quitter"}
+        confirmVariant={isOwner ? "destructive" : "default"}
+        loading={dangerLoading}
+        onConfirm={confirmLeaveOrDelete}
       />
     </div>
   );

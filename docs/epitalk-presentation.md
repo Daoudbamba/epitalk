@@ -53,7 +53,7 @@
 ## Slide 5 – Critère “Serveur” (specs_server)
 
 - Serveur Rust (Axum) exposant les endpoints `/api/...`
-- Endpoint WebSocket : `ws://host:8080/ws?token=JWT`
+- Endpoint WebSocket : `ws://host:3001/ws?token=JWT`
 - Hub supportant plusieurs connexions simultanées par utilisateur
 - Validation : JWT, taille max de frame, validation du contenu
 

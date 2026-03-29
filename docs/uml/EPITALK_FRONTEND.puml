@@ -103,7 +103,7 @@ package "frontend/real-time-chat/ (NextJS App Router)" {
   }
 }
 
-cloud "Backend HTTP\n(REST API :8080)" as BE_HTTP
+cloud "Backend HTTP\n(REST API :3001)" as BE_HTTP
 cloud "[PLANNED] Backend WS\n(/ws)" as BE_WS <<planned>>
 
 ' ===================== RELATIONS =====================
