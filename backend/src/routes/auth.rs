@@ -334,6 +334,17 @@ pub async fn refresh_token(
 // Profile update
 // ============================================================================
 
+/// Delete the old avatar file from disk if it exists
+async fn delete_old_avatar(upload_dir: &str, avatar_url: Option<&str>) {
+    if let Some(url) = avatar_url {
+        // avatar_url is like "/uploads/avatar_xxx.jpg"
+        if let Some(filename) = url.strip_prefix("/uploads/") {
+            let filepath = format!("{}/{}", upload_dir, filename);
+            let _ = tokio::fs::remove_file(&filepath).await;
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpdateProfileRequest {
     pub username: Option<String>,
@@ -421,6 +432,11 @@ pub async fn upload_avatar(
 ) -> AppResult<Json<UserResponse>> {
     let upload_dir = state.config.upload_dir.clone();
 
+    // Get current user to know old avatar
+    let current_user = UserRepository::find_by_id(&state.db, auth.user_id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
     // Create uploads directory
     tokio::fs::create_dir_all(&upload_dir)
         .await
@@ -490,6 +506,9 @@ pub async fn upload_avatar(
         AppError::BadRequest("No avatar field in multipart form".to_string())
     })?;
 
+    // Delete old avatar file
+    delete_old_avatar(&upload_dir, current_user.avatar_url.as_deref()).await;
+
     let user = UserRepository::update_profile(
         &state.db,
         auth.user_id,
@@ -519,6 +538,11 @@ pub async fn set_avatar_from_url(
     auth: RequireAuth,
     Json(body): Json<AvatarUrlRequest>,
 ) -> AppResult<Json<UserResponse>> {
+    // Get current user to know old avatar
+    let current_user = UserRepository::find_by_id(&state.db, auth.user_id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
     // Validate URL
     let parsed = reqwest::Url::parse(&body.url)
         .map_err(|_| AppError::Validation("Invalid URL".to_string()))?;
@@ -601,6 +625,9 @@ pub async fn set_avatar_from_url(
         .map_err(|e| AppError::Internal(format!("Failed to save file: {e}")))?;
 
     let avatar_url = format!("/uploads/{}", filename);
+
+    // Delete old avatar file
+    delete_old_avatar(&upload_dir, current_user.avatar_url.as_deref()).await;
 
     let user = UserRepository::update_profile(
         &state.db,
