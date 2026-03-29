@@ -1,6 +1,4 @@
 import { create } from "zustand";
-import { authApi } from "@/lib/api";
-import { ApiError } from "@/lib/api/errors";
 import { useAuthStore } from "@/store/auth.store";
 
 // Types basés sur le protocole WebSocket du backend
@@ -25,18 +23,43 @@ export interface WsMessage {
 
 // CLIENT → SERVER events
 type ClientEvent =
-  | { type: "MessageSend"; payload: { channel_id: string; content: string; reply_to?: string } }
-  | { type: "MessageEdit"; payload: { channel_id: string; message_id: string; content: string } }
-  | { type: "MessageDelete"; payload: { channel_id: string; message_id: string } }
+  | {
+      type: "MessageSend";
+      payload: { channel_id: string; content: string; reply_to?: string };
+    }
+  | {
+      type: "MessageEdit";
+      payload: { channel_id: string; message_id: string; content: string };
+    }
+  | {
+      type: "MessageDelete";
+      payload: { channel_id: string; message_id: string };
+    }
   | { type: "JoinChannel"; payload: { channel_id: string } }
   | { type: "LeaveChannel"; payload: { channel_id: string } }
   | { type: "TypingStart"; payload: { channel_id: string } }
   | { type: "TypingStop"; payload: { channel_id: string } }
   | { type: "Ping" }
-  | { type: "DmSend"; payload: { recipient_id: string; content: string; reply_to?: string } }
-  | { type: "DmEdit"; payload: { conversation_id: string; message_id: string; content: string } }
-  | { type: "DmDelete"; payload: { conversation_id: string; message_id: string } }
-  | { type: "DmSendGif"; payload: { recipient_id: string; gif: { id: string; url: string; preview?: string; provider?: string }; caption?: string | null } }
+  | {
+      type: "DmSend";
+      payload: { recipient_id: string; content: string; reply_to?: string };
+    }
+  | {
+      type: "DmEdit";
+      payload: { conversation_id: string; message_id: string; content: string };
+    }
+  | {
+      type: "DmDelete";
+      payload: { conversation_id: string; message_id: string };
+    }
+  | {
+      type: "DmSendGif";
+      payload: {
+        recipient_id: string;
+        gif: { id: string; url: string; preview?: string; provider?: string };
+        caption?: string | null;
+      };
+    }
   | { type: "JoinDm"; payload: { peer_id: string } }
   | { type: "LeaveDm"; payload: { peer_id: string } }
   | {
@@ -46,14 +69,27 @@ type ClientEvent =
         gif: { id: string; url: string; preview?: string; provider?: string };
         caption?: string | null;
       };
+    }
+  | {
+      type: "PresenceSet";
+      payload: { status: "online" | "idle" | "dnd" | "offline" };
     };
 
 // SERVER → CLIENT events
 type ServerEvent =
-  | { type: "MessageNew"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; created_at: string; reply_to?: string } }
-  | { type: "MessageUpdated"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; edited_at: string } }
-  | { type: "MessagePinned"; payload: { message_id: string; channel_id: string; pinned_by: string; pinned_at: string } }
-  | { type: "MessageUnpinned"; payload: { message_id: string; channel_id: string; unpinned_by: string; unpinned_at: string } }
+  | {
+      type: "MessageNew";
+      payload: {
+        id: string;
+        channel_id: string;
+        author_id: string;
+        username?: string;
+        content: string;
+        created_at: string;
+        reply_to?: string;
+        reactions?: { emoji: string; user_id: string; username?: string }[];
+      };
+    }
   | { type: "UserJoined"; payload: { user_id: string; channel_id: string } }
   | { type: "UserLeft"; payload: { user_id: string; channel_id: string } }
   | {
@@ -68,13 +104,63 @@ type ServerEvent =
   | { type: "Error"; payload: { code: string; message: string } }
   | { type: "UserOnline"; payload: { user_id: string } }
   | { type: "UserOffline"; payload: { user_id: string } }
-  | { type: "MessageEdited"; payload: { id: string; channel_id: string; author_id: string; username?: string; content: string; edited_at: string; } }
+  | {
+      type: "PresenceUpdated";
+      payload: {
+        user_id: string;
+        status: "online" | "idle" | "dnd" | "offline";
+        last_activity?: string;
+      };
+    }
+  | {
+      type: "MessageEdited";
+      payload: {
+        id: string;
+        channel_id: string;
+        author_id: string;
+        username?: string;
+        content: string;
+        edited_at: string;
+      };
+    }
   | { type: "MessageDeleted"; payload: { id: string; channel_id: string } }
-  | { type: "ReactionAdded"; payload: { message_id: string; emoji: string; user_id: string; username?: string } }
-  | { type: "ReactionRemoved"; payload: { message_id: string; emoji: string; user_id: string } }
+  | {
+      type: "ReactionAdded";
+      payload: {
+        message_id: string;
+        emoji: string;
+        user_id: string;
+        username?: string;
+      };
+    }
+  | {
+      type: "ReactionRemoved";
+      payload: { message_id: string; emoji: string; user_id: string };
+    }
   | { type: "Error"; payload: { code: string; message: string } }
-  | { type: "DmNew"; payload: { id: string; conversation_id: string; author_id: string; username: string; content: string; created_at: string; reply_to?: string } }
-  | { type: "DmEdited"; payload: { id: string; conversation_id: string; author_id: string; username: string; content: string; edited_at: string } }
+  | {
+      type: "DmNew";
+      payload: {
+        id: string;
+        conversation_id: string;
+        author_id: string;
+        username: string;
+        content: string;
+        created_at: string;
+        reply_to?: string;
+      };
+    }
+  | {
+      type: "DmEdited";
+      payload: {
+        id: string;
+        conversation_id: string;
+        author_id: string;
+        username: string;
+        content: string;
+        edited_at: string;
+      };
+    }
   | { type: "DmDeleted"; payload: { id: string; conversation_id: string } }
   | { type: "Pong" };
 
@@ -89,7 +175,11 @@ type WebSocketState = {
   currentChannelId: string | null;
   currentDmPeerId: string | null;
   typingUsers: Record<string, string[]>; // channel_id -> user_ids
-  onlineUsers: string[];
+  // presence: user_id -> { status, last_activity }
+  presence: Record<
+    string,
+    { status: "online" | "idle" | "dnd" | "offline"; last_activity?: string }
+  >;
   error: string | null;
 
   // Actions
@@ -112,41 +202,25 @@ type WebSocketState = {
   clearMessages: (channelId: string) => void;
   setCurrentChannel: (channelId: string | null) => void;
   setMessages: (channelId: string, messages: WsMessage[]) => void;
-  clearError: () => void;
+  // DM actions
+  sendDm: (recipientId: string, content: string, replyTo?: string) => void;
+  editDm: (conversationId: string, messageId: string, content: string) => void;
+  deleteDm: (conversationId: string, messageId: string) => void;
+  sendDmGif: (
+    recipientId: string,
+    gif: { id: string; url: string; preview?: string; provider?: string },
+    caption?: string | null,
+  ) => void;
+  joinDm: (peerId: string) => void;
+  leaveDm: (peerId: string) => void;
+  getDmMessages: (conversationId: string) => WsMessage[];
+  setCurrentDmPeer: (peerId: string | null) => void;
+  // Presence control for the local user
+  setPresence: (status: "online" | "idle" | "dnd" | "offline") => void;
 };
 
+// Default to backend port 3001 where the Rust server listens in dev
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001/ws";
-const MAX_RECONNECT_ATTEMPTS = 5;
-const BASE_RECONNECT_DELAY_MS = 1000;
-const DEGRADED_RECONNECT_DELAY_MS = 30000;
-
-let reconnectAttempts = 0;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearReconnectTimer() {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-}
-
-function shouldForceAuthLogout(event: CloseEvent): boolean {
-  const reason = event.reason?.toLowerCase() ?? "";
-  return (
-    event.code === 1008 ||
-    reason.includes("unauthorized") ||
-    reason.includes("invalid token") ||
-    reason.includes("expired")
-  );
-}
-
-function getLatestToken(): string | null {
-  if (typeof window !== "undefined") {
-    const fromStorage = localStorage.getItem("token");
-    if (fromStorage) return fromStorage;
-  }
-  return useAuthStore.getState().token;
-}
 
 export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   socket: null,
@@ -159,7 +233,7 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   currentChannelId: null,
   currentDmPeerId: null,
   typingUsers: {},
-  onlineUsers: [],
+  presence: {},
   error: null,
 
   connect: (token: string) => {
@@ -195,6 +269,34 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
       const currentChannel = get().currentChannelId;
       if (currentChannel) {
         get().joinChannel(currentChannel);
+      }
+
+      // Restore persisted presence status (optimistic local update + notify server)
+      try {
+        const stored =
+          window.localStorage.getItem("presence_status") || "online";
+        const storedStatus = stored as "online" | "idle" | "dnd" | "offline";
+        // Apply optimistic presence locally so UI shows immediately
+        const authUser = useAuthStore.getState().user;
+        if (authUser) {
+          set((s) => {
+            const newPresence = { ...s.presence };
+            newPresence[authUser.id] = {
+              status: storedStatus,
+              last_activity: new Date().toISOString(),
+            };
+            return { presence: newPresence };
+          });
+        }
+        // Send PresenceSet to server so server becomes authoritative
+        const evt: ClientEvent = {
+          type: "PresenceSet",
+          payload: { status: storedStatus },
+        };
+        if (socket && socket.readyState === WebSocket.OPEN)
+          socket.send(JSON.stringify(evt));
+      } catch (e) {
+        console.warn("Failed to restore presence from localStorage:", e);
       }
 
       // Start ping interval
@@ -322,8 +424,13 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   sendMessage: (channelId: string, content: string, replyTo?: string) => {
     const { socket } = get();
-    console.log("📤 Sending message:", { channelId, content, replyTo, socketState: socket?.readyState });
-    
+    console.log("📤 Sending message:", {
+      channelId,
+      content,
+      replyTo,
+      socketState: socket?.readyState,
+    });
+
     if (socket && socket.readyState === WebSocket.OPEN) {
       const event: ClientEvent = {
         type: "MessageSend",
@@ -519,8 +626,126 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     }));
   },
 
-  clearError: () => {
-    set({ error: null });
+  // ─── DM Actions ────────────────────────────────────────────
+
+  sendDm: (recipientId: string, content: string, replyTo?: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmSend",
+        payload: { recipient_id: recipientId, content, reply_to: replyTo },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  editDm: (conversationId: string, messageId: string, content: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmEdit",
+        payload: {
+          conversation_id: conversationId,
+          message_id: messageId,
+          content,
+        },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  deleteDm: (conversationId: string, messageId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmDelete",
+        payload: { conversation_id: conversationId, message_id: messageId },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  sendDmGif: (
+    recipientId: string,
+    gif: { id: string; url: string; preview?: string; provider?: string },
+    caption?: string | null,
+  ) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "DmSendGif",
+        payload: { recipient_id: recipientId, gif, caption },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  joinDm: (peerId: string) => {
+    const { socket, currentDmPeerId } = get();
+
+    // Leave previous DM room
+    if (currentDmPeerId && currentDmPeerId !== peerId) {
+      get().leaveDm(currentDmPeerId);
+    }
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "JoinDm",
+        payload: { peer_id: peerId },
+      };
+      socket.send(JSON.stringify(event));
+      set({ currentDmPeerId: peerId });
+    }
+  },
+
+  leaveDm: (peerId: string) => {
+    const { socket } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const event: ClientEvent = {
+        type: "LeaveDm",
+        payload: { peer_id: peerId },
+      };
+      socket.send(JSON.stringify(event));
+    }
+  },
+
+  getDmMessages: (conversationId: string) => {
+    const { dmMessages } = get();
+    return dmMessages[conversationId] || [];
+  },
+
+  // Allow the client to set their presence status (sends PresenceSet to server)
+  setPresence: (status: "online" | "idle" | "dnd" | "offline") => {
+    const { socket } = get();
+    // Persist chosen status locally so reload can restore it
+    try {
+      window.localStorage.setItem("presence_status", status);
+    } catch {}
+
+    // Optimistically update local store so UI reflects change immediately
+    const authUser = useAuthStore.getState().user;
+    if (authUser) {
+      set((s) => {
+        const newPresence = { ...s.presence };
+        newPresence[authUser.id] = {
+          status,
+          last_activity: new Date().toISOString(),
+        };
+        return { presence: newPresence };
+      });
+    }
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      console.warn("WebSocket not open, PresenceSet will be sent on reconnect");
+      return;
+    }
+
+    const event: ClientEvent = { type: "PresenceSet", payload: { status } };
+    socket.send(JSON.stringify(event));
+  },
+
+  setCurrentDmPeer: (peerId: string | null) => {
+    set({ currentDmPeerId: peerId });
   },
 }));
 
@@ -537,14 +762,8 @@ function handleServerEvent(
 
   switch (event.type) {
     case "MessageNew": {
-      const {
-        id,
-        channel_id,
-        author_id,
-        username,
-        content,
-        created_at,
-      } = event.payload;
+      const { id, channel_id, author_id, username, content, created_at } =
+        event.payload;
       const newMessage: WsMessage = {
         id,
         channel_id,
@@ -578,15 +797,63 @@ function handleServerEvent(
     case "MessageUpdated": {
       const { id, channel_id, content, edited_at } = event.payload;
       set((state) => {
-        const channelMessages = state.messages[channel_id] || [];
-        return {
-          messages: {
-            ...state.messages,
-            [channel_id]: channelMessages.map((message) =>
-              message.id === id ? { ...message, content, edited_at } : message,
-            ),
-          },
-        };
+        const newMessages = { ...state.messages } as Record<
+          string,
+          WsMessage[]
+        >;
+
+        // Try to find the message across all channels
+        for (const [chanId, msgs] of Object.entries(newMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+
+            // Prevent duplicates: same user + same emoji
+            const already = existing.some(
+              (r) => r.user_id === user_id && r.emoji === emoji,
+            );
+            if (already) return state;
+
+            const updated: WsMessage = {
+              ...target,
+              reactions: [...existing, { emoji, user_id, username }],
+            };
+
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newMessages[chanId] = updatedList;
+
+            return { messages: newMessages };
+          }
+        }
+
+        // Also search in DM messages
+        const newDmMessages = { ...state.dmMessages } as Record<
+          string,
+          WsMessage[]
+        >;
+        for (const [convId, msgs] of Object.entries(newDmMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+            const already = existing.some(
+              (r) => r.user_id === user_id && r.emoji === emoji,
+            );
+            if (already) return state;
+            const updated: WsMessage = {
+              ...target,
+              reactions: [...existing, { emoji, user_id, username }],
+            };
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newDmMessages[convId] = updatedList;
+            return { dmMessages: newDmMessages };
+          }
+        }
+
+        return state;
       });
       break;
     }
@@ -607,18 +874,54 @@ function handleServerEvent(
       break;
     }
 
-    case "MessageUnpinned": {
-      const { message_id, channel_id } = event.payload;
-      set((state) => {
-        const channelMessages = state.messages[channel_id] || [];
-        return {
-          messages: {
-            ...state.messages,
-            [channel_id]: channelMessages.map((message) =>
-              message.id === message_id ? { ...message, pinned_by: null, pinned_at: null } : message,
-            ),
-          },
-        };
+        for (const [chanId, msgs] of Object.entries(newMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+
+            const updatedReactions = existing.filter(
+              (r) => !(r.user_id === user_id && r.emoji === emoji),
+            );
+
+            const updated: WsMessage = {
+              ...target,
+              reactions: updatedReactions,
+            };
+
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newMessages[chanId] = updatedList;
+
+            return { messages: newMessages };
+          }
+        }
+
+        // Also search in DM messages
+        const newDmMessages = { ...state.dmMessages } as Record<
+          string,
+          WsMessage[]
+        >;
+        for (const [convId, msgs] of Object.entries(newDmMessages)) {
+          const idx = msgs.findIndex((m) => m.id === message_id);
+          if (idx !== -1) {
+            const target = msgs[idx];
+            const existing = target.reactions || [];
+            const updatedReactions = existing.filter(
+              (r) => !(r.user_id === user_id && r.emoji === emoji),
+            );
+            const updated: WsMessage = {
+              ...target,
+              reactions: updatedReactions,
+            };
+            const updatedList = [...msgs];
+            updatedList[idx] = updated;
+            newDmMessages[convId] = updatedList;
+            return { dmMessages: newDmMessages };
+          }
+        }
+
+        return state;
       });
       break;
     }
@@ -699,23 +1002,39 @@ function handleServerEvent(
     }
 
     case "UserOnline": {
+      // Keep legacy behavior and also set presence
       set((state) => {
-        if (state.onlineUsers.includes(event.payload.user_id)) {
-          return state;
-        }
-        return {
-          onlineUsers: [...state.onlineUsers, event.payload.user_id],
+        const newPresence = { ...state.presence };
+        newPresence[event.payload.user_id] = {
+          status: "online",
+          last_activity: new Date().toISOString(),
         };
+        return { presence: newPresence };
       });
       break;
     }
 
     case "UserOffline": {
-      set((state) => ({
-        onlineUsers: state.onlineUsers.filter(
-          (id) => id !== event.payload.user_id,
-        ),
-      }));
+      set((state) => {
+        const newPresence = { ...state.presence };
+        delete newPresence[event.payload.user_id];
+        // keep a record as offline with timestamp
+        newPresence[event.payload.user_id] = {
+          status: "offline",
+          last_activity: new Date().toISOString(),
+        };
+        return { presence: newPresence };
+      });
+      break;
+    }
+
+    case "PresenceUpdated": {
+      const { user_id, status, last_activity } = event.payload;
+      set((state) => {
+        const newPresence = { ...state.presence };
+        newPresence[user_id] = { status, last_activity };
+        return { presence: newPresence };
+      });
       break;
     }
 
@@ -725,13 +1044,25 @@ function handleServerEvent(
     }
 
     case "Error": {
-      console.error("❌ Server error:", event.payload.code, event.payload.message);
+      console.error(
+        "❌ Server error:",
+        event.payload.code,
+        event.payload.message,
+      );
       set({ error: `[${event.payload.code}] ${event.payload.message}` });
       break;
     }
 
     case "DmNew": {
-      const { id, conversation_id, author_id, username, content, created_at, reply_to } = event.payload;
+      const {
+        id,
+        conversation_id,
+        author_id,
+        username,
+        content,
+        created_at,
+        reply_to,
+      } = event.payload;
       const newMessage: WsMessage = {
         id,
         channel_id: conversation_id,

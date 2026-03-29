@@ -129,7 +129,30 @@ pub async fn handle_connection(
 ) {
     // Canal interne pour envoyer des messages au client
     let (tx, rx) = mpsc::unbounded_channel();
+    // Register connection in hub so broadcast messages reach this socket
     hub.register_connection(&user_id, conn_id, tx);
+
+    // Register connection in presence service (stores conn id + last activity)
+    // and broadcast presence so other connected clients become aware.
+    // We do this here (after registering the connection) to avoid a race where
+    // broadcasts happen before the new socket is registered and thus the
+    // event is not received by clients already connected.
+    let conn_id_str = conn_id.to_string();
+    let changed = presence.add_connection(&user_id, &conn_id_str);
+    if changed {
+        // Broadcast both legacy UserOnline and structured PresenceUpdated
+        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
+            user_id: user_id.clone(),
+        };
+        hub.broadcast_all(online_event).await;
+
+        let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+            user_id: user_id.clone(),
+            status: "online".to_string(),
+            last_activity: chrono::Utc::now().to_rfc3339(),
+        };
+        hub.broadcast_all(presence_event).await;
+    }
 
     let mut rx = UnboundedReceiverStream::new(rx);
     let (mut sender, mut receiver) = socket.split();
@@ -743,13 +766,44 @@ pub async fn handle_connection(
                 },
                 ClientEvent::Ping => {
                     hub_recv.heartbeat(&conn_id);
-                    // Refresh presence timestamp
-                    presence_recv.set_online(&user_id_recv);
+                    // Refresh presence timestamp; if status changed (idle -> online) broadcast update
+                    let changed = presence_recv.refresh_activity(&user_id_recv);
+                    if changed {
+                        let event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                            user_id: user_id_recv.clone(),
+                            status: "online".to_string(),
+                            last_activity: chrono::Utc::now().to_rfc3339(),
+                        };
+                        hub_recv.broadcast_all(event).await;
+                    }
                     if let Some(tx) = hub_recv.sockets.get(&conn_id) {
                         let event = ServerEvent::Pong;
                         if let Ok(json) = serde_json::to_string(&event) {
                             let _ = tx.send(Message::Text(json));
                         }
+                    }
+                },
+                ClientEvent::PresenceSet { status } => {
+                    // Map string -> PresenceStatus
+                    let st = match status.as_str() {
+                        "online" => crate::services::presence_service::PresenceStatus::Online,
+                        "idle" => crate::services::presence_service::PresenceStatus::Idle,
+                        "dnd" => crate::services::presence_service::PresenceStatus::Dnd,
+                        "offline" => crate::services::presence_service::PresenceStatus::Offline,
+                        other => {
+                            send_error(&hub_recv, &conn_id, "INVALID_PRESENCE", &format!("unknown status: {}", other));
+                            continue;
+                        }
+                    };
+
+                    let changed = presence_recv.set_status(&user_id_recv, st);
+                    if changed {
+                        let event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                            user_id: user_id_recv.clone(),
+                            status: status.clone(),
+                            last_activity: chrono::Utc::now().to_rfc3339(),
+                        };
+                        hub_recv.broadcast_all(event).await;
                     }
                 },
                 ClientEvent::MessageSendGif { channel_id, gif, caption } => {
@@ -1168,18 +1222,47 @@ pub async fn handle_connection(
     let _ = recv_task.await;
 
     // Nettoyage connexion
+    // Log connection cleanup for debugging resets and presence transitions
+    let conn_count_before = hub
+        .connections
+        .get(&user_id)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    tracing::info!(user = %user_id, conn = %conn_id, before = conn_count_before, "Cleaning up connection");
+
     hub.unregister_connection(&user_id, &conn_id);
+
+    let conn_count_after = hub
+        .connections
+        .get(&user_id)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    tracing::info!(user = %user_id, conn = %conn_id, after = conn_count_after, "Connection unregistered");
 
     // Clean up typing state for this user
     typing_service.cleanup();
 
-    // Si plus aucune connexion pour ce user → offline
-    if !hub.connections.contains_key(&user_id) {
-        presence.set_offline(&user_id);
-        let event = ServerEvent::UserOffline {
-            user_id: user_id.clone(),
-        };
-        hub.broadcast_all(event).await;
+    // Retirer la connexion de la présence. Si plus aucune connexion => offline.
+    if let Some(new_status) = presence.remove_connection(&user_id, &conn_id.to_string()) {
+        tracing::info!(user = %user_id, new_status = ?new_status, "Presence changed after removing connection");
+        match new_status {
+            crate::services::presence_service::PresenceStatus::Offline => {
+                let offline_event = ServerEvent::UserOffline { user_id: user_id.clone() };
+                hub.broadcast_all(offline_event).await;
+
+                let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                    user_id: user_id.clone(),
+                    status: "offline".to_string(),
+                    last_activity: chrono::Utc::now().to_rfc3339(),
+                };
+                hub.broadcast_all(presence_event).await;
+            }
+            _ => {
+                // other statuses not expected here
+            }
+        }
+    } else {
+        tracing::info!(user = %user_id, "Connection removed but user still has other connections");
     }
 }
 

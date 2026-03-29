@@ -40,13 +40,7 @@ pub fn router() -> Router<Arc<AppState>> {
                 .delete(delete_channel),
         )
         .route("/:channel_id/messages", get(get_messages))
-        .route("/:channel_id/messages/search", get(search_messages))
-        .route("/:channel_id/messages/pinned", get(get_pinned_messages))
-        .route("/:channel_id/messages/:message_id", axum::routing::patch(edit_message))
-        .route(
-            "/:channel_id/messages/:message_id/pin",
-            axum::routing::post(pin_message).delete(unpin_message),
-        )
+            .route("/:channel_id/messages/search", get(search_messages))
 }
 
 /// Path parameters for nested routes
@@ -228,7 +222,7 @@ pub struct MessagesQuery {
 }
 
 #[derive(Deserialize)]
-pub struct MessageSearchQuery {
+pub struct SearchQuery {
     pub q: String,
     #[serde(default = "default_page")]
     pub page: u64,
@@ -352,21 +346,23 @@ async fn get_messages(
     Ok(Json(responses))
 }
 
-/// Search message history by content for a channel
+/// Search messages in a channel (simple content search)
 async fn search_messages(
     State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ChannelPath>,
-    Query(query): Query<MessageSearchQuery>,
+    Query(query): Query<SearchQuery>,
 ) -> AppResult<Json<Vec<MessageResponse>>> {
     let user_id = auth.user_id;
 
+    // Check membership
     if !MembershipRepository::is_member(&state.db, user_id, params.server_id).await? {
         return Err(AppError::Forbidden(
             "Not a member of this server".to_string(),
         ));
     }
 
+    // Verify channel belongs to server
     let channel = ChannelRepository::find_by_id(&state.db, params.channel_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Channel not found".to_string()))?;
@@ -377,23 +373,13 @@ async fn search_messages(
         ));
     }
 
-    let q = normalize_search_query(&query.q)?;
-
+    // Use message service to search
     let messages = state
         .message_service
-        .search_messages(
-            &params.channel_id.to_string(),
-            &q,
-            query.page,
-            query.per_page,
-        )
+        .search_messages(&params.channel_id.to_string(), &query.q, query.page, query.per_page)
         .await
         .map_err(|_| {
-            tracing::error!(
-                channel_id = %params.channel_id,
-                query = %q,
-                "Failed to search messages"
-            );
+            tracing::error!(channel_id = %params.channel_id, "Failed to search messages");
             AppError::Internal("Failed to search messages".to_string())
         })?;
 
@@ -427,301 +413,4 @@ async fn search_messages(
     };
 
     Ok(Json(responses))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalize_search_query_rejects_empty_or_whitespace() {
-        let err = normalize_search_query("   ").expect_err("whitespace should be rejected");
-        match err {
-            AppError::BadRequest(msg) => assert!(msg.contains("must not be empty")),
-            other => panic!("unexpected error variant: {:?}", other),
-        }
-    }
-
-    #[test]
-    fn normalize_search_query_rejects_too_long() {
-        let long = "x".repeat(MAX_SEARCH_QUERY_LEN + 1);
-        let err = normalize_search_query(&long).expect_err("too long query should be rejected");
-        match err {
-            AppError::BadRequest(msg) => assert!(msg.contains("too long")),
-            other => panic!("unexpected error variant: {:?}", other),
-        }
-    }
-
-    #[test]
-    fn normalize_search_query_trims_and_accepts_valid() {
-        let normalized = normalize_search_query("  hello world  ")
-            .expect("valid query should be accepted");
-        assert_eq!(normalized, "hello world");
-    }
-}
-
-/// Edit own message content in a channel
-async fn edit_message(
-    State(state): State<Arc<AppState>>,
-    auth: RequireAuth,
-    Path(params): Path<MessagePath>,
-    Json(payload): Json<EditMessageRequest>,
-) -> AppResult<Json<MessageResponse>> {
-    let user_id = auth.user_id;
-
-    // Check membership
-    if !MembershipRepository::is_member(&state.db, user_id, params.server_id).await? {
-        return Err(AppError::Forbidden(
-            "Not a member of this server".to_string(),
-        ));
-    }
-
-    // Validate content consistently with WS constraints
-    if let Err(reason) = validate_content(&payload.content) {
-        return Err(AppError::BadRequest(reason.to_string()));
-    }
-
-    // Verify channel belongs to server
-    let channel = ChannelRepository::find_by_id(&state.db, params.channel_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Channel not found".to_string()))?;
-
-    if channel.server_id != params.server_id {
-        return Err(AppError::NotFound(
-            "Channel not found in this server".to_string(),
-        ));
-    }
-
-    let message_id = ObjectId::parse_str(&params.message_id)
-        .map_err(|_| AppError::BadRequest("Invalid message id".to_string()))?;
-
-    // Author-only edit: query includes author_id
-    let updated = state
-        .message_service
-        .edit_message(
-            message_id,
-            &params.channel_id.to_string(),
-            &user_id.to_string(),
-            &payload.content,
-        )
-        .await
-        .map_err(|_| AppError::Internal("Failed to edit message".to_string()))?
-        .ok_or_else(|| AppError::NotFound("Message not found or not editable".to_string()))?;
-
-    let username = UserRepository::find_by_id(&state.db, user_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|u| u.username)
-        .unwrap_or_else(|| user_id.to_string().chars().take(8).collect());
-
-    let response = MessageResponse {
-        id: updated
-            .id
-            .map(|oid| oid.to_hex())
-            .unwrap_or_default(),
-        server_id: params.server_id.to_string(),
-        channel_id: updated.channel_id,
-        author_id: updated.author_id,
-        username,
-        content: updated.content,
-        created_at: updated.created_at,
-    };
-
-    let event = ServerEvent::MessageUpdated {
-        id: response.id.clone(),
-        channel_id: response.channel_id.clone(),
-        author_id: response.author_id.clone(),
-        username: response.username.clone(),
-        content: response.content.clone(),
-        edited_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state
-        .hub
-        .broadcast_room(&params.channel_id.to_string(), event)
-        .await;
-
-    Ok(Json(response))
-}
-
-/// List pinned messages for a channel
-async fn get_pinned_messages(
-    State(state): State<Arc<AppState>>,
-    auth: RequireAuth,
-    Path(params): Path<ChannelPath>,
-    Query(query): Query<MessagesQuery>,
-) -> AppResult<Json<Vec<MessageResponse>>> {
-    let user_id = auth.user_id;
-
-    if !MembershipRepository::is_member(&state.db, user_id, params.server_id).await? {
-        return Err(AppError::Forbidden(
-            "Not a member of this server".to_string(),
-        ));
-    }
-
-    let channel = ChannelRepository::find_by_id(&state.db, params.channel_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Channel not found".to_string()))?;
-
-    if channel.server_id != params.server_id {
-        return Err(AppError::NotFound(
-            "Channel not found in this server".to_string(),
-        ));
-    }
-
-    let messages = state
-        .message_service
-        .get_pinned_messages(
-            &params.channel_id.to_string(),
-            query.page,
-            query.per_page,
-        )
-        .await
-        .map_err(|_| AppError::Internal("Failed to fetch pinned messages".to_string()))?;
-
-    let responses: Vec<MessageResponse> = {
-        let mut result = Vec::new();
-        for m in messages {
-            let username = if let Ok(uuid) = uuid::Uuid::parse_str(&m.author_id) {
-                UserRepository::find_by_id(&state.db, uuid)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|u| u.username)
-                    .unwrap_or_else(|| m.author_id.chars().take(8).collect())
-            } else {
-                m.author_id.chars().take(8).collect()
-            };
-            result.push(MessageResponse {
-                id: m
-                    .id
-                    .map(|oid: mongodb::bson::oid::ObjectId| oid.to_hex())
-                    .unwrap_or_default(),
-                server_id: params.server_id.to_string(),
-                channel_id: m.channel_id,
-                author_id: m.author_id,
-                username,
-                content: m.content,
-                created_at: m.created_at,
-            });
-        }
-        result
-    };
-
-    Ok(Json(responses))
-}
-
-/// Pin a message in a channel (moderation permission required)
-async fn pin_message(
-    State(state): State<Arc<AppState>>,
-    auth: RequireAuth,
-    Path(params): Path<MessagePath>,
-) -> AppResult<Json<serde_json::Value>> {
-    let user_id = auth.user_id;
-
-    let role = MembershipRepository::get_role(&state.db, user_id, params.server_id)
-        .await?
-        .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
-
-    if !role.can_delete_others_messages() {
-        return Err(AppError::Forbidden(
-            "Insufficient permissions to pin messages".to_string(),
-        ));
-    }
-
-    let channel = ChannelRepository::find_by_id(&state.db, params.channel_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Channel not found".to_string()))?;
-
-    if channel.server_id != params.server_id {
-        return Err(AppError::NotFound(
-            "Channel not found in this server".to_string(),
-        ));
-    }
-
-    let message_id = ObjectId::parse_str(&params.message_id)
-        .map_err(|_| AppError::BadRequest("Invalid message id".to_string()))?;
-
-    let pinned = state
-        .message_service
-        .pin_message(
-            message_id,
-            &params.channel_id.to_string(),
-            &user_id.to_string(),
-            &chrono::Utc::now().to_rfc3339(),
-        )
-        .await
-        .map_err(|_| AppError::Internal("Failed to pin message".to_string()))?;
-
-    if pinned.is_none() {
-        return Err(AppError::NotFound("Message not found".to_string()));
-    }
-
-    let event = ServerEvent::MessagePinned {
-        message_id: params.message_id.clone(),
-        channel_id: params.channel_id.to_string(),
-        pinned_by: user_id.to_string(),
-        pinned_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state
-        .hub
-        .broadcast_room(&params.channel_id.to_string(), event)
-        .await;
-
-    Ok(Json(serde_json::json!({ "pinned": true })))
-}
-
-/// Unpin a message in a channel (moderation permission required)
-async fn unpin_message(
-    State(state): State<Arc<AppState>>,
-    auth: RequireAuth,
-    Path(params): Path<MessagePath>,
-) -> AppResult<Json<serde_json::Value>> {
-    let user_id = auth.user_id;
-
-    let role = MembershipRepository::get_role(&state.db, user_id, params.server_id)
-        .await?
-        .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
-
-    if !role.can_delete_others_messages() {
-        return Err(AppError::Forbidden(
-            "Insufficient permissions to unpin messages".to_string(),
-        ));
-    }
-
-    let channel = ChannelRepository::find_by_id(&state.db, params.channel_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Channel not found".to_string()))?;
-
-    if channel.server_id != params.server_id {
-        return Err(AppError::NotFound(
-            "Channel not found in this server".to_string(),
-        ));
-    }
-
-    let message_id = ObjectId::parse_str(&params.message_id)
-        .map_err(|_| AppError::BadRequest("Invalid message id".to_string()))?;
-
-    let unpinned = state
-        .message_service
-        .unpin_message(message_id, &params.channel_id.to_string())
-        .await
-        .map_err(|_| AppError::Internal("Failed to unpin message".to_string()))?;
-
-    if unpinned.is_none() {
-        return Err(AppError::NotFound("Message not found".to_string()));
-    }
-
-    let event = ServerEvent::MessageUnpinned {
-        message_id: params.message_id.clone(),
-        channel_id: params.channel_id.to_string(),
-        unpinned_by: user_id.to_string(),
-        unpinned_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state
-        .hub
-        .broadcast_room(&params.channel_id.to_string(), event)
-        .await;
-
-    Ok(Json(serde_json::json!({ "unpinned": true })))
 }

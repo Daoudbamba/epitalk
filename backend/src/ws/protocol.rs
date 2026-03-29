@@ -91,6 +91,10 @@ pub enum ClientEvent {
         peer_id: String,
     },
     Ping,
+    /// Changer son statut de présence (online/idle/dnd/offline)
+    PresenceSet {
+        status: String,
+    },
 }
 
 //
@@ -180,6 +184,13 @@ pub enum ServerEvent {
 
     UserOffline {
         user_id: String,
+    },
+
+    /// Mise à jour structurée de la présence d'un utilisateur
+    PresenceUpdated {
+        user_id: String,
+        status: String,
+        last_activity: String,
     },
 
     ReactionAdded {

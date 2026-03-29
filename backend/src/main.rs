@@ -17,7 +17,8 @@ use axum::routing::get;
 use std::net::SocketAddr;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
+use tokio::process::Command as TokioCommand;
+use tokio::time::{sleep, Duration};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
@@ -203,7 +204,54 @@ async fn run_backend() -> anyhow::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("Server listening on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    // Try to bind to the address. If the port is already in use, attempt a best-effort
+    // cleanup by finding the process that listens on the port and terminating it,
+    // then retry binding once. This helps `cargo run` behave like a restart when a
+    // previous background run left the process listening.
+    let mut try_bind = || async {
+        tokio::net::TcpListener::bind(addr).await
+    };
+
+    let listener = match try_bind().await {
+        Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            tracing::warn!(port = config.port, "Port already in use, trying to detect and kill the process holding it");
+            // Attempt to detect the pid using lsof (works on macOS / Linux with lsof installed)
+            if let Ok(output) = TokioCommand::new("lsof")
+                .args(&["-t", &format!("-iTCP:{}", config.port), "-sTCP:LISTEN"])
+                .output()
+                .await
+            {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        if let Ok(pid) = line.trim().parse::<i32>() {
+                            tracing::info!(pid, "Killing leftover process on port");
+                            // Best-effort: first SIGTERM, then SIGKILL if still alive
+                            let _ = TokioCommand::new("kill").arg(pid.to_string()).status().await;
+                        }
+                    }
+                    // Give the OS a moment to free the port
+                    sleep(Duration::from_millis(500)).await;
+                    match try_bind().await {
+                        Ok(l2) => l2,
+                        Err(e2) => {
+                            tracing::error!(error = %e2, "Failed to bind after killing process");
+                            return Err(e2.into());
+                        }
+                    }
+                } else {
+                    tracing::error!(stderr = %String::from_utf8_lossy(&output.stderr), "lsof failed to list PIDs");
+                    return Err(e.into());
+                }
+            } else {
+                tracing::error!("Failed to run lsof to detect process occupying the port");
+                return Err(e.into());
+            }
+        }
+        Err(e) => return Err(e.into()),
+    };
+
     axum::serve(listener, app).await?;
 
     Ok(())

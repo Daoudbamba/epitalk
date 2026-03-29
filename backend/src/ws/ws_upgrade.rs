@@ -48,15 +48,6 @@ pub async fn ws_handler(
         let conn_id = Uuid::new_v4();
         let user_id_str = user_id.to_string();
 
-        // Mark user online
-        presence.set_online(&user_id_str);
-
-        // Broadcast UserOnline to all connected clients
-        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
-            user_id: user_id_str.clone(),
-        };
-        hub.broadcast_all(online_event).await;
-
         handle_connection(
             socket,
             hub,

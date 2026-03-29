@@ -3,21 +3,34 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2, X } from "lucide-react";
+import {
+  Plus,
+  Smile,
+  Gift,
+  Sticker,
+  Send,
+  Loader2,
+  CornerUpLeft,
+  Edit3,
+  Trash2,
+  X,
+  Search,
+} from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
-import { useAppearanceStore } from "@/store/appearance.store";
-
-const FONT_SIZE_MAP = { sm: "14px", base: "16px", lg: "18px", xl: "20px" } as const;
+import { messagesApi } from "@/lib/api";
+import type { Message } from "@/lib/api/schemas/messages.schema";
 
 export function ChatPanel() {
   const activeServerId = useServerStore((s) => s.activeServerId);
+  const setActiveServer = useServerStore((s) => s.setActiveServer);
 
   const channels = useChannelStore((s) => s.channels);
   const activeChannelId = useChannelStore((s) => s.activeChannelId);
+  const setActiveChannel = useChannelStore((s) => s.setActiveChannel);
 
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
@@ -33,6 +46,7 @@ export function ChatPanel() {
   const editMessage = useWebSocketStore((s) => s.editMessage);
   const deleteMessage = useWebSocketStore((s) => s.deleteMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
+  const setMessages = useWebSocketStore((s) => s.setMessages);
   const wsMessages = useWebSocketStore((s) => s.messages);
   const socket = useWebSocketStore((s) => s.socket);
   const startTyping = useWebSocketStore((s) => s.startTyping);
@@ -46,6 +60,22 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
+  // Search UI state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<
+    {
+      id: string;
+      server_id: string;
+      channel_id: string;
+      author_id: string;
+      username: string;
+      content: string;
+      created_at: string;
+    }[]
+  >([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [openGifLightbox, setOpenGifLightbox] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -54,7 +84,9 @@ export function ChatPanel() {
   // GIF picker state
   const [openGifPicker, setOpenGifPicker] = useState<"input" | null>(null);
   const [gifQuery, setGifQuery] = useState("");
-  const [gifResults, setGifResults] = useState<{ id: string; url: string; preview?: string; provider?: string }[]>([]);
+  const [gifResults, setGifResults] = useState<
+    { id: string; url: string; preview?: string; provider?: string }[]
+  >([]);
   const [gifLoading, setGifLoading] = useState(false);
 
   // Emoji reaction picker state
@@ -63,6 +95,46 @@ export function ChatPanel() {
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // Jump to a message by id (switch server/channel if needed)
+  const jumpToMessage = async (
+    messageId: string,
+    serverId: string,
+    channelId: string,
+  ) => {
+    try {
+      // If server or channel differs, set them so the UI switches
+      if (serverId && serverId !== activeServerId) {
+        setActiveServer(serverId);
+      }
+      if (channelId && channelId !== activeChannelId) {
+        setActiveChannel(channelId);
+      }
+
+      // Wait for the DOM element to appear (messages loaded via WS)
+      const selector = `#msg-${messageId}`;
+      const start = Date.now();
+      const timeout = 3000; // ms
+      while (Date.now() - start < timeout) {
+        const el = document.querySelector(selector) as HTMLElement | null;
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          // briefly highlight
+          const original = el.style.boxShadow;
+          el.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.25)";
+          setTimeout(() => {
+            el.style.boxShadow = original;
+          }, 1600);
+          return;
+        }
+        // wait a bit
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      // If not found, just close search
+    } catch (err) {
+      console.error("jumpToMessage failed", err);
+    }
+  };
 
   const canLoad = !!activeServerId && !!activeChannelId;
 
@@ -81,10 +153,22 @@ export function ChatPanel() {
 
   // Join channel when it changes
   useEffect(() => {
-    if (activeChannelId && isConnected) {
-      joinChannel(activeChannelId);
+    if (activeChannelId && isConnected && activeServerId) {
+      // Load initial history via REST so the UI shows messages immediately on reload
+      (async () => {
+        try {
+          const data = await messagesApi.list(activeServerId, activeChannelId);
+          // messagesApi returns Message[] compatible with WsMessage shape
+          setMessages(activeChannelId, data as Message[]);
+        } catch (err) {
+          console.warn("Failed to load initial messages via REST:", err);
+        } finally {
+          // Then join the WS channel to receive live updates
+          joinChannel(activeChannelId);
+        }
+      })();
     }
-  }, [activeChannelId, isConnected, joinChannel]);
+  }, [activeChannelId, isConnected, joinChannel, activeServerId, setMessages]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -138,7 +222,10 @@ export function ChatPanel() {
   }, []);
 
   const currentMemberRole = members.find((m) => m.user_id === user?.id)?.role;
-  const canModerate = currentMemberRole === "Owner" || currentMemberRole === "Admin" || currentMemberRole === "Moderator";
+  const canModerate =
+    currentMemberRole === "Owner" ||
+    currentMemberRole === "Admin" ||
+    currentMemberRole === "Moderator";
 
   const onSend = async () => {
     if (!activeChannelId || !canLoad) return;
@@ -307,6 +394,135 @@ export function ChatPanel() {
         <h2 className="font-bold text-md text-[var(--foreground)]">
           {activeChannelName ?? "aucun-channel"}
         </h2>
+        <div className="ml-auto relative">
+          <button
+            title="Rechercher"
+            onClick={() => setSearchOpen((s) => !s)}
+            className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition ml-3"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+
+          {searchOpen && (
+            <div className="absolute right-0 top-10 z-40 bg-white dark:bg-zinc-900 border rounded-md shadow-lg p-3 w-[min(90vw,28rem)]">
+              <div className="flex gap-2">
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="flex-1 px-2 py-1 border rounded bg-zinc-50 dark:bg-zinc-800"
+                  placeholder="Rechercher dans ce channel"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void (async () => {
+                        if (!activeServerId || !activeChannelId) return;
+                        setSearchLoading(true);
+                        try {
+                          const url = `/api/servers/${activeServerId}/channels/${activeChannelId}/messages/search?q=${encodeURIComponent(
+                            searchQuery || "",
+                          )}&per_page=12`;
+                          // Attach Authorization header from localStorage (client-side)
+                          const headers: Record<string, string> = {
+                            "Content-Type": "application/json",
+                          };
+                          try {
+                            const localToken =
+                              typeof window !== "undefined"
+                                ? localStorage.getItem("token")
+                                : null;
+                            if (localToken)
+                              headers["Authorization"] = `Bearer ${localToken}`;
+                          } catch {
+                            /* ignore */
+                          }
+                          const res = await fetch(url, { headers });
+                          if (!res.ok) {
+                            setSearchResults([]);
+                            return;
+                          }
+                          const json = await res.json();
+                          setSearchResults(json || []);
+                        } catch (err) {
+                          console.error("Search failed", err);
+                          setSearchResults([]);
+                        } finally {
+                          setSearchLoading(false);
+                        }
+                      })();
+                    }
+                  }}
+                />
+                <button
+                  onClick={async () => {
+                    if (!activeServerId || !activeChannelId) return;
+                    setSearchLoading(true);
+                    try {
+                      const url = `/api/servers/${activeServerId}/channels/${activeChannelId}/messages/search?q=${encodeURIComponent(
+                        searchQuery || "",
+                      )}&per_page=12`;
+                      const headers: Record<string, string> = {
+                        "Content-Type": "application/json",
+                      };
+                      try {
+                        const localToken =
+                          typeof window !== "undefined"
+                            ? localStorage.getItem("token")
+                            : null;
+                        if (localToken)
+                          headers["Authorization"] = `Bearer ${localToken}`;
+                      } catch {
+                        /* ignore */
+                      }
+                      const res = await fetch(url, { headers });
+                      if (!res.ok) {
+                        setSearchResults([]);
+                        return;
+                      }
+                      const json = await res.json();
+                      setSearchResults(json || []);
+                    } catch (err) {
+                      console.error("Search failed", err);
+                      setSearchResults([]);
+                    } finally {
+                      setSearchLoading(false);
+                    }
+                  }}
+                  className="px-2 py-1 bg-indigo-600 text-white rounded"
+                >
+                  {searchLoading ? "…" : "Go"}
+                </button>
+              </div>
+
+              <div className="mt-2 max-h-64 overflow-auto">
+                {searchResults.length === 0 ? (
+                  <div className="text-sm text-zinc-500">Aucun résultat</div>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {searchResults.map((r) => (
+                      <li
+                        key={r.id}
+                        className="p-2 border rounded hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                        onClick={async () => {
+                          // Jump to the message in the conversation
+                          setSearchOpen(false);
+                          setSearchResults([]);
+                          await jumpToMessage(r.id, r.server_id, r.channel_id);
+                        }}
+                      >
+                        <div className="text-xs text-zinc-500">
+                          {new Date(r.created_at).toLocaleString()} —{" "}
+                          {r.username}
+                        </div>
+                        <div className="text-sm text-zinc-700 dark:text-zinc-200 truncate">
+                          {r.content}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* --- MESSAGES --- */}
@@ -329,10 +545,14 @@ export function ChatPanel() {
             {messages.map((msg) => {
               const isAuthor = user?.id === msg.author_id;
               const canDelete = isAuthor || canModerate;
-              const messageUsername = getUsernameById(msg.author_id, msg.username);
+              const messageUsername = getUsernameById(
+                msg.author_id,
+                msg.username,
+              );
               return (
                 <div
                   key={msg.id}
+                  id={`msg-${msg.id}`}
                   className="group relative flex items-start px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
                 >
                   {/* Action buttons — top-right, visible on hover */}
@@ -363,16 +583,22 @@ export function ChatPanel() {
                     )}
                     {canDelete && (
                       <button
-                        className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-red-600 hover:bg-[var(--surface)] rounded transition"
-                        onClick={() => deleteMessage(activeChannelId || "", msg.id)}
+                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-red-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                        onClick={() =>
+                          deleteMessage(activeChannelId || "", msg.id)
+                        }
                         title="Supprimer"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     )}
                     <button
-                      className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-amber-500 hover:bg-[var(--surface)] rounded transition"
-                      onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-amber-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                      onClick={() =>
+                        setEmojiPickerMsgId(
+                          emojiPickerMsgId === msg.id ? null : msg.id,
+                        )
+                      }
                       title="Réaction"
                     >
                       <Smile className="h-4 w-4" />
@@ -387,11 +613,16 @@ export function ChatPanel() {
                           key={emoji}
                           className="text-lg hover:scale-125 transition-transform p-0.5"
                           onClick={() => {
-                            if (socket && socket.readyState === WebSocket.OPEN) {
-                              socket.send(JSON.stringify({
-                                type: "ReactionAdd",
-                                payload: { message_id: msg.id, emoji },
-                              }));
+                            if (
+                              socket &&
+                              socket.readyState === WebSocket.OPEN
+                            ) {
+                              socket.send(
+                                JSON.stringify({
+                                  type: "ReactionAdd",
+                                  payload: { message_id: msg.id, emoji },
+                                }),
+                              );
                             }
                             setEmojiPickerMsgId(null);
                           }}
@@ -427,27 +658,44 @@ export function ChatPanel() {
                       )}
                     </div>
 
-                    {msg.reply_to && (() => {
-                      const original = messages.find((m) => m.id === msg.reply_to);
-                      return (
-                        <div className="text-xs text-[var(--muted-foreground)] italic mb-1 bg-[var(--surface)] p-2 rounded-md">
-                          Réponse à {original ? getUsernameById(original.author_id, original.username) : msg.reply_to.slice(0, 8)}:
-                          <div className="truncate max-w-full">
-                            {original ? original.content : "message introuvable"}
+                    {msg.reply_to &&
+                      (() => {
+                        const original = messages.find(
+                          (m) => m.id === msg.reply_to,
+                        );
+                        return (
+                          <div className="text-xs text-zinc-500 italic mb-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-md">
+                            Réponse à{" "}
+                            {original
+                              ? getUsernameById(
+                                  original.author_id,
+                                  original.username,
+                                )
+                              : msg.reply_to.slice(0, 8)}
+                            :
+                            <div className="truncate max-w-full">
+                              {original
+                                ? original.content
+                                : "message introuvable"}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })()}
+                        );
+                      })()}
 
                     {(() => {
                       const gifMessage = parseGifContent(msg.content);
                       if (gifMessage) {
                         return (
-                          <div className="mt-2 rounded-md border border-[var(--border)] p-2 bg-[var(--surface)]">
+                          <div className="mt-2">
+                            {/* GIF preview, constrained size; click to open full */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={gifMessage.gif.url}
-                              alt="GIF"
-                              className="h-36 w-full rounded-md object-cover"
+                              alt={gifMessage.caption || "GIF"}
+                              className="max-h-90 max-w-[70%] rounded-md object-contain cursor-pointer"
+                              onClick={() =>
+                                setOpenGifLightbox(gifMessage.gif.url)
+                              }
                             />
                             {gifMessage.caption && (
                               <p className="mt-1 text-sm text-[var(--muted-foreground)]">
@@ -469,15 +717,33 @@ export function ChatPanel() {
                     {msg.reactions && msg.reactions.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {Object.entries(
-                          msg.reactions.reduce<Record<string, { count: number; users: string[]; userIds: string[] }>>((acc, r) => {
-                            if (!acc[r.emoji]) acc[r.emoji] = { count: 0, users: [], userIds: [] };
+                          msg.reactions.reduce<
+                            Record<
+                              string,
+                              {
+                                count: number;
+                                users: string[];
+                                userIds: string[];
+                              }
+                            >
+                          >((acc, r) => {
+                            if (!acc[r.emoji])
+                              acc[r.emoji] = {
+                                count: 0,
+                                users: [],
+                                userIds: [],
+                              };
                             acc[r.emoji].count++;
-                            acc[r.emoji].users.push(r.username || r.user_id.slice(0, 6));
+                            acc[r.emoji].users.push(
+                              r.username || r.user_id.slice(0, 6),
+                            );
                             acc[r.emoji].userIds.push(r.user_id);
                             return acc;
-                          }, {})
+                          }, {}),
                         ).map(([emoji, data]) => {
-                          const hasReacted = data.userIds.includes(user?.id || "");
+                          const hasReacted = data.userIds.includes(
+                            user?.id || "",
+                          );
                           return (
                             <button
                               key={emoji}
@@ -488,11 +754,16 @@ export function ChatPanel() {
                               }`}
                               title={data.users.join(", ")}
                               onClick={() => {
-                                if (socket && socket.readyState === WebSocket.OPEN) {
-                                  socket.send(JSON.stringify({
-                                    type: "ReactionAdd",
-                                    payload: { message_id: msg.id, emoji },
-                                  }));
+                                if (
+                                  socket &&
+                                  socket.readyState === WebSocket.OPEN
+                                ) {
+                                  socket.send(
+                                    JSON.stringify({
+                                      type: "ReactionAdd",
+                                      payload: { message_id: msg.id, emoji },
+                                    }),
+                                  );
                                 }
                               }}
                             >
@@ -509,6 +780,21 @@ export function ChatPanel() {
             })}
 
             <div ref={bottomRef} />
+            {/* GIF lightbox */}
+            {openGifLightbox && (
+              <div
+                className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+                onClick={() => setOpenGifLightbox(null)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={openGifLightbox}
+                  alt="GIF full"
+                  className="max-h-[90vh] max-w-[90vw] object-contain rounded-md shadow-lg"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -527,8 +813,12 @@ export function ChatPanel() {
         {((replyTo && !isEditing) || isEditing) && (
           <div className="mb-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200 flex items-center justify-between">
             <div>
-              {isEditing ? "Modification du message en cours" : "Réponse en cours"}
-              {replyTo && !isEditing && replyToUsername ? `: ${replyToUsername}` : ""}
+              {isEditing
+                ? "Modification du message en cours"
+                : "Réponse en cours"}
+              {replyTo && !isEditing && replyToUsername
+                ? `: ${replyToUsername}`
+                : ""}
             </div>
             <button
               className="text-indigo-700 underline text-xs flex items-center gap-1"

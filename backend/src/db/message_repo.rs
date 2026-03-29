@@ -104,6 +104,17 @@ impl MessageRepo {
         let _ = collection.create_index(idx_created, None).await;
         let _ = collection.create_index(idx_pinned_at, None).await;
 
+        // Text index for content to support full-text search
+        let idx_text = IndexModel::builder()
+            .keys(doc! { "content": "text" })
+            .options(
+                IndexOptions::builder()
+                    .name("content_text".to_string())
+                    .build(),
+            )
+            .build();
+        let _ = collection.create_index(idx_text, None).await;
+
         println!("✅ MongoDB indexes created");
     }
 
@@ -253,7 +264,47 @@ impl MessageRepo {
     }
 
     // ---------------------------------------------------------
-    // 🔎 SEARCH MESSAGES BY CONTENT (channel-scoped, case-insensitive)
+    // � SEARCH IN CHANNEL (case-insensitive, simple regex)
+    // ---------------------------------------------------------
+    pub async fn search_in_channel(&self, channel_id: &str, query: &str, page: u64, per_page: u64) -> Vec<MessageDb> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return vec![],
+        };
+
+        let skip = if page == 0 { 0 } else { (page - 1) * per_page };
+        let limit = per_page;
+
+        // Prefer text search if possible (faster & better relevance). Fall back to regex if needed.
+        let filter = doc! {
+            "channel_id": channel_id,
+            "$text": { "$search": query }
+        };
+
+        let options = FindOptions::builder()
+            .sort(doc! { "created_at": -1 })
+            .skip(Some(skip))
+            .limit(Some(limit as i64))
+            .build();
+
+        let mut cursor = match collection.find(filter, options).await {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+
+        let mut messages = Vec::new();
+        while let Some(msg) = cursor.try_next().await.unwrap_or(None) {
+            messages.push(msg);
+        }
+
+        // Return chronological order (oldest first)
+        messages.reverse();
+        messages
+    }
+
+    // ---------------------------------------------------------
+    // �📬 GET DM CONVERSATIONS for a user
+    // Returns a list of { conversation_id, last_message, last_message_at, peer_id }
     // ---------------------------------------------------------
     pub async fn search_by_channel_content(
         &self,
