@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { MessageSquare } from "lucide-react";
 import { UserSettings } from "../../servers/components/user-settings";
 
 export function DmRail() {
@@ -8,7 +9,7 @@ export function DmRail() {
     <aside className="w-[88px] my-4 ml-3 rounded-2xl flex flex-col items-center gap-4 py-6 bg-gradient-to-b from-[#F7F8FA] to-white border border-[#E5E7EB] shadow-lg">
       {/* Logo B — active state (we're on DM page) */}
       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg ring-2 ring-[#023BFC]/40 ring-offset-2">
-        <span className="text-white font-bold text-lg">B</span>
+        <MessageSquare className="w-6 h-6 text-white" />
       </div>
 
       <div className="w-10 h-px bg-gradient-to-r from-transparent via-[#E5E7EB] to-transparent" />
