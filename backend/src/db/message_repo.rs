@@ -1,10 +1,19 @@
 use mongodb::{
-    bson::{doc, oid::ObjectId},
+    bson::{doc, oid::ObjectId, to_bson, Document},
     options::{FindOptions, IndexOptions},
     Collection, IndexModel,
 };
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Reaction {
+    pub emoji: String,
+    pub user_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    pub created_at: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageDb {
@@ -15,6 +24,12 @@ pub struct MessageDb {
     pub author_id: String,
     pub content: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reactions: Option<Vec<Reaction>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edited_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<ObjectId>,
 }
 
 pub struct MessageRepo {
@@ -75,6 +90,123 @@ impl MessageRepo {
         Ok(result.inserted_id.as_object_id().unwrap())
     }
 
+    pub async fn find_by_id(&self, message_id: &ObjectId) -> Option<MessageDb> {
+        let collection = self.collection.as_ref()?;
+        match collection.find_one(doc! { "_id": message_id }, None).await {
+            Ok(Some(msg)) => Some(msg),
+            _ => None,
+        }
+    }
+
+    pub async fn update_content(
+        &self,
+        message_id: &ObjectId,
+        new_content: &str,
+        edited_at: &str,
+    ) -> mongodb::error::Result<bool> {
+        let collection = self.collection.as_ref()
+            .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
+
+        let result = collection
+            .update_one(
+                doc! { "_id": message_id },
+                doc! { "$set": { "content": new_content, "edited_at": edited_at } },
+                None,
+            )
+            .await?;
+        Ok(result.matched_count > 0)
+    }
+
+    pub async fn add_reaction(
+        &self,
+        message_id: &ObjectId,
+        emoji: &str,
+        user_id: &str,
+        username: Option<&str>,
+    ) -> mongodb::error::Result<(Option<String>, bool)> {
+        let collection = self.collection.as_ref().ok_or_else(|| {
+            mongodb::error::Error::custom("MongoDB not configured")
+        })?;
+
+        let existing = collection
+            .find_one(doc! { "_id": message_id }, None)
+            .await?;
+
+        let msg = match existing {
+            Some(m) => m,
+            None => return Ok((None, false)),
+        };
+
+        let mut reactions = msg.reactions.unwrap_or_default();
+        let idx = reactions.iter().position(|r| r.emoji == emoji && r.user_id == user_id);
+
+        let was_added = if let Some(pos) = idx {
+            reactions.remove(pos);
+            false
+        } else {
+            reactions.push(Reaction {
+                emoji: emoji.to_string(),
+                user_id: user_id.to_string(),
+                username: username.map(|u| u.to_string()),
+                created_at: chrono::Utc::now().to_rfc3339(),
+            });
+            true
+        };
+
+        collection
+            .update_one(
+                doc! { "_id": message_id },
+                doc! { "$set": { "reactions": to_bson(&reactions)? } },
+                None,
+            )
+            .await?;
+
+        Ok((Some(msg.channel_id), was_added))
+    }
+
+    pub async fn remove_reaction(
+        &self,
+        message_id: &ObjectId,
+        emoji: &str,
+        user_id: &str,
+    ) -> mongodb::error::Result<Option<String>> {
+        let collection = self.collection.as_ref().ok_or_else(|| {
+            mongodb::error::Error::custom("MongoDB not configured")
+        })?;
+
+        let existing = collection
+            .find_one(doc! { "_id": message_id }, None)
+            .await?;
+
+        let msg = match existing {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+
+        let reactions = msg.reactions.unwrap_or_default();
+        let filtered: Vec<Reaction> = reactions
+            .into_iter()
+            .filter(|r| !(r.emoji == emoji && r.user_id == user_id))
+            .collect();
+
+        collection
+            .update_one(
+                doc! { "_id": message_id },
+                doc! { "$set": { "reactions": to_bson(&filtered)? } },
+                None,
+            )
+            .await?;
+
+        Ok(Some(msg.channel_id))
+    }
+
+    pub async fn delete(&self, message_id: &ObjectId) -> mongodb::error::Result<bool> {
+        let collection = self.collection.as_ref()
+            .ok_or_else(|| mongodb::error::Error::custom("MongoDB not configured"))?;
+        let result = collection.delete_one(doc! { "_id": message_id }, None).await?;
+        Ok(result.deleted_count > 0)
+    }
+
     // ---------------------------------------------------------
     // 📜 GET HISTORY (trié par created_at DESC) avec pagination
     // params: page (1-based), per_page
@@ -111,6 +243,54 @@ impl MessageRepo {
         messages.reverse();
         messages
     }
+
+    // ---------------------------------------------------------
+    // 📬 GET DM CONVERSATIONS for a user
+    // Returns a list of { conversation_id, last_message, last_message_at, peer_id }
+    // ---------------------------------------------------------
+    pub async fn find_dm_conversations(&self, user_id: &str) -> Vec<Document> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return vec![],
+        };
+
+        // Use aggregation pipeline on the raw collection
+        let raw_coll = collection.clone_with_type::<Document>();
+
+        let pipeline = vec![
+            doc! { "$match": {
+                "$and": [
+                    { "channel_id": { "$regex": "^dm:" } },
+                    { "$or": [
+                        { "channel_id": { "$regex": format!("^dm:{}:", user_id) } },
+                        { "channel_id": { "$regex": format!(":{}$", user_id) } },
+                    ]}
+                ]
+            }},
+            doc! { "$sort": { "created_at": -1 } },
+            doc! { "$group": {
+                "_id": "$channel_id",
+                "last_message": { "$first": "$content" },
+                "last_message_at": { "$first": "$created_at" },
+                "last_author_id": { "$first": "$author_id" },
+            }},
+            doc! { "$sort": { "last_message_at": -1 } },
+        ];
+
+        let mut cursor = match raw_coll.aggregate(pipeline, None).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("Failed to aggregate DM conversations: {e}");
+                return vec![];
+            }
+        };
+
+        let mut results = Vec::new();
+        while let Some(doc) = cursor.try_next().await.unwrap_or(None) {
+            results.push(doc);
+        }
+        results
+    }
 }
 
 #[cfg(test)]
@@ -126,6 +306,9 @@ mod tests {
             author_id: "user".into(),
             content: "hello".into(),
             created_at: "now".into(),
+            reactions: None,
+            edited_at: None,
+            reply_to: None,
         };
 
         let res = repo.insert(msg).await;

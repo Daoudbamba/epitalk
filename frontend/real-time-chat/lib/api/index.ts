@@ -3,6 +3,7 @@ import { AuthAPI } from "./auth.api";
 import { createServersApi } from "./servers.api";
 import { createChannelsApi } from "./channels.api";
 import { createMessagesApi } from "./messages.api";
+import { createDmApi } from "./dm.api";
 
 // Use backend URL directly - works in both SSR and CSR
 // NEXT_PUBLIC_ prefix ensures the variable is available on the client side
@@ -16,3 +17,4 @@ export const authApi = new AuthAPI(client);
 export const serversApi = createServersApi(client);
 export const channelsApi = createChannelsApi(client);
 export const messagesApi = createMessagesApi(client);
+export const dmApi = createDmApi(client);

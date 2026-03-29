@@ -4,44 +4,53 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Plus, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2, X } from "lucide-react";
-import { useServerStore } from "@/store/server.store";
-import { useChannelStore } from "@/store/channel.store";
-import { useWebSocketStore } from "@/store/websocket.store";
+import { useWebSocketStore, type WsMessage } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
-import { useMemberStore } from "@/store/member.store";
+import { useDmStore } from "@/store/dm.store";
 import { useAppearanceStore } from "@/store/appearance.store";
 
 const FONT_SIZE_MAP = { sm: "14px", base: "16px", lg: "18px", xl: "20px" } as const;
 
-export function ChatPanel() {
-  const activeServerId = useServerStore((s) => s.activeServerId);
+function dmConversationId(a: string, b: string): string {
+  return a < b ? `dm:${a}:${b}` : `dm:${b}:${a}`;
+}
 
-  const channels = useChannelStore((s) => s.channels);
-  const activeChannelId = useChannelStore((s) => s.activeChannelId);
-
+export function DmChatPanel() {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
 
-  const members = useMemberStore((s) => s.members);
+  const activePeerId = useDmStore((s) => s.activePeerId);
+  const conversations = useDmStore((s) => s.conversations);
+
+  const isConnected = useWebSocketStore((s) => s.isConnected);
+  const connect = useWebSocketStore((s) => s.connect);
+  const sendDm = useWebSocketStore((s) => s.sendDm);
+  const editDm = useWebSocketStore((s) => s.editDm);
+  const deleteDm = useWebSocketStore((s) => s.deleteDm);
+  const sendDmGif = useWebSocketStore((s) => s.sendDmGif);
+  const joinDm = useWebSocketStore((s) => s.joinDm);
+  const dmMessages = useWebSocketStore((s) => s.dmMessages);
+  const socket = useWebSocketStore((s) => s.socket);
   const fontSize = useAppearanceStore((s) => s.fontSize);
   const chatFontSize = FONT_SIZE_MAP[fontSize] || "16px";
 
-  // WebSocket store
-  const isConnected = useWebSocketStore((s) => s.isConnected);
-  const connect = useWebSocketStore((s) => s.connect);
-  const sendMessage = useWebSocketStore((s) => s.sendMessage);
-  const editMessage = useWebSocketStore((s) => s.editMessage);
-  const deleteMessage = useWebSocketStore((s) => s.deleteMessage);
-  const joinChannel = useWebSocketStore((s) => s.joinChannel);
-  const wsMessages = useWebSocketStore((s) => s.messages);
-  const socket = useWebSocketStore((s) => s.socket);
-  const startTyping = useWebSocketStore((s) => s.startTyping);
-  const stopTyping = useWebSocketStore((s) => s.stopTyping);
-  const typingUsers = useWebSocketStore((s) => s.typingUsers);
+  const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
 
-  const activeChannelName = useMemo(() => {
-    return channels.find((c) => c.id === activeChannelId)?.name ?? null;
-  }, [channels, activeChannelId]);
+  const conversationId = useMemo(() => {
+    if (!user || !activePeerId) return null;
+    return dmConversationId(user.id, activePeerId);
+  }, [user, activePeerId]);
+
+  const peerUsername = useMemo(() => {
+    if (!activePeerId) return null;
+    const conv = conversations.find((c) => c.peer_id === activePeerId);
+    return conv?.peer_username ?? activePeerId.slice(0, 8);
+  }, [activePeerId, conversations]);
+
+  const messages: WsMessage[] = useMemo(() => {
+    if (!conversationId) return [];
+    return dmMessages[conversationId] || [];
+  }, [conversationId, dmMessages]);
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +59,8 @@ export function ChatPanel() {
   const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+  const [showInputEmojis, setShowInputEmojis] = useState(false);
 
   // GIF picker state
   const [openGifPicker, setOpenGifPicker] = useState<"input" | null>(null);
@@ -57,74 +68,90 @@ export function ChatPanel() {
   const [gifResults, setGifResults] = useState<{ id: string; url: string; preview?: string; provider?: string }[]>([]);
   const [gifLoading, setGifLoading] = useState(false);
 
-  // Emoji reaction picker state
-  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
-  const [showInputEmojis, setShowInputEmojis] = useState(false);
-  const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
-
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const canLoad = !!activeServerId && !!activeChannelId;
-
-  // Get messages for current channel
-  const messages = useMemo(() => {
-    if (!activeChannelId) return [];
-    return wsMessages[activeChannelId] || [];
-  }, [activeChannelId, wsMessages]);
-
-  // Connect WebSocket on mount
+  // Connect WebSocket
   useEffect(() => {
     if (token && !isConnected) {
       connect(token);
     }
   }, [token, isConnected, connect]);
 
-  // Join channel when it changes
+  // Join DM room when peer changes
   useEffect(() => {
-    if (activeChannelId && isConnected) {
-      joinChannel(activeChannelId);
+    if (activePeerId && isConnected) {
+      joinDm(activePeerId);
     }
-  }, [activeChannelId, isConnected, joinChannel]);
+  }, [activePeerId, isConnected, joinDm]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom
   useEffect(() => {
-    const el = bottomRef.current as HTMLElement | null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (el && typeof (el as any).scrollIntoView === "function") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (el as any).scrollIntoView({ behavior: "smooth" });
+    const el = bottomRef.current;
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // Get username from message, members or fallback to author_id
+  // GIF search effect
+  useEffect(() => {
+    if (openGifPicker !== "input") return;
+    const query = gifQuery && gifQuery.trim() !== "" ? gifQuery.trim() : "trending";
+    const controller = new AbortController();
+    setGifLoading(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/gifs/search?q=${encodeURIComponent(query)}&limit=24`,
+          { signal: controller.signal },
+        );
+        if (!res.ok) { setGifResults([]); setGifLoading(false); return; }
+        const json = await res.json();
+        const results: { id: string; url: string; preview?: string; provider?: string }[] = [];
+        if (json.results) {
+          for (const it of json.results) {
+            const id = it.id || "";
+            const url = it.url || "";
+            const preview = it.preview || undefined;
+            const provider = it.provider || undefined;
+            if (url) results.push({ id: id.toString(), url, preview, provider });
+          }
+        } else if (json.data) {
+          for (const it of json.data) {
+            const id = it.id || "";
+            const url = it.images?.original?.url || it.images?.fixed_width?.url || "";
+            const preview = it.images?.preview_gif?.url || it.images?.fixed_width_small_still?.url;
+            if (url) results.push({ id: id.toString(), url, preview, provider: "giphy" });
+          }
+        }
+        setGifResults(results);
+      } catch (err: unknown) {
+        if (!(err instanceof DOMException) || err.name !== "AbortError") {
+          console.error("GIF search failed", err);
+        }
+        setGifResults([]);
+      } finally {
+        setGifLoading(false);
+      }
+    }, 300);
+
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [gifQuery, openGifPicker]);
+
   const getUsernameById = useCallback(
     (authorId: string, msgUsername?: string): string => {
-      // Check if username is provided in the message itself
       if (msgUsername) return msgUsername;
-      // Check if it's the current user
-      if (user && user.id === authorId) {
-        return user.username;
-      }
-      // Check members
-      const member = members.find((m) => m.user_id === authorId);
-      if (member) {
-        return member.username;
-      }
-      // Fallback: use first part of UUID
+      if (user && user.id === authorId) return user.username;
+      if (activePeerId === authorId && peerUsername) return peerUsername;
       return authorId.slice(0, 8);
     },
-    [user, members],
+    [user, activePeerId, peerUsername],
   );
 
   const parseGifContent = useCallback((content: string) => {
     try {
       const parsed = JSON.parse(content);
-      if (
-        parsed &&
-        parsed.type === "gif" &&
-        parsed.gif &&
-        typeof parsed.gif.url === "string"
-      ) {
+      if (parsed?.type === "gif" && parsed?.gif?.url) {
         return parsed as {
           type: "gif";
           gif: { id: string; url: string; preview?: string; provider?: string };
@@ -137,15 +164,10 @@ export function ChatPanel() {
     return null;
   }, []);
 
-  const currentMemberRole = members.find((m) => m.user_id === user?.id)?.role;
-  const canModerate = currentMemberRole === "Owner" || currentMemberRole === "Admin" || currentMemberRole === "Moderator";
-
   const onSend = async () => {
-    if (!activeChannelId || !canLoad) return;
-
+    if (!activePeerId || !conversationId) return;
     const content = value.trim();
     if (!content) return;
-
     if (!isConnected) {
       setError("Non connecté au serveur");
       return;
@@ -156,16 +178,15 @@ export function ChatPanel() {
 
     try {
       if (isEditing && editingMessageId) {
-        editMessage(activeChannelId, editingMessageId, content);
+        editDm(conversationId, editingMessageId, content);
         setEditingMessageId(null);
         setIsEditing(false);
       } else {
-        sendMessage(activeChannelId, content, replyTo || undefined);
+        sendDm(activePeerId, content, replyTo || undefined);
         setReplyTo(null);
         setReplyToUsername(null);
       }
       setValue("");
-      if (activeChannelId) stopTyping(activeChannelId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur envoi message");
     } finally {
@@ -180,47 +201,6 @@ export function ChatPanel() {
     setValue("");
   };
 
-  // Typing indicator: track when user is typing
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newValue = e.target.value;
-      setValue(newValue);
-
-      if (!activeChannelId || !isConnected) return;
-
-      if (newValue.trim()) {
-        startTyping(activeChannelId);
-        // Clear previous timeout
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        // Stop typing after 2 seconds of inactivity
-        typingTimeoutRef.current = setTimeout(() => {
-          if (activeChannelId) stopTyping(activeChannelId);
-        }, 2000);
-      } else {
-        stopTyping(activeChannelId);
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      }
-    },
-    [activeChannelId, isConnected, startTyping, stopTyping],
-  );
-
-  // Get typing users for current channel (exclude self)
-  const currentTypingUsers = useMemo(() => {
-    if (!activeChannelId) return [];
-    const users = typingUsers[activeChannelId] || [];
-    return users.filter((uid) => uid !== user?.id);
-  }, [activeChannelId, typingUsers, user?.id]);
-
-  const typingDisplay = useMemo(() => {
-    if (currentTypingUsers.length === 0) return null;
-    const names = currentTypingUsers.map((uid) => getUsernameById(uid));
-    if (names.length === 1) return `${names[0]} est en train d'écrire...`;
-    if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
-    return `${names.length} personnes écrivent...`;
-  }, [currentTypingUsers, getUsernameById]);
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -228,112 +208,52 @@ export function ChatPanel() {
     }
   };
 
-  // Autocomplete/debounced GIF search when picker is open
-  useEffect(() => {
-    if (openGifPicker !== "input") return;
-
-    const query =
-      gifQuery && gifQuery.trim() !== "" ? gifQuery.trim() : "trending";
-    const controller = new AbortController();
-    setGifLoading(true);
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `/api/gifs/search?q=${encodeURIComponent(query)}&limit=24`,
-          { signal: controller.signal },
-        );
-        if (!res.ok) {
-          setGifResults([]);
-          setGifLoading(false);
-          return;
-        }
-        const json = await res.json();
-        const results: {
-          id: string;
-          url: string;
-          preview?: string;
-          provider?: string;
-        }[] = [];
-        if (json.results) {
-          for (const it of json.results) {
-            const id = it.id || "";
-            const url = it.url || "";
-            const preview = it.preview || undefined;
-            const provider = it.provider || undefined;
-            if (url)
-              results.push({ id: id.toString(), url, preview, provider });
-          }
-        } else if (json.data) {
-          for (const it of json.data) {
-            const id = it.id || "";
-            const url =
-              it.images?.original?.url || it.images?.fixed_width?.url || "";
-            const preview =
-              it.images?.preview_gif?.url ||
-              it.images?.fixed_width_small_still?.url;
-            if (url)
-              results.push({
-                id: id.toString(),
-                url,
-                preview,
-                provider: "giphy",
-              });
-          }
-        }
-        setGifResults(results);
-      } catch (err: unknown) {
-        // Ignore AbortError (fetch aborted on quick typing / picker close)
-        if (!(err instanceof DOMException) || err.name !== "AbortError") {
-          console.error("GIF search failed", err);
-        }
-        setGifResults([]);
-      } finally {
-        setGifLoading(false);
-      }
-    }, 300);
-
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [gifQuery, openGifPicker]);
+  if (!activePeerId) {
+    return (
+      <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden items-center justify-center">
+        <div className="text-center text-[var(--muted-foreground)]">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--surface)] flex items-center justify-center">
+            <Send className="w-8 h-8 text-[var(--muted-foreground)]" />
+          </div>
+          <p className="text-lg font-semibold text-[var(--muted-foreground)] mb-1">Messages privés</p>
+          <p className="text-sm">Sélectionne une conversation pour commencer.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden">
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm shrink-0">
-        <span className="text-[var(--muted-foreground)] mr-2 text-2xl">#</span>
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center text-[10px] font-semibold text-white mr-3">
+          {(peerUsername ?? "?").slice(0, 2).toUpperCase()}
+        </div>
         <h2 className="font-bold text-md text-[var(--foreground)]">
-          {activeChannelName ?? "aucun-channel"}
+          {peerUsername}
         </h2>
       </div>
 
       {/* --- MESSAGES --- */}
       <div className="flex-1 overflow-y-auto flex flex-col py-4">
-        {!canLoad ? (
-          <div className="px-4 text-sm text-muted-foreground">
-            Sélectionne un serveur et un channel.
-          </div>
-        ) : messages.length === 0 && !isConnected ? (
+        {messages.length === 0 && !isConnected ? (
           <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
             Connexion au serveur...
           </div>
         ) : messages.length === 0 ? (
           <div className="px-4 text-sm text-muted-foreground">
-            Aucun message dans ce channel. Soyez le premier à écrire !
+            Aucun message. Écris le premier message à {peerUsername} !
           </div>
         ) : (
           <div className="flex flex-col mt-auto">
             {messages.map((msg) => {
               const isAuthor = user?.id === msg.author_id;
-              const canDelete = isAuthor || canModerate;
               const messageUsername = getUsernameById(msg.author_id, msg.username);
               return (
                 <div
                   key={msg.id}
-                  className="group relative flex items-start px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
+                  className="group relative flex items-start px-4 py-2 hover:bg-black/5 transition w-full"
                 >
                   {/* Action buttons — top-right, visible on hover */}
                   <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-0.5 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm px-1 py-0.5 z-10">
@@ -342,6 +262,8 @@ export function ChatPanel() {
                       onClick={() => {
                         setReplyTo(msg.id);
                         setReplyToUsername(messageUsername);
+                        setIsEditing(false);
+                        setEditingMessageId(null);
                         setValue("");
                       }}
                       title="Répondre"
@@ -354,6 +276,8 @@ export function ChatPanel() {
                         onClick={() => {
                           setIsEditing(true);
                           setEditingMessageId(msg.id);
+                          setReplyTo(null);
+                          setReplyToUsername(null);
                           setValue(msg.content);
                         }}
                         title="Modifier"
@@ -361,10 +285,10 @@ export function ChatPanel() {
                         <Edit3 className="h-4 w-4" />
                       </button>
                     )}
-                    {canDelete && (
+                    {isAuthor && conversationId && (
                       <button
                         className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-red-600 hover:bg-[var(--surface)] rounded transition"
-                        onClick={() => deleteMessage(activeChannelId || "", msg.id)}
+                        onClick={() => deleteDm(conversationId, msg.id)}
                         title="Supprimer"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -444,20 +368,18 @@ export function ChatPanel() {
                       if (gifMessage) {
                         return (
                           <div className="mt-2 rounded-md border border-[var(--border)] p-2 bg-[var(--surface)]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={gifMessage.gif.url}
                               alt="GIF"
                               className="h-36 w-full rounded-md object-cover"
                             />
                             {gifMessage.caption && (
-                              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                                {gifMessage.caption}
-                              </p>
+                              <p className="mt-1 text-sm text-[var(--muted-foreground)]">{gifMessage.caption}</p>
                             )}
                           </div>
                         );
                       }
-
                       return (
                         <p className="text-[var(--muted-foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
                           {msg.content}
@@ -483,7 +405,7 @@ export function ChatPanel() {
                               key={emoji}
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition ${
                                 hasReacted
-                                  ? "bg-indigo-100 border-indigo-300 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-600 dark:text-indigo-300"
+                                  ? "bg-indigo-100 border-indigo-300 text-indigo-700"
                                   : "bg-[var(--surface)] border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
                               }`}
                               title={data.users.join(", ")}
@@ -507,7 +429,6 @@ export function ChatPanel() {
                 </div>
               );
             })}
-
             <div ref={bottomRef} />
           </div>
         )}
@@ -521,11 +442,9 @@ export function ChatPanel() {
 
         {error && <div className="px-4 mt-2 text-xs text-red-500">{error}</div>}
       </div>
-
-      {/* --- INPUT --- */}
       <div className="p-4 mb-2 shrink-0">
         {((replyTo && !isEditing) || isEditing) && (
-          <div className="mb-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200 flex items-center justify-between">
+          <div className="mb-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-700 flex items-center justify-between">
             <div>
               {isEditing ? "Modification du message en cours" : "Réponse en cours"}
               {replyTo && !isEditing && replyToUsername ? `: ${replyToUsername}` : ""}
@@ -551,16 +470,14 @@ export function ChatPanel() {
 
             <Input
               value={value}
-              onChange={handleInputChange}
+              onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={!canLoad || sending || !isConnected}
-              className="px-14 pr-32 py-6 bg-[var(--muted)] border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]"
+              disabled={!activePeerId || sending || !isConnected}
+              className="px-14 pr-32 py-6 bg-[var(--muted)]/90 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[var(--muted-foreground)] placeholder:text-[var(--muted-foreground)]"
               placeholder={
-                !canLoad
-                  ? "Sélectionne un channel..."
-                  : !isConnected
-                    ? "Connexion en cours..."
-                    : `Envoyer un message dans #${activeChannelName ?? ""}`
+                !isConnected
+                  ? "Connexion en cours..."
+                  : `Envoyer un message à ${peerUsername ?? ""}`
               }
             />
 
@@ -571,9 +488,7 @@ export function ChatPanel() {
 
               <button
                 type="button"
-                onClick={() =>
-                  setOpenGifPicker(openGifPicker === "input" ? null : "input")
-                }
+                onClick={() => setOpenGifPicker(openGifPicker === "input" ? null : "input")}
                 title="GIF"
                 className="h-6 w-6 flex items-center justify-center"
               >
@@ -610,7 +525,7 @@ export function ChatPanel() {
           {/* Bouton Envoyer */}
           <Button
             onClick={onSend}
-            disabled={!canLoad || sending || !isConnected || !value.trim()}
+            disabled={!activePeerId || sending || !isConnected || !value.trim()}
             className="h-12 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Envoyer le message"
           >
@@ -637,53 +552,25 @@ export function ChatPanel() {
                   setGifLoading(true);
                   try {
                     const res = await fetch(
-                      `/api/gifs/search?q=${encodeURIComponent(
-                        gifQuery || "trending",
-                      )}&limit=24`,
+                      `/api/gifs/search?q=${encodeURIComponent(gifQuery || "trending")}&limit=24`,
                     );
-                    if (!res.ok) {
-                      setGifResults([]);
-                      setGifLoading(false);
-                      return;
-                    }
+                    if (!res.ok) { setGifResults([]); setGifLoading(false); return; }
                     const json = await res.json();
-                    const results: {
-                      id: string;
-                      url: string;
-                      preview?: string;
-                      provider?: string;
-                    }[] = [];
+                    const results: { id: string; url: string; preview?: string; provider?: string }[] = [];
                     if (json.results) {
                       for (const it of json.results) {
                         const id = it.id || "";
                         const url = it.url || "";
                         const preview = it.preview || undefined;
                         const provider = it.provider || undefined;
-                        if (url)
-                          results.push({
-                            id: id.toString(),
-                            url,
-                            preview,
-                            provider,
-                          });
+                        if (url) results.push({ id: id.toString(), url, preview, provider });
                       }
                     } else if (json.data) {
                       for (const it of json.data) {
                         const id = it.id || "";
-                        const url =
-                          it.images?.original?.url ||
-                          it.images?.fixed_width?.url ||
-                          "";
-                        const preview =
-                          it.images?.preview_gif?.url ||
-                          it.images?.fixed_width_small_still?.url;
-                        if (url)
-                          results.push({
-                            id: id.toString(),
-                            url,
-                            preview,
-                            provider: "giphy",
-                          });
+                        const url = it.images?.original?.url || it.images?.fixed_width?.url || "";
+                        const preview = it.images?.preview_gif?.url || it.images?.fixed_width_small_still?.url;
+                        if (url) results.push({ id: id.toString(), url, preview, provider: "giphy" });
                       }
                     }
                     setGifResults(results);
@@ -697,18 +584,10 @@ export function ChatPanel() {
                 className="px-2 py-1 bg-indigo-600 text-white rounded"
                 disabled={gifLoading}
               >
-                {gifLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Rechercher"
-                )}
+                {gifLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Rechercher"}
               </button>
               <button
-                onClick={() => {
-                  setOpenGifPicker(null);
-                  setGifResults([]);
-                  setGifQuery("");
-                }}
+                onClick={() => { setOpenGifPicker(null); setGifResults([]); setGifQuery(""); }}
                 className="px-2 py-1 bg-[var(--muted)] rounded"
               >
                 Fermer
@@ -724,25 +603,13 @@ export function ChatPanel() {
                   className="h-20 w-full object-cover rounded cursor-pointer"
                   onClick={() => {
                     try {
-                      if (
-                        socket &&
-                        socket.readyState === WebSocket.OPEN &&
-                        activeChannelId
-                      ) {
-                        const ev = {
-                          type: "MessageSendGif",
-                          payload: {
-                            channel_id: activeChannelId,
-                            gif: {
-                              id: g.id,
-                              url: g.url,
-                              preview: g.preview,
-                              provider: g.provider,
-                            },
-                            caption: null,
-                          },
-                        };
-                        socket.send(JSON.stringify(ev));
+                      if (activePeerId) {
+                        sendDmGif(activePeerId, {
+                          id: g.id,
+                          url: g.url,
+                          preview: g.preview,
+                          provider: g.provider,
+                        }, null);
                       }
                     } catch (e) {
                       console.error("Failed to send gif", e);
@@ -759,29 +626,8 @@ export function ChatPanel() {
           </div>
         )}
 
-        {/* Typing indicator */}
-        {typingDisplay && (
-          <div className="mt-1 px-1 text-xs text-indigo-500 flex items-center gap-1 animate-pulse">
-            <span className="flex gap-0.5">
-              <span
-                className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              />
-              <span
-                className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              />
-              <span
-                className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              />
-            </span>
-            {typingDisplay}
-          </div>
-        )}
-
         {/* Connection status */}
-        {!isConnected && canLoad && (
+        {!isConnected && (
           <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
             <Loader2 className="h-3 w-3 animate-spin" />
             Reconnexion en cours...

@@ -143,7 +143,7 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       ? "border-green-200 text-green-700 bg-green-50"
       : status?.type === "error"
       ? "border-red-200 text-red-700 bg-red-50"
-      : "border-zinc-200 text-zinc-700 bg-zinc-50";
+      : "border-[var(--border)] text-[var(--foreground)] bg-[var(--surface)]";
 
   return (
     <div className="border-b px-4 py-2">

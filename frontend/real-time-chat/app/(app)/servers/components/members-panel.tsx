@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
+import { useDmStore } from "@/store/dm.store";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 
@@ -18,6 +20,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  const router = useRouter();
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const currentUser = useAuthStore((s) => s.user);
@@ -26,6 +29,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const membersLoading = useMemberStore((s) => s.loading);
   const setMembersLoading = useMemberStore((s) => s.setLoading);
   const onlineUsers = useWebSocketStore((s) => s.onlineUsers);
+  const setActivePeer = useDmStore((s) => s.setActivePeer);
 
   const server = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
@@ -115,7 +119,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
   const onlineCount = members.filter((m) => onlineUsers.includes(m.user_id)).length;
 
   return (
-    <aside className="h-[95%] rounded-2xl my-4 ml-2 border border-[#E5E7EB] w-full p-4 overflow-auto shadow-lg">
+    <aside className="h-[95%] rounded-2xl my-4 ml-2 border border-[var(--border)] w-full p-4 overflow-auto shadow-lg">
       <h3 className="text-sm font-semibold mb-1">
         Membres ({membersLoading ? "..." : members.length})
       </h3>
@@ -145,18 +149,18 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
                 <div className="flex items-center gap-2">
                   {/* Avatar with online indicator */}
                   <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-100">
+                    <div className="w-8 h-8 rounded-full bg-[var(--muted)] flex items-center justify-center text-xs font-semibold text-[var(--foreground)]">
                       {(m.username || "U").slice(0, 2).toUpperCase()}
                     </div>
                     <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--card)] ${
                         isOnline ? "bg-green-500" : "bg-gray-400"
                       }`}
                     />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className={`font-medium truncate ${isOnline ? "text-zinc-800" : "text-zinc-400"}`}>
+                    <div className={`font-medium truncate ${isOnline ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}`}>
                       {m.username || "Utilisateur"}
                     </div>
                     <div className="text-[10px] text-muted-foreground">
@@ -176,6 +180,22 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
                       {loadingKick === m.user_id ? "..." : "×"}
                     </Button>
                   )}
+
+                  {/* DM button — don't show for yourself */}
+                  {currentUser && m.user_id !== currentUser.id && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setActivePeer(m.user_id);
+                        router.push("/dm");
+                      }}
+                      title="Message privé"
+                      className="h-6 w-6 p-0 text-xs text-[var(--muted-foreground)] hover:text-[#023BFC]"
+                    >
+                      💬
+                    </Button>
+                  )}
                 </div>
 
                 {/* Role management dropdown (owner only, not for other owners) */}
@@ -184,7 +204,7 @@ export function MembersPanel({ onRefresh }: { onRefresh: () => Promise<void> }) 
                     value={m.role}
                     onChange={(e) => onChangeRole(m.user_id, e.target.value)}
                     disabled={loadingRole === m.user_id}
-                    className="text-xs border rounded px-1 py-0.5 bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
+                    className="text-xs border rounded px-1 py-0.5 bg-[var(--card)] text-[var(--muted-foreground)]"
                   >
                     {ROLE_OPTIONS.map((role) => (
                       <option key={role} value={role}>

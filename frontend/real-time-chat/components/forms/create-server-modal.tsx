@@ -61,7 +61,7 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px] border-0 bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl overflow-hidden">
+      <DialogContent className="sm:max-w-[425px] border-0 bg-[var(--card)] backdrop-blur-xl shadow-2xl rounded-2xl overflow-hidden">
         {/* Decorative gradient header */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#023BFC] via-[#3D6AFF] to-[#023BFC]" />
         
@@ -71,16 +71,16 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg">
                 <Plus className="h-5 w-5 text-white" />
               </div>
-              <span className="text-[#1A1A2E]">Créer un serveur</span>
+              <span className="text-[var(--foreground)]">Créer un serveur</span>
             </DialogTitle>
-            <DialogDescription className="text-[#6B7280] mt-2">
+            <DialogDescription className="text-[var(--muted-foreground)] mt-2">
               Donnez un nom à votre serveur. Vous pourrez le modifier plus tard.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-6">
             <div className="grid gap-2">
-              <Label htmlFor="server-name" className="text-[#4B5563] font-medium">
+              <Label htmlFor="server-name" className="text-[var(--muted-foreground)] font-medium">
                 Nom du serveur
               </Label>
               <Input
@@ -90,7 +90,7 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
                 placeholder="Mon super serveur"
                 disabled={loading}
                 autoFocus
-                className="h-12 px-4 rounded-xl border-[#E5E7EB] focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all duration-300 bg-[#F7F8FA]"
+                className="h-12 px-4 rounded-xl border-[var(--border)] focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all duration-300 bg-[var(--surface)]"
               />
             </div>
 
@@ -110,7 +110,7 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
               variant="outline"
               onClick={handleClose}
               disabled={loading}
-              className="h-11 px-6 rounded-xl border-[#E5E7EB] text-[#4B5563] hover:bg-[#F7F8FA] hover:border-[#D1D5DB] transition-all duration-300"
+              className="h-11 px-6 rounded-xl border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--surface)] hover:border-[#D1D5DB] transition-all duration-300"
             >
               Annuler
             </Button>
