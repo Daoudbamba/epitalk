@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -169,7 +170,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
         className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg glow-blue-sm hover:scale-105 transition-transform duration-200"
         title="Messages privés"
       >
-        <span className="text-white font-bold text-lg">B</span>
+        <MessageSquare className="w-6 h-6 text-white" />
       </Link>
       
       <div className="w-10 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
