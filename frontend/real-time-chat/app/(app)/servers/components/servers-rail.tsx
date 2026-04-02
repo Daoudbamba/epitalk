@@ -10,6 +10,7 @@ import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 import { UserSettings } from "./user-settings";
 import { CreateServerModal } from "@/components/forms/create-server-modal";
+import { useLanguage } from "@/components/language-provider";
 
 function initials(name: string) {
   const cleaned = name.trim();
@@ -40,6 +41,8 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
   const currentUser = useAuthStore((s) => s.user);
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   const activeServer = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
@@ -66,7 +69,11 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
   const onJoin = async () => {
     const code = extractInviteCode(inviteInput);
     if (!code) {
-      setErr("Colle un lien /invite/<code> ou un code valide.");
+      setErr(
+        isEnglish
+          ? "Paste a /invite/<code> link or a valid code."
+          : "Colle un lien /invite/<code> ou un code valide."
+      );
       return;
     }
 
@@ -77,7 +84,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
       await serversApi.joinByInvite(code);
       setInviteInput("");
       await onRefresh();
-      setOk("Serveur rejoint.");
+      setOk(isEnglish ? "Server joined." : "Serveur rejoint.");
     } catch (err) {
       setErr(getErrorMessage(err));
     } finally {
@@ -87,11 +94,15 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
 
   const onInvite = async () => {
     if (!activeServerId) {
-      setErr("Selectionne un serveur.");
+      setErr(isEnglish ? "Select a server." : "Selectionne un serveur.");
       return;
     }
     if (!isOwner) {
-      setErr("Seul le createur peut generer une invitation.");
+      setErr(
+        isEnglish
+          ? "Only the owner can generate an invite."
+          : "Seul le createur peut generer une invitation."
+      );
       return;
     }
 
@@ -105,7 +116,11 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
       setInviteLink(link);
 
       await navigator.clipboard.writeText(link).catch(() => {});
-      setOk("Invitation generee (lien copie).");
+      setOk(
+        isEnglish
+          ? "Invite created (link copied)."
+          : "Invitation generee (lien copie)."
+      );
     } catch (err) {
       setErr(getErrorMessage(err));
     } finally {
@@ -116,12 +131,12 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
   const onCopyInvite = async () => {
     if (!inviteLink) return;
     await navigator.clipboard.writeText(inviteLink).catch(() => {});
-    setInfo("Lien copie.");
+    setInfo(isEnglish ? "Link copied." : "Lien copie.");
   };
 
   const onLeaveOrDelete = async () => {
     if (!activeServerId || !activeServer) {
-      setErr("Selectionne un serveur.");
+      setErr(isEnglish ? "Select a server." : "Selectionne un serveur.");
       return;
     }
 
@@ -130,15 +145,21 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
 
     try {
       if (isOwner) {
-        const ok = confirm("Tu es le createur. Supprimer le serveur ?");
+        const ok = confirm(
+          isEnglish
+            ? "You are the owner. Delete this server?"
+            : "Tu es le createur. Supprimer le serveur ?"
+        );
         if (!ok) return;
         await serversApi.delete(activeServerId);
-        setInfo("Serveur supprime.");
+        setInfo(isEnglish ? "Server deleted." : "Serveur supprime.");
       } else {
-        const ok = confirm("Quitter ce serveur ?");
+        const ok = confirm(
+          isEnglish ? "Leave this server?" : "Quitter ce serveur ?"
+        );
         if (!ok) return;
         await serversApi.leave(activeServerId);
-        setInfo("Serveur quitte.");
+        setInfo(isEnglish ? "Server left." : "Serveur quitte.");
       }
 
       await onRefresh();
@@ -233,13 +254,18 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                   </svg>
                 </div>
                 <div className="min-w-0">
-                  <div className="font-bold text-[var(--foreground)]">Parametres</div>
-                  <div className="text-xs text-[var(--muted-foreground)] truncate">{activeServer?.name ?? "Aucun serveur selectionne"}</div>
+                  <div className="font-bold text-[var(--foreground)]">
+                    {isEnglish ? "Settings" : "Parametres"}
+                  </div>
+                  <div className="text-xs text-[var(--muted-foreground)] truncate">
+                    {activeServer?.name ??
+                      (isEnglish ? "No server selected" : "Aucun serveur selectionne")}
+                  </div>
                 </div>
               </div>
               <button
-                title="Fermer les paramètres"
-                aria-label="Fermer les paramètres"
+                title={isEnglish ? "Close settings" : "Fermer les paramètres"}
+                aria-label={isEnglish ? "Close settings" : "Fermer les paramètres"}
                 className="ml-auto w-9 h-9 rounded-xl bg-[var(--surface)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center transition-all duration-300 shrink-0"
                 onClick={() => setOpenSettings(false)}
               >
@@ -258,21 +284,27 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                     </svg>
                   </div>
-                  <div className="text-sm font-bold text-[var(--foreground)]">Rejoindre un serveur</div>
+                  <div className="text-sm font-bold text-[var(--foreground)]">
+                    {isEnglish ? "Join a server" : "Rejoindre un serveur"}
+                  </div>
                 </div>
                 <div className="text-xs text-[var(--muted-foreground)] mb-4">
-                  Colle un code ou un lien complet d&apos;invitation.
+                  {isEnglish
+                    ? "Paste an invite code or full invite link."
+                    : "Colle un code ou un lien complet d'invitation."}
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   <input
                     value={inviteInput}
                     onChange={(e) => setInviteInput(e.target.value)}
-                    placeholder="Lien d'invite ou code..."
+                    placeholder={
+                      isEnglish ? "Invite link or code..." : "Lien d'invite ou code..."
+                    }
                     className="h-11 flex-1 rounded-xl border border-[var(--border)] px-4 text-sm bg-[var(--card)] focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 outline-none transition-all duration-300"
                   />
-                  <Button onClick={onJoin} disabled={loadingJoin || !inviteInput.trim()} className="btn-premium h-11 px-5 shrink-0">
-                    {loadingJoin ? "..." : "Rejoindre"}
+                  <Button onClick={onJoin} disabled={loadingJoin || !inviteInput.trim()} className="btn-premium h-11 px-5">
+                    {loadingJoin ? "..." : isEnglish ? "Join" : "Rejoindre"}
                   </Button>
                 </div>
               </div>
@@ -285,10 +317,14 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                   </div>
-                  <div className="text-sm font-bold text-[var(--foreground)]">Inviter sur mon serveur</div>
+                  <div className="text-sm font-bold text-[var(--foreground)]">
+                    {isEnglish ? "Invite to my server" : "Inviter sur mon serveur"}
+                  </div>
                 </div>
                 <div className="text-xs text-[var(--muted-foreground)] mb-4">
-                  Génère un lien d&apos;invitation à partager.
+                  {isEnglish
+                    ? "Generate an invite link to share."
+                    : "Génère un lien d'invitation à partager."}
                 </div>
 
                 <div className="flex gap-3 flex-wrap">
@@ -296,10 +332,22 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                     variant="outline"
                     onClick={onInvite}
                     disabled={loadingInvite || !activeServerId}
-                    title={isOwner ? "Generer" : "Reserve au createur"}
+                    title={
+                      isOwner
+                        ? isEnglish
+                          ? "Generate"
+                          : "Generer"
+                        : isEnglish
+                          ? "Owner only"
+                          : "Reserve au createur"
+                    }
                     className="h-11 px-5 rounded-xl border-[var(--border)] hover:border-[#023BFC] hover:bg-[#023BFC]/5 transition-all duration-300"
                   >
-                    {loadingInvite ? "..." : "Generer une invitation"}
+                    {loadingInvite
+                      ? "..."
+                      : isEnglish
+                      ? "Generate invite"
+                      : "Generer une invitation"}
                   </Button>
 
                   {inviteLink && (
@@ -308,7 +356,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                         {inviteLink}
                       </div>
                       <Button variant="outline" onClick={onCopyInvite} className="h-11 px-4 rounded-xl border-[#023BFC] text-[#023BFC] hover:bg-[#023BFC] hover:text-white transition-all duration-300">
-                        Copier
+                        {isEnglish ? "Copy" : "Copier"}
                       </Button>
                     </>
                   )}
@@ -324,12 +372,22 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                     </svg>
                   </div>
                   <div className="text-sm font-bold text-red-700">
-                    {isOwner ? "Zone dangereuse" : "Quitter le serveur"}
+                    {isOwner
+                      ? isEnglish
+                        ? "Danger zone"
+                        : "Zone dangereuse"
+                      : isEnglish
+                      ? "Leave server"
+                      : "Quitter le serveur"}
                   </div>
                 </div>
                 <div className="text-xs text-red-600/80 mb-4">
                   {isOwner
-                    ? "La suppression est definitive et irreversible."
+                    ? isEnglish
+                      ? "Deletion is permanent and irreversible."
+                      : "La suppression est definitive et irreversible."
+                    : isEnglish
+                    ? "You can leave this server at any time."
                     : "Tu peux quitter ce serveur a tout moment."}
                 </div>
 
@@ -339,7 +397,15 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                   disabled={loadingDanger || !activeServerId}
                   className={isOwner ? "h-11 px-5 rounded-xl bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 border-0 shadow-lg" : "h-11 px-5 rounded-xl border-red-300 text-red-600 hover:bg-red-50"}
                 >
-                  {loadingDanger ? "..." : isOwner ? "Supprimer definitivement" : "Quitter"}
+                  {loadingDanger
+                    ? "..."
+                    : isOwner
+                    ? isEnglish
+                      ? "Delete permanently"
+                      : "Supprimer definitivement"
+                    : isEnglish
+                    ? "Leave"
+                    : "Quitter"}
                 </Button>
               </div>
 

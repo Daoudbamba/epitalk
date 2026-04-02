@@ -10,6 +10,7 @@ import { useWebSocketStore } from "@/store/websocket.store";
 import { useDmStore } from "@/store/dm.store";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
+import { useLanguage } from "@/components/language-provider";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
 const ROLE_LABELS: Record<string, string> = {
@@ -35,6 +36,8 @@ export function MembersPanel({
   const presence = useWebSocketStore((s) => s.presence);
   const setPresence = useWebSocketStore((s) => s.setPresence);
   const setActivePeer = useDmStore((s) => s.setActivePeer);
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   const server = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
@@ -104,9 +107,11 @@ export function MembersPanel({
   if (!server) {
     return (
       <aside className="w-full border-l p-4">
-        <h3 className="text-sm font-semibold mb-4">Membres</h3>
+        <h3 className="text-sm font-semibold mb-4">
+          {isEnglish ? "Members" : "Membres"}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          Aucun serveur sélectionné
+          {isEnglish ? "No server selected" : "Aucun serveur sélectionné"}
         </p>
       </aside>
     );
@@ -137,11 +142,13 @@ export function MembersPanel({
   return (
     <aside className="h-[95%] rounded-2xl my-4 ml-2 border border-[var(--border)] w-full p-4 overflow-auto shadow-lg">
       <h3 className="text-sm font-semibold mb-1">
-        Membres ({membersLoading ? "..." : members.length})
+        {language === "en" ? "Members" : "Membres"} ({
+          membersLoading ? "..." : members.length
+        })
       </h3>
       <p className="text-xs text-muted-foreground mb-3">
         <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />
-        {onlineCount} en ligne
+        {onlineCount} {language === "en" ? "online" : "en ligne"}
       </p>
 
       {/* Contrôle du statut personnel */}
@@ -179,7 +186,9 @@ export function MembersPanel({
       )}
 
       {membersLoading ? (
-        <p className="text-sm text-muted-foreground">Chargement...</p>
+        <p className="text-sm text-muted-foreground">
+          {language === "en" ? "Loading..." : "Chargement..."}
+        </p>
       ) : (
         <ul className="space-y-3 text-sm">
           {sortedMembers.map((m) => {

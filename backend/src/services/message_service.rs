@@ -74,4 +74,21 @@ impl MessageService {
     ) -> mongodb::error::Result<Option<String>> {
         self.repo.remove_reaction(message_id, emoji, user_id).await
     }
+
+    pub async fn edit_message(
+        &self,
+        message_id: ObjectId,
+        channel_id: &str,
+        author_id: &str,
+        content: &str,
+    ) -> mongodb::error::Result<Option<MessageDb>> {
+        self
+            .repo
+            .update_content(message_id, channel_id, author_id, content)
+            .await
+    }
+
+    pub async fn get_dm_conversations(&self, user_id: &str) -> Vec<Document> {
+        self.repo.get_dm_conversations(user_id).await
+    }
 }

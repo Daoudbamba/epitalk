@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
+import { useLanguage } from "@/components/language-provider";
 
 interface CreateServerModalProps {
   open: boolean;
@@ -26,13 +27,17 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Le nom du serveur est requis");
+      setError(
+        isEnglish ? "Server name is required" : "Le nom du serveur est requis",
+      );
       return;
     }
 
@@ -71,17 +76,21 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg">
                 <Plus className="h-5 w-5 text-white" />
               </div>
-              <span className="text-[var(--foreground)]">Créer un serveur</span>
+              <span className="text-[var(--foreground)]">
+                {isEnglish ? "Create a server" : "Créer un serveur"}
+              </span>
             </DialogTitle>
             <DialogDescription className="text-[var(--muted-foreground)] mt-2">
-              Donnez un nom à votre serveur. Vous pourrez le modifier plus tard.
+              {isEnglish
+                ? "Give your server a name. You can change it later."
+                : "Donnez un nom à votre serveur. Vous pourrez le modifier plus tard."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-6">
             <div className="grid gap-2">
               <Label htmlFor="server-name" className="text-[var(--muted-foreground)] font-medium">
-                Nom du serveur
+                {isEnglish ? "Server name" : "Nom du serveur"}
               </Label>
               <Input
                 id="server-name"
@@ -112,7 +121,7 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
               disabled={loading}
               className="h-11 px-6 rounded-xl border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--surface)] hover:border-[#D1D5DB] transition-all duration-300"
             >
-              Annuler
+              {isEnglish ? "Cancel" : "Annuler"}
             </Button>
             <Button 
               type="submit" 
@@ -122,10 +131,10 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Création...
+                  {isEnglish ? "Creating..." : "Création..."}
                 </>
               ) : (
-                "Créer"
+                isEnglish ? "Create" : "Créer"
               )}
             </Button>
           </DialogFooter>

@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { authApi } from "@/lib/api";
+import { ApiError } from "@/lib/api/errors";
 import { useAuthStore } from "@/store/auth.store";
 
 // Types basés sur le protocole WebSocket du backend
@@ -221,6 +223,37 @@ type WebSocketState = {
 
 // Default to backend port 3001 where the Rust server listens in dev
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001/ws";
+const MAX_RECONNECT_ATTEMPTS = 5;
+const BASE_RECONNECT_DELAY_MS = 1000;
+const DEGRADED_RECONNECT_DELAY_MS = 30000;
+
+let reconnectAttempts = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function shouldForceAuthLogout(event: CloseEvent): boolean {
+  const reason = event.reason?.toLowerCase() ?? "";
+  return (
+    event.code === 1008 ||
+    reason.includes("unauthorized") ||
+    reason.includes("invalid token") ||
+    reason.includes("expired")
+  );
+}
+
+function getLatestToken(): string | null {
+  if (typeof window !== "undefined") {
+    const fromStorage = localStorage.getItem("token");
+    if (fromStorage) return fromStorage;
+  }
+  return useAuthStore.getState().token;
+}
 
 export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   socket: null,
@@ -794,8 +827,8 @@ function handleServerEvent(
       break;
     }
 
-    case "MessageUpdated": {
-      const { id, channel_id, content, edited_at } = event.payload;
+    case "ReactionAdded": {
+      const { message_id, emoji, user_id, username } = event.payload;
       set((state) => {
         const newMessages = { ...state.messages } as Record<
           string,
@@ -874,6 +907,13 @@ function handleServerEvent(
       break;
     }
 
+    case "ReactionRemoved": {
+      const { message_id, emoji, user_id } = event.payload;
+      set((state) => {
+        const newMessages = { ...state.messages } as Record<
+          string,
+          WsMessage[]
+        >;
         for (const [chanId, msgs] of Object.entries(newMessages)) {
           const idx = msgs.findIndex((m) => m.id === message_id);
           if (idx !== -1) {

@@ -23,6 +23,10 @@ import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
 import { messagesApi } from "@/lib/api";
 import type { Message } from "@/lib/api/schemas/messages.schema";
+import { useLanguage } from "@/components/language-provider";
+import { useAppearanceStore } from "@/store/appearance.store";
+
+const FONT_SIZE_MAP = { sm: "14px", base: "16px", lg: "18px", xl: "20px" } as const;
 
 export function ChatPanel() {
   const activeServerId = useServerStore((s) => s.activeServerId);
@@ -38,6 +42,8 @@ export function ChatPanel() {
   const members = useMemberStore((s) => s.members);
   const fontSize = useAppearanceStore((s) => s.fontSize);
   const chatFontSize = FONT_SIZE_MAP[fontSize] || "16px";
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
 
   // WebSocket store
   const isConnected = useWebSocketStore((s) => s.isConnected);
@@ -144,6 +150,16 @@ export function ChatPanel() {
     return wsMessages[activeChannelId] || [];
   }, [activeChannelId, wsMessages]);
 
+  // Debug: log chat state when messages / channel change
+  useEffect(() => {
+    console.log("📚 ChatPanel state", {
+      activeServerId,
+      activeChannelId,
+      isConnected,
+      messageCount: messages.length,
+    });
+  }, [activeServerId, activeChannelId, isConnected, messages.length]);
+
   // Connect WebSocket on mount
   useEffect(() => {
     if (token && !isConnected) {
@@ -151,7 +167,7 @@ export function ChatPanel() {
     }
   }, [token, isConnected, connect]);
 
-  // Join channel when it changes
+  // Join channel & (re)load history when ready and we have no messages yet
   useEffect(() => {
     if (activeChannelId && isConnected && activeServerId) {
       // Load initial history via REST so the UI shows messages immediately on reload
@@ -234,7 +250,7 @@ export function ChatPanel() {
     if (!content) return;
 
     if (!isConnected) {
-      setError("Non connecté au serveur");
+      setError(isEnglish ? "Not connected to the server" : "Non connecté au serveur");
       return;
     }
 
@@ -254,7 +270,7 @@ export function ChatPanel() {
       setValue("");
       if (activeChannelId) stopTyping(activeChannelId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur envoi message");
+      setError(e instanceof Error ? e.message : isEnglish ? "Error sending message" : "Erreur envoi message");
     } finally {
       setSending(false);
     }
@@ -303,10 +319,18 @@ export function ChatPanel() {
   const typingDisplay = useMemo(() => {
     if (currentTypingUsers.length === 0) return null;
     const names = currentTypingUsers.map((uid) => getUsernameById(uid));
-    if (names.length === 1) return `${names[0]} est en train d'écrire...`;
-    if (names.length === 2) return `${names[0]} et ${names[1]} écrivent...`;
-    return `${names.length} personnes écrivent...`;
-  }, [currentTypingUsers, getUsernameById]);
+    if (names.length === 1)
+      return isEnglish
+        ? `${names[0]} is typing...`
+        : `${names[0]} est en train d'écrire...`;
+    if (names.length === 2)
+      return isEnglish
+        ? `${names[0]} and ${names[1]} are typing...`
+        : `${names[0]} et ${names[1]} écrivent...`;
+    return isEnglish
+      ? `${names.length} people are typing...`
+      : `${names.length} personnes écrivent...`;
+  }, [currentTypingUsers, getUsernameById, isEnglish]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -392,7 +416,7 @@ export function ChatPanel() {
       <div className="h-12 px-4 flex items-center border-b shadow-sm shrink-0">
         <span className="text-[var(--muted-foreground)] mr-2 text-2xl">#</span>
         <h2 className="font-bold text-md text-[var(--foreground)]">
-          {activeChannelName ?? "aucun-channel"}
+          {activeChannelName ?? (isEnglish ? "no-channel" : "aucun-channel")}
         </h2>
         <div className="ml-auto relative">
           <button
@@ -529,16 +553,20 @@ export function ChatPanel() {
       <div className="flex-1 overflow-y-auto flex flex-col py-4">
         {!canLoad ? (
           <div className="px-4 text-sm text-muted-foreground">
-            Sélectionne un serveur et un channel.
+            {isEnglish
+              ? "Select a server and a channel."
+              : "Sélectionne un serveur et un channel."}
           </div>
         ) : messages.length === 0 && !isConnected ? (
           <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Connexion au serveur...
+            {isEnglish ? "Connecting to server..." : "Connexion au serveur..."}
           </div>
         ) : messages.length === 0 ? (
           <div className="px-4 text-sm text-muted-foreground">
-            Aucun message dans ce channel. Soyez le premier à écrire !
+            {isEnglish
+              ? "No messages in this channel yet. Be the first to write!"
+              : "Aucun message dans ce channel. Soyez le premier à écrire !"}
           </div>
         ) : (
           <div className="flex flex-col mt-auto">
@@ -847,10 +875,16 @@ export function ChatPanel() {
               className="px-14 pr-32 py-6 bg-[var(--muted)] border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]"
               placeholder={
                 !canLoad
-                  ? "Sélectionne un channel..."
+                  ? isEnglish
+                    ? "Select a channel..."
+                    : "Sélectionne un channel..."
                   : !isConnected
-                    ? "Connexion en cours..."
-                    : `Envoyer un message dans #${activeChannelName ?? ""}`
+                    ? isEnglish
+                      ? "Connecting..."
+                      : "Connexion en cours..."
+                    : isEnglish
+                      ? `Send a message in #${activeChannelName ?? ""}`
+                      : `Envoyer un message dans #${activeChannelName ?? ""}`
               }
             />
 

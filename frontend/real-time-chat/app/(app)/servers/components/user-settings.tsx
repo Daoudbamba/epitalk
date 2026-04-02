@@ -33,7 +33,12 @@ export function UserSettings() {
     >
       {user ? (
         avatarUrl ? (
-          <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt={user.username}
+            className="w-full h-full object-cover"
+          />
         ) : (
           <span className="w-full h-full bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center text-white text-sm font-bold uppercase">
             {user.username.slice(0, 2)}
@@ -41,12 +46,18 @@ export function UserSettings() {
         )
       ) : (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+          />
         </svg>
       )}
-      {/* Status dot */}
       {user && (
-        <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-[var(--card)] ${statusDot}`} />
+        <span
+          className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-[var(--card)] ${statusDot}`}
+        />
       )}
     </Link>
   );
