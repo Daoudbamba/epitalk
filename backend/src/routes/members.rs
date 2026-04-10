@@ -14,6 +14,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::auth::RequireAuth;
@@ -46,6 +47,49 @@ pub struct ServerPath {
 pub struct MemberPath {
     pub server_id: Uuid,
     pub user_id: Uuid,
+}
+
+pub(crate) fn validate_ban_permissions(
+    caller_id: Uuid,
+    target_id: Uuid,
+    caller_role: MemberRole,
+    target_role: MemberRole,
+) -> AppResult<()> {
+    if caller_id == target_id {
+        return Err(AppError::BadRequest("Cannot ban yourself.".to_string()));
+    }
+
+    if !caller_role.can_manage_channels() {
+        return Err(AppError::Forbidden(
+            "Insufficient permissions to ban members".to_string(),
+        ));
+    }
+
+    if target_role == MemberRole::Owner {
+        return Err(AppError::Forbidden("Cannot ban the server owner".to_string()));
+    }
+
+    if caller_role == MemberRole::Admin && target_role == MemberRole::Admin {
+        return Err(AppError::Forbidden("Admins cannot ban other admins".to_string()));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn build_ban_message(reason: Option<&str>) -> String {
+    match reason {
+        Some(reason) if !reason.trim().is_empty() => {
+            format!("Vous avez ete banni de ce serveur. Motif: {}", reason)
+        }
+        _ => "Vous avez ete banni de ce serveur.".to_string(),
+    }
+}
+
+pub(crate) fn is_ban_active(expires_at: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
+    match expires_at {
+        None => true,
+        Some(ts) => ts > now,
+    }
 }
 
 /// List all members of a server
@@ -201,36 +245,17 @@ async fn ban_member(
 ) -> AppResult<Json<BanResponse>> {
     let current_user_id = auth.user_id;
 
-    // Cannot ban yourself
-    if current_user_id == params.user_id {
-        return Err(AppError::BadRequest("Cannot ban yourself.".to_string()));
-    }
-
     // Caller must be ADMIN or OWNER
     let caller_role = MembershipRepository::get_role(&state.db, current_user_id, params.server_id)
         .await?
         .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
-
-    if !caller_role.can_manage_channels() {
-        return Err(AppError::Forbidden(
-            "Insufficient permissions to ban members".to_string(),
-        ));
-    }
 
     // Target must exist on the server
     let target_role = MembershipRepository::get_role(&state.db, params.user_id, params.server_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Member not found".to_string()))?;
 
-    // Cannot ban the server owner
-    if target_role == MemberRole::Owner {
-        return Err(AppError::Forbidden("Cannot ban the server owner".to_string()));
-    }
-
-    // Admin cannot ban other admins
-    if caller_role == MemberRole::Admin && target_role == MemberRole::Admin {
-        return Err(AppError::Forbidden("Admins cannot ban other admins".to_string()));
-    }
+    validate_ban_permissions(current_user_id, params.user_id, caller_role, target_role)?;
 
     // Create the ban record
     let ban = MembershipRepository::ban_user(
@@ -243,12 +268,7 @@ async fn ban_member(
     )
     .await?;
 
-    let ban_message = match ban.reason.clone() {
-        Some(reason) if !reason.trim().is_empty() => {
-            format!("Vous avez ete banni de ce serveur. Motif: {}", reason)
-        }
-        _ => "Vous avez ete banni de ce serveur.".to_string(),
-    };
+    let ban_message = build_ban_message(ban.reason.as_deref());
 
     state.hub.send_event_to_user(
         &params.user_id.to_string(),
