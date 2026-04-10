@@ -29,6 +29,7 @@ export function DmChatPanel() {
   const deleteDm = useWebSocketStore((s) => s.deleteDm);
   const sendDmGif = useWebSocketStore((s) => s.sendDmGif);
   const joinDm = useWebSocketStore((s) => s.joinDm);
+  const leaveDm = useWebSocketStore((s) => s.leaveDm);
   const dmMessages = useWebSocketStore((s) => s.dmMessages);
   const socket = useWebSocketStore((s) => s.socket);
   const fontSize = useAppearanceStore((s) => s.fontSize);
@@ -49,7 +50,8 @@ export function DmChatPanel() {
 
   const messages: WsMessage[] = useMemo(() => {
     if (!conversationId) return [];
-    return dmMessages[conversationId] || [];
+    const list = dmMessages[conversationId] || [];
+    return [...list].sort((a, b) => a.created_at.localeCompare(b.created_at));
   }, [conversationId, dmMessages]);
 
   const [sending, setSending] = useState(false);
@@ -69,6 +71,7 @@ export function DmChatPanel() {
   const [gifLoading, setGifLoading] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const prevPeerRef = useRef<string | null>(null);
 
   // Connect WebSocket
   useEffect(() => {
@@ -79,10 +82,15 @@ export function DmChatPanel() {
 
   // Join DM room when peer changes
   useEffect(() => {
+    const prevPeer = prevPeerRef.current;
+    if (prevPeer && prevPeer !== activePeerId) {
+      leaveDm(prevPeer);
+    }
     if (activePeerId && isConnected) {
       joinDm(activePeerId);
     }
-  }, [activePeerId, isConnected, joinDm]);
+    prevPeerRef.current = activePeerId;
+  }, [activePeerId, isConnected, joinDm, leaveDm]);
 
   // Scroll to bottom
   useEffect(() => {

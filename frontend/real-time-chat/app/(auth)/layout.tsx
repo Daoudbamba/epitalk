@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { useWebSocketStore } from "@/store/websocket.store";
 
 export default function AuthLayout({
   children,
@@ -13,6 +14,8 @@ export default function AuthLayout({
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
+  const disconnect = useWebSocketStore((s) => s.disconnect);
+  const isConnected = useWebSocketStore((s) => s.isConnected);
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
@@ -24,6 +27,9 @@ export default function AuthLayout({
       }
 
       if (!token) {
+        if (isConnected) {
+          disconnect();
+        }
         if (!cancelled) setIsChecking(false);
         return;
       }
@@ -43,7 +49,14 @@ export default function AuthLayout({
     return () => {
       cancelled = true;
     };
-  }, [hasHydrated, router, token]);
+  }, [disconnect, hasHydrated, isConnected, router, token]);
+
+  useEffect(() => {
+    // Ensure WS is closed when entering auth pages
+    if (isConnected) {
+      disconnect();
+    }
+  }, [disconnect, isConnected]);
 
   if (isChecking) {
     return (

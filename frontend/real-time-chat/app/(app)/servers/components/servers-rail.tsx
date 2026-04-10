@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/server.store";
+import { useChannelStore } from "@/store/channel.store";
 import { useAuthStore } from "@/store/auth.store";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
@@ -40,6 +41,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
   const servers = useServerStore((s) => s.servers);
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
+  const resetChannels = useChannelStore((s) => s.reset);
   const currentUser = useAuthStore((s) => s.user);
   const { language } = useLanguage();
   const isEnglish = language === "en";
@@ -214,7 +216,12 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
           return (
             <button
               key={s.id}
-              onClick={() => setActiveServer(s.id)}
+              onClick={() => {
+                if (s.id !== activeServerId) {
+                  resetChannels();
+                }
+                setActiveServer(s.id);
+              }}
               className={[
                 "w-12 h-12 transition-all duration-300 flex items-center justify-center font-semibold text-sm",
                 active

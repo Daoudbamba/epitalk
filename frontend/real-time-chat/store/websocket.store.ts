@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { authApi } from "@/lib/api";
 import { ApiError } from "@/lib/api/errors";
 import { useAuthStore } from "@/store/auth.store";
+import { useDmStore } from "@/store/dm.store";
 
 // Types basés sur le protocole WebSocket du backend
 export interface WsMessage {
@@ -255,6 +256,23 @@ function getLatestToken(): string | null {
   return useAuthStore.getState().token;
 }
 
+function getPeerIdFromConversation(conversationId: string, myId: string): string | null {
+  if (!conversationId.startsWith("dm:")) return null;
+  const parts = conversationId.slice(3).split(":");
+  if (parts.length !== 2) return null;
+  return parts[0] === myId ? parts[1] : parts[0];
+}
+
+function formatLastMessage(content: string): string {
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed?.type === "gif") return "GIF";
+  } catch {
+    // Not JSON
+  }
+  return content;
+}
+
 export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   socket: null,
   isConnected: false,
@@ -285,6 +303,16 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     const wsUrl = `${WS_URL}?token=${encodeURIComponent(token)}`;
     console.log("🔌 Connecting to WebSocket:", wsUrl);
     const socket = new WebSocket(wsUrl);
+    const handleUnload = () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close(1000, "Client disconnected");
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("beforeunload", handleUnload);
+      window.addEventListener("pagehide", handleUnload);
+    }
 
     socket.onopen = () => {
       console.log("✅ WebSocket connected");
@@ -309,13 +337,17 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
         const stored =
           window.localStorage.getItem("presence_status") || "online";
         const storedStatus = stored as "online" | "idle" | "dnd" | "offline";
+        const normalizedStatus = storedStatus === "offline" ? "online" : storedStatus;
+        if (normalizedStatus !== storedStatus) {
+          window.localStorage.setItem("presence_status", normalizedStatus);
+        }
         // Apply optimistic presence locally so UI shows immediately
         const authUser = useAuthStore.getState().user;
         if (authUser) {
           set((s) => {
             const newPresence = { ...s.presence };
             newPresence[authUser.id] = {
-              status: storedStatus,
+              status: normalizedStatus,
               last_activity: new Date().toISOString(),
             };
             return { presence: newPresence };
@@ -324,7 +356,7 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
         // Send PresenceSet to server so server becomes authoritative
         const evt: ClientEvent = {
           type: "PresenceSet",
-          payload: { status: storedStatus },
+          payload: { status: normalizedStatus },
         };
         if (socket && socket.readyState === WebSocket.OPEN)
           socket.send(JSON.stringify(evt));
@@ -353,15 +385,23 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     };
 
     socket.onerror = (error) => {
-      console.error("❌ WebSocket error:", error);
+      console.warn("⚠️ WebSocket error:", error);
       if (!get().isConnected) {
-        set({ connectionState: "backoff" });
+        set({
+          connectionState: "backoff",
+          error: "Connexion WebSocket instable. Reconnexion en cours...",
+        });
       }
     };
 
     socket.onclose = (event) => {
       console.log("🔌 WebSocket disconnected:", event.code, event.reason);
       set({ socket: null, isConnected: false });
+
+      if (typeof window !== "undefined") {
+        window.removeEventListener("beforeunload", handleUnload);
+        window.removeEventListener("pagehide", handleUnload);
+      }
 
       // Auto-reconnect with guardrails if not intentionally closed
       if (event.code !== 1000) {
@@ -456,7 +496,7 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   },
 
   sendMessage: (channelId: string, content: string, replyTo?: string) => {
-    const { socket } = get();
+    const { socket, currentChannelId } = get();
     console.log("📤 Sending message:", {
       channelId,
       content,
@@ -465,6 +505,9 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     });
 
     if (socket && socket.readyState === WebSocket.OPEN) {
+      if (currentChannelId !== channelId) {
+        get().joinChannel(channelId);
+      }
       const event: ClientEvent = {
         type: "MessageSend",
         payload: { channel_id: channelId, content, reply_to: replyTo },
@@ -564,13 +607,15 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
       get().leaveChannel(currentChannelId);
     }
 
+    // Always store the current channel so it can be joined on reconnect
+    set({ currentChannelId: channelId });
+
     if (socket && socket.readyState === WebSocket.OPEN) {
       const event: ClientEvent = {
         type: "JoinChannel",
         payload: { channel_id: channelId },
       };
       socket.send(JSON.stringify(event));
-      set({ currentChannelId: channelId });
     }
   },
 
@@ -651,12 +696,29 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   },
 
   setMessages: (channelId: string, newMessages: WsMessage[]) => {
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [channelId]: newMessages,
-      },
-    }));
+    set((state) => {
+      const existing = state.messages[channelId] || [];
+      const byId = new Map<string, WsMessage>();
+
+      for (const msg of existing) {
+        byId.set(msg.id, msg);
+      }
+      for (const msg of newMessages) {
+        // Prefer incoming data for edits/pins
+        byId.set(msg.id, msg);
+      }
+
+      const merged = Array.from(byId.values()).sort((a, b) =>
+        a.created_at.localeCompare(b.created_at),
+      );
+
+      return {
+        messages: {
+          ...state.messages,
+          [channelId]: merged,
+        },
+      };
+    });
   },
 
   // ─── DM Actions ────────────────────────────────────────────
@@ -749,6 +811,10 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
   // Allow the client to set their presence status (sends PresenceSet to server)
   setPresence: (status: "online" | "idle" | "dnd" | "offline") => {
+    if (status === "offline") {
+      console.warn("Presence offline is automatic. Ignoring manual set.");
+      return;
+    }
     const { socket } = get();
     // Persist chosen status locally so reload can restore it
     try {
@@ -1084,6 +1150,58 @@ function handleServerEvent(
     }
 
     case "Error": {
+      if (event.payload.code === "BANNED") {
+        console.warn("⚠️ Server error:", event.payload.code, event.payload.message);
+        set((state) => {
+          const channelId = state.currentChannelId;
+          if (!channelId) {
+            return {
+              error: "[BANNED] Vous avez ete banni de ce serveur.",
+              currentChannelId: null,
+            };
+          }
+
+          const messages = { ...state.messages };
+          const typingUsers = { ...state.typingUsers };
+          delete messages[channelId];
+          delete typingUsers[channelId];
+
+          return {
+            error: "[BANNED] Vous avez ete banni de ce serveur.",
+            currentChannelId: null,
+            messages,
+            typingUsers,
+          };
+        });
+        break;
+      }
+
+      if (event.payload.code === "NOT_MEMBER") {
+        console.warn("⚠️ Server error:", event.payload.code, event.payload.message);
+        set((state) => {
+          const channelId = state.currentChannelId;
+          if (!channelId) {
+            return {
+              error: "[NOT_MEMBER] Vous n'etes pas membre de ce serveur.",
+              currentChannelId: null,
+            };
+          }
+
+          const messages = { ...state.messages };
+          const typingUsers = { ...state.typingUsers };
+          delete messages[channelId];
+          delete typingUsers[channelId];
+
+          return {
+            error: "[NOT_MEMBER] Vous n'etes pas membre de ce serveur.",
+            currentChannelId: null,
+            messages,
+            typingUsers,
+          };
+        });
+        break;
+      }
+
       console.error(
         "❌ Server error:",
         event.payload.code,
@@ -1128,6 +1246,27 @@ function handleServerEvent(
           },
         };
       });
+
+      const authUser = useAuthStore.getState().user;
+      if (authUser) {
+        const peerId = getPeerIdFromConversation(conversation_id, authUser.id);
+        if (peerId) {
+          const convs = useDmStore.getState().conversations;
+          const existing = convs.find((c) => c.peer_id === peerId);
+          const peerUsername =
+            author_id !== authUser.id
+              ? username
+              : existing?.peer_username || peerId.slice(0, 8);
+
+          useDmStore.getState().addOrUpdateConversation({
+            conversation_id,
+            peer_id: peerId,
+            peer_username: peerUsername,
+            last_message: formatLastMessage(content),
+            last_message_at: created_at,
+          });
+        }
+      }
       break;
     }
 
@@ -1161,29 +1300,5 @@ function handleServerEvent(
       break;
     }
 
-    case "Error": {
-      set({ error: event.payload.message || "Erreur WebSocket" });
-      break;
-    }
-
-    case "Error": {
-      set({ error: event.payload.message || "Erreur WebSocket" });
-      break;
-    }
-
-    case "Error": {
-      set({ error: event.payload.message || "Erreur WebSocket" });
-      break;
-    }
-
-    case "Error": {
-      set({ error: event.payload.message || "Erreur WebSocket" });
-      break;
-    }
-
-    case "Error": {
-      set({ error: event.payload.message || "Erreur WebSocket" });
-      break;
-    }
   }
 }

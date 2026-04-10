@@ -9,7 +9,7 @@ import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { useDmStore } from "@/store/dm.store";
 import { serversApi } from "@/lib/api";
-import { getErrorMessage } from "@/lib/api/errors";
+import { ApiError, getErrorMessage } from "@/lib/api/errors";
 import { useLanguage } from "@/components/language-provider";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
@@ -47,11 +47,26 @@ export function MembersPanel({
   const isMemberOfActiveServer = !!server;
   const [loadingKick, setLoadingKick] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState<string | null>(null);
+  const [loadingBan, setLoadingBan] = useState<string | null>(null);
+  const [loadingUnban, setLoadingUnban] = useState<string | null>(null);
+  const [bans, setBans] = useState<
+    {
+      id: string;
+      user_id: string;
+      username: string;
+      banned_by: string;
+      reason: string | null;
+      expires_at: string | null;
+      created_at: string;
+    }[]
+  >([]);
+  const [loadingBans, setLoadingBans] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeServerId || !isMemberOfActiveServer) {
       setMembers([]);
+      setBans([]);
       return;
     }
     const loadMembers = async () => {
@@ -60,6 +75,10 @@ export function MembersPanel({
         const data = await serversApi.listMembers(activeServerId);
         setMembers(data);
       } catch (err) {
+        if (err instanceof ApiError && err.status === 403) {
+          setMembers([]);
+          return;
+        }
         console.error("Failed to load members:", err);
         setMembers([]);
       } finally {
@@ -67,6 +86,24 @@ export function MembersPanel({
       }
     };
     loadMembers();
+
+    const loadBans = async () => {
+      setLoadingBans(true);
+      try {
+        const data = await serversApi.listBans(activeServerId);
+        setBans(data);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 403) {
+          setBans([]);
+          return;
+        }
+        console.error("Failed to load bans:", err);
+        setBans([]);
+      } finally {
+        setLoadingBans(false);
+      }
+    };
+    loadBans();
   }, [activeServerId, isMemberOfActiveServer, setMembers, setMembersLoading]);
 
   const onKick = async (memberId: string) => {
@@ -104,6 +141,76 @@ export function MembersPanel({
     }
   };
 
+  const onBan = async (memberId: string, isTemporary: boolean) => {
+    if (!server) return;
+    const reason = prompt(
+      isEnglish
+        ? "Reason for ban (optional)"
+        : "Motif du ban (optionnel)",
+      "",
+    );
+
+    let expiresAt: string | null = null;
+    if (isTemporary) {
+      const hoursRaw = prompt(
+        isEnglish
+          ? "Temporary ban duration in hours"
+          : "Duree du ban temporaire en heures",
+        "24",
+      );
+      const hours = Number(hoursRaw);
+      if (!Number.isFinite(hours) || hours <= 0) {
+        setActionError(
+          isEnglish
+            ? "Invalid duration"
+            : "Duree invalide",
+        );
+        return;
+      }
+      const expires = new Date();
+      expires.setHours(expires.getHours() + hours);
+      expiresAt = expires.toISOString();
+    }
+
+    setLoadingBan(memberId);
+    setActionError(null);
+
+    try {
+      await serversApi.banMember(server.id, memberId, {
+        reason: reason?.trim() ? reason.trim() : null,
+        expires_at: expiresAt,
+      });
+      const [membersData, bansData] = await Promise.all([
+        serversApi.listMembers(server.id),
+        serversApi.listBans(server.id),
+      ]);
+      setMembers(membersData);
+      setBans(bansData);
+      await onRefresh();
+    } catch (err) {
+      console.error("Ban error:", err);
+      setActionError(getErrorMessage(err));
+    } finally {
+      setLoadingBan(null);
+    }
+  };
+
+  const onUnban = async (memberId: string) => {
+    if (!server) return;
+    setLoadingUnban(memberId);
+    setActionError(null);
+    try {
+      await serversApi.unbanMember(server.id, memberId);
+      const bansData = await serversApi.listBans(server.id);
+      setBans(bansData);
+    } catch (err) {
+      console.error("Unban error:", err);
+      setActionError(getErrorMessage(err));
+    } finally {
+      setLoadingUnban(null);
+    }
+  };
+
   if (!server) {
     return (
       <aside className="w-full border-l p-4">
@@ -118,6 +225,7 @@ export function MembersPanel({
   }
 
   const isOwner = !!currentUser && server.owner_id === currentUser.id;
+  const canBan = isOwner || members.find((m) => m.user_id === currentUser?.id)?.role === "Admin";
 
   // Sort: online first, then by role priority
   const sortedMembers = [...members].sort((a, b) => {
@@ -167,7 +275,6 @@ export function MembersPanel({
             <option value="online">En ligne</option>
             <option value="idle">Inactif</option>
             <option value="dnd">Ne pas déranger</option>
-            <option value="offline">Hors ligne</option>
           </select>
         </div>
       )}
@@ -242,6 +349,31 @@ export function MembersPanel({
                     </Button>
                   )}
 
+                  {canBan && !memberIsOwner && currentUser?.id !== m.user_id && (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onBan(m.user_id, false)}
+                        disabled={loadingBan === m.user_id}
+                        title={isEnglish ? "Ban" : "Bannir"}
+                        className="h-6 px-2 text-[10px]"
+                      >
+                        {loadingBan === m.user_id ? "..." : isEnglish ? "Ban" : "Ban"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onBan(m.user_id, true)}
+                        disabled={loadingBan === m.user_id}
+                        title={isEnglish ? "Temporary ban" : "Ban temporaire"}
+                        className="h-6 px-2 text-[10px]"
+                      >
+                        {loadingBan === m.user_id ? "..." : isEnglish ? "Temp" : "Temp"}
+                      </Button>
+                    </div>
+                  )}
+
                   {/* DM button — don't show for yourself */}
                   {currentUser && m.user_id !== currentUser.id && (
                     <Button
@@ -279,6 +411,59 @@ export function MembersPanel({
           })}
         </ul>
       )}
+
+      <div className="mt-6 border-t border-[var(--border)] pt-4">
+        <h4 className="text-xs font-semibold mb-2">
+          {isEnglish ? "Active bans" : "Bans actifs"}
+        </h4>
+        {loadingBans ? (
+          <p className="text-xs text-muted-foreground">
+            {isEnglish ? "Loading..." : "Chargement..."}
+          </p>
+        ) : bans.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {isEnglish ? "No active bans." : "Aucun ban actif."}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {bans.map((ban) => (
+              <div
+                key={ban.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] p-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{ban.username}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {ban.reason || (isEnglish ? "No reason" : "Sans motif")}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {ban.expires_at
+                      ? `${isEnglish ? "Expires" : "Expire"}: ${new Date(ban.expires_at).toLocaleString()}`
+                      : isEnglish
+                        ? "Permanent"
+                        : "Permanent"}
+                  </div>
+                </div>
+                {canBan && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onUnban(ban.user_id)}
+                    disabled={loadingUnban === ban.user_id}
+                    className="h-6 px-2 text-[10px]"
+                  >
+                    {loadingUnban === ban.user_id
+                      ? "..."
+                      : isEnglish
+                        ? "Unban"
+                        : "Debannir"}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </aside>
   );
 }
