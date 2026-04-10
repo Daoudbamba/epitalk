@@ -38,8 +38,8 @@ import type { UpdateProfileInput } from "@/lib/api/auth.api";
 
 const API_BASE =
   typeof window !== "undefined"
-    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
-    : "http://localhost:8080";
+    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+    : "http://localhost:3001";
 
 const STATUS_OPTIONS = [
   { value: "ONLINE" as const, label: "Actif", color: "#22C55E", dot: "bg-green-500" },

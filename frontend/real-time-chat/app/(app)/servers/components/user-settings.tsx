@@ -5,8 +5,8 @@ import { useAuthStore } from "@/store/auth.store";
 
 const API_BASE =
   typeof window !== "undefined"
-    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
-    : "http://localhost:8080";
+    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+    : "http://localhost:3001";
 
 const STATUS_DOTS: Record<string, string> = {
   ONLINE: "bg-green-500",
