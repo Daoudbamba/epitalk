@@ -154,6 +154,27 @@ pub async fn handle_connection(
         hub.broadcast_all(presence_event).await;
     }
 
+    // Send a presence snapshot to the newly connected client so existing users
+    // appear online immediately without waiting for new events.
+    if let Some(tx) = hub.sockets.get(&conn_id) {
+        for (uid, status, last_activity) in presence.snapshot() {
+            let status_str = match status {
+                crate::services::presence_service::PresenceStatus::Online => "online",
+                crate::services::presence_service::PresenceStatus::Idle => "idle",
+                crate::services::presence_service::PresenceStatus::Dnd => "dnd",
+                crate::services::presence_service::PresenceStatus::Offline => "offline",
+            };
+            let event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                user_id: uid,
+                status: status_str.to_string(),
+                last_activity: last_activity.to_rfc3339(),
+            };
+            if let Ok(json) = serde_json::to_string(&event) {
+                let _ = tx.send(Message::Text(json));
+            }
+        }
+    }
+
     let mut rx = UnboundedReceiverStream::new(rx);
     let (mut sender, mut receiver) = socket.split();
 
@@ -358,13 +379,34 @@ pub async fn handle_connection(
                         id: id.to_hex(),
                         channel_id: channel_id.clone(),
                         author_id: user_id_recv.clone(),
-                        username,
-                        content,
-                        created_at,
-                        reply_to,
+                        username: username.clone(),
+                        content: content.clone(),
+                        created_at: created_at.clone(),
+                        reply_to: reply_to.clone(),
                     };
 
                     hub_recv.broadcast_room(&channel_id, event).await;
+                    // If sender is not in the room, send directly so UI updates.
+                    let in_room = hub_recv
+                        .rooms
+                        .get(&channel_id)
+                        .map(|r| r.contains(&conn_id))
+                        .unwrap_or(false);
+                    if !in_room {
+                        if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                            if let Ok(json) = serde_json::to_string(&ServerEvent::MessageNew {
+                                id: id.to_hex(),
+                                channel_id: channel_id.clone(),
+                                author_id: user_id_recv.clone(),
+                                username: username.clone(),
+                                content: content.clone(),
+                                created_at: created_at.clone(),
+                                reply_to: reply_to.clone(),
+                            }) {
+                                let _ = tx.send(Message::Text(json));
+                            }
+                        }
+                    }
                 },
                 ClientEvent::MessageEdit {
                     channel_id,
@@ -885,12 +927,32 @@ pub async fn handle_connection(
                         id: id.to_hex(),
                         channel_id: channel_id.clone(),
                         author_id: user_id_recv.clone(),
-                        username,
-                        content,
-                        created_at,
+                        username: username.clone(),
+                        content: content.clone(),
+                        created_at: created_at.clone(),
                         reply_to: None,
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
+                    let in_room = hub_recv
+                        .rooms
+                        .get(&channel_id)
+                        .map(|r| r.contains(&conn_id))
+                        .unwrap_or(false);
+                    if !in_room {
+                        if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                            if let Ok(json) = serde_json::to_string(&ServerEvent::MessageNew {
+                                id: id.to_hex(),
+                                channel_id: channel_id.clone(),
+                                author_id: user_id_recv.clone(),
+                                username: username.clone(),
+                                content: content.clone(),
+                                created_at: created_at.clone(),
+                                reply_to: None,
+                            }) {
+                                let _ = tx.send(Message::Text(json));
+                            }
+                        }
+                    }
                 },
                 // ─────────────────────────────────────────────
                 // DIRECT MESSAGES
