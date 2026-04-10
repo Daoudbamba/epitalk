@@ -150,6 +150,67 @@ async fn read_event_type(
     panic!("ws event not received; expected {:?}, last={}", expected, last);
 }
 
+async fn try_read_event_type(
+    stream: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    expected: &[&str],
+    max_wait: Duration,
+) -> Option<serde_json::Value> {
+    let deadline = tokio::time::Instant::now() + max_wait;
+
+    while tokio::time::Instant::now() < deadline {
+        let now = tokio::time::Instant::now();
+        let remaining = deadline.saturating_duration_since(now);
+        let slice = remaining.min(Duration::from_millis(120));
+
+        match timeout(slice, stream.next()).await {
+            Ok(Some(Ok(msg))) => {
+                if msg.is_text() {
+                    let txt = msg.into_text().ok()?;
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&txt) {
+                        if let Some(t) = value.get("type").and_then(|v| v.as_str()) {
+                            if expected.iter().any(|e| *e == t) {
+                                return Some(value);
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(Some(Err(_))) => return None,
+            Ok(None) => return None,
+            Err(_) => continue,
+        }
+    }
+
+    None
+}
+
+async fn wait_for_presence_event_user(
+    stream: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    expected_types: &[&str],
+    expected_user_id: &str,
+    max_wait: Duration,
+) -> bool {
+    let deadline = tokio::time::Instant::now() + max_wait;
+
+    while tokio::time::Instant::now() < deadline {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let Some(evt) = try_read_event_type(stream, expected_types, remaining).await else {
+            return false;
+        };
+
+        let user_id = evt
+            .get("payload")
+            .and_then(|p| p.get("user_id"))
+            .and_then(|v| v.as_str());
+
+        if user_id == Some(expected_user_id) {
+            return true;
+        }
+    }
+
+    false
+}
+
 #[tokio::test]
 async fn http_and_ws_core_flow() {
     let (base_url, shutdown) = start_server().await;
@@ -370,5 +431,182 @@ async fn http_and_ws_core_flow() {
     .await;
     assert_eq!(status_unban, reqwest::StatusCode::OK);
 
+    let _ = shutdown.send(());
+}
+
+#[tokio::test]
+async fn ws_presence_connect_and_disconnect_flow() {
+    let (base_url, shutdown) = start_server().await;
+    let client = reqwest::Client::new();
+
+    let suffix = uuid::Uuid::new_v4().to_string();
+    let short = &suffix[..8];
+    let password = "Password123!";
+
+    let (token_a, _user_a) = register_user(
+        &client,
+        &base_url,
+        &format!("presence-a-{}@example.test", suffix),
+        &format!("presence_a_{}", short),
+        password,
+    )
+    .await;
+
+    let (token_b, user_b) = register_user(
+        &client,
+        &base_url,
+        &format!("presence-b-{}@example.test", suffix),
+        &format!("presence_b_{}", short),
+        password,
+    )
+    .await;
+
+    let ws_url_a = format!("{}/ws?token={}", base_url.replace("http", "ws"), token_a);
+    let ws_url_b = format!("{}/ws?token={}", base_url.replace("http", "ws"), token_b);
+
+    let (mut ws_a, _) = connect_async(ws_url_a).await.expect("ws a");
+    let (mut ws_b, _) = connect_async(ws_url_b).await.expect("ws b");
+
+    assert!(
+        wait_for_presence_event_user(
+            &mut ws_a,
+            &["UserOnline", "PresenceUpdated"],
+            &user_b,
+            Duration::from_secs(4)
+        )
+        .await,
+        "expected online event for connected user"
+    );
+
+    let _ = ws_b.close(None).await;
+
+    assert!(
+        wait_for_presence_event_user(
+            &mut ws_a,
+            &["UserOffline", "PresenceUpdated"],
+            &user_b,
+            Duration::from_secs(4)
+        )
+        .await,
+        "expected offline event for disconnected user"
+    );
+
+    let _ = ws_a.close(None).await;
+    let _ = shutdown.send(());
+}
+
+#[tokio::test]
+async fn ws_typing_start_is_throttled() {
+    let (base_url, shutdown) = start_server().await;
+    let client = reqwest::Client::new();
+
+    let suffix = uuid::Uuid::new_v4().to_string();
+    let short = &suffix[..8];
+    let password = "Password123!";
+
+    let (token_a, _user_a) = register_user(
+        &client,
+        &base_url,
+        &format!("typing-a-{}@example.test", suffix),
+        &format!("typing_a_{}", short),
+        password,
+    )
+    .await;
+
+    let (token_b, _user_b) = register_user(
+        &client,
+        &base_url,
+        &format!("typing-b-{}@example.test", suffix),
+        &format!("typing_b_{}", short),
+        password,
+    )
+    .await;
+
+    let server_url = format!("{}/api/servers", base_url);
+    let (status_server, server_body) = request_json(
+        &client,
+        reqwest::Method::POST,
+        &server_url,
+        Some(&token_a),
+        Some(json!({ "name": "Typing Integration" })),
+    )
+    .await;
+    assert_eq!(status_server, reqwest::StatusCode::OK);
+    let server_id = server_body["id"].as_str().unwrap().to_string();
+
+    let channel_url = format!("{}/api/servers/{}/channels", base_url, server_id);
+    let (status_channel, channel_body) = request_json(
+        &client,
+        reqwest::Method::POST,
+        &channel_url,
+        Some(&token_a),
+        Some(json!({ "name": format!("typing-{}", short) })),
+    )
+    .await;
+    assert_eq!(status_channel, reqwest::StatusCode::OK);
+    let channel_id = channel_body["id"].as_str().unwrap().to_string();
+
+    let invite_url = format!("{}/api/servers/{}/invites", base_url, server_id);
+    let (status_invite, invite_body) = request_json(
+        &client,
+        reqwest::Method::POST,
+        &invite_url,
+        Some(&token_a),
+        Some(json!({ "expires_in_hours": 24, "max_uses": 5 })),
+    )
+    .await;
+    assert_eq!(status_invite, reqwest::StatusCode::OK);
+
+    let join_url = format!("{}/api/join", base_url);
+    let (status_join, _) = request_json(
+        &client,
+        reqwest::Method::POST,
+        &join_url,
+        Some(&token_b),
+        Some(json!({ "code": invite_body["code"].as_str().unwrap() })),
+    )
+    .await;
+    assert_eq!(status_join, reqwest::StatusCode::OK);
+
+    let ws_url_a = format!("{}/ws?token={}", base_url.replace("http", "ws"), token_a);
+    let ws_url_b = format!("{}/ws?token={}", base_url.replace("http", "ws"), token_b);
+
+    let (mut ws_a, _) = connect_async(ws_url_a).await.expect("ws a");
+    let (mut ws_b, _) = connect_async(ws_url_b).await.expect("ws b");
+
+    let join = json!({ "type": "JoinChannel", "payload": { "channel_id": channel_id } });
+    ws_a.send(tokio_tungstenite::tungstenite::Message::Text(join.to_string()))
+        .await
+        .expect("join a");
+    ws_b.send(tokio_tungstenite::tungstenite::Message::Text(join.to_string()))
+        .await
+        .expect("join b");
+
+    let _ = read_event_type(&mut ws_a, &["UserJoined"]).await;
+    let _ = read_event_type(&mut ws_b, &["UserJoined"]).await;
+
+    let typing = json!({ "type": "TypingStart", "payload": { "channel_id": channel_id } });
+
+    ws_a.send(tokio_tungstenite::tungstenite::Message::Text(typing.to_string()))
+        .await
+        .expect("typing start #1");
+    let first_evt = read_event_type(&mut ws_b, &["TypingStart"]).await;
+    assert_eq!(
+        first_evt["payload"]["channel_id"].as_str(),
+        Some(channel_id.as_str())
+    );
+
+    ws_a.send(tokio_tungstenite::tungstenite::Message::Text(typing.to_string()))
+        .await
+        .expect("typing start #2");
+
+    let maybe_second = try_read_event_type(&mut ws_b, &["TypingStart"], Duration::from_millis(500)).await;
+    assert!(
+        maybe_second.is_none(),
+        "second TypingStart should be throttled within 500ms"
+    );
+
+    let _ = ws_a.close(None).await;
+    let _ = ws_b.close(None).await;
     let _ = shutdown.send(());
 }
