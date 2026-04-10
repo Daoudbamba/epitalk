@@ -186,7 +186,12 @@ export function MembersPanel({
       ]);
       setMembers(membersData);
       setBans(bansData);
-      await onRefresh();
+      // Best effort: ban succeeded even if global servers refresh is temporarily slow.
+      try {
+        await onRefresh();
+      } catch (refreshError) {
+        console.warn("Servers refresh after ban failed:", refreshError);
+      }
     } catch (err) {
       console.error("Ban error:", err);
       setActionError(getErrorMessage(err));

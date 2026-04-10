@@ -120,10 +120,14 @@ async fn read_event_type(
     expected: &[&str],
 ) -> serde_json::Value {
     let mut last = json!(null);
-    let mut remaining = 20;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
 
-    while remaining > 0 {
-        match timeout(Duration::from_secs(5), stream.next()).await {
+    while tokio::time::Instant::now() < deadline {
+        let now = tokio::time::Instant::now();
+        let remaining = deadline.saturating_duration_since(now);
+        let slice = remaining.min(Duration::from_millis(900));
+
+        match timeout(slice, stream.next()).await {
             Ok(Some(Ok(msg))) => {
                 if msg.is_text() {
                     let txt = msg.into_text().unwrap();
@@ -139,12 +143,8 @@ async fn read_event_type(
             }
             Ok(Some(Err(_))) => break,
             Ok(None) => break,
-            Err(_) => {
-                remaining -= 1;
-                continue;
-            }
+            Err(_) => continue,
         }
-        remaining -= 1;
     }
 
     panic!("ws event not received; expected {:?}, last={}", expected, last);
