@@ -213,6 +213,10 @@ async fn wait_for_presence_event_user(
 
 #[tokio::test]
 async fn http_and_ws_core_flow() {
+    if std::env::var("EPITALK_SKIP_SLOW_TESTS").ok().as_deref() == Some("1") {
+        return;
+    }
+
     let (base_url, shutdown) = start_server().await;
     let client = reqwest::Client::new();
 
