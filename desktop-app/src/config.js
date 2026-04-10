@@ -7,7 +7,7 @@ function getWebAppUrl(env = process.env) {
     }
   }
 
-  return "http://localhost:3001";
+  return "http://localhost:3000";
 }
 
 module.exports = {

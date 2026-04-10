@@ -4,7 +4,7 @@ import { getWebAppUrl } from "./config";
 describe("config.getWebAppUrl", () => {
   it("retourne l'URL par défaut quand aucune variable n'est définie", () => {
     const url = getWebAppUrl({});
-    expect(url).toBe("http://localhost:3001");
+    expect(url).toBe("http://localhost:3000");
   });
 
   it("utilise EPITALK_WEB_URL quand elle est valide (http)", () => {
@@ -19,6 +19,6 @@ describe("config.getWebAppUrl", () => {
 
   it("ignore une EPITALK_WEB_URL invalide et retombe sur la valeur par défaut", () => {
     const url = getWebAppUrl({ EPITALK_WEB_URL: "example.com" });
-    expect(url).toBe("http://localhost:3001");
+    expect(url).toBe("http://localhost:3000");
   });
 });

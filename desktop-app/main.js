@@ -1,7 +1,12 @@
 const path = require("node:path");
-const { app, BrowserWindow, Menu } = require("electron");
+const { app, BrowserWindow, Menu, Notification } = require("electron");
 const { getWebAppUrl } = require("./src/config");
 const { buildMenuTemplate } = require("./src/menu");
+const { detectLanguage } = require("./src/i18n");
+const {
+  getReadyNotificationOptions,
+  shouldShowReadyNotification,
+} = require("./src/notifications");
 
 function createMainWindow() {
   const win = new BrowserWindow({
@@ -18,10 +23,24 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
-  createMainWindow();
+  const mainWindow = createMainWindow();
 
   const menu = Menu.buildFromTemplate(buildMenuTemplate());
   Menu.setApplicationMenu(menu);
+
+  mainWindow.webContents.once("did-finish-load", () => {
+    if (!Notification.isSupported()) return;
+
+    const shouldNotify = shouldShowReadyNotification({
+      isFirstLaunch: true,
+      hasFocus: mainWindow.isFocused(),
+    });
+
+    if (!shouldNotify) return;
+
+    const opts = getReadyNotificationOptions(app.getName(), detectLanguage());
+    new Notification(opts).show();
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
