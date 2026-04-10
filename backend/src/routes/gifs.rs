@@ -150,3 +150,38 @@ async fn search_gifs(
     tracing::warn!("No TENOR_API_KEY or GIPHY_API_KEY configured — GIF search unavailable");
     (StatusCode::OK, Json(GifResponse { results: vec![] }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+    use sqlx::postgres::PgPoolOptions;
+
+    #[tokio::test]
+    async fn search_gifs_returns_empty_without_keys() {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://epitalk:Epitalk94!@localhost:5432/epitalk")
+            .expect("lazy pool");
+        let cfg = crate::config::Config {
+            database_url: "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string(),
+            jwt_secret: "test-secret-key-at-least-32-chars".to_string(),
+            jwt_expiration_hours: 24,
+            port: 0,
+            upload_dir: "./uploads".to_string(),
+        };
+        let state = crate::state::AppState::new(pool, cfg);
+
+        let (status, Json(payload)) = search_gifs(
+            State(std::sync::Arc::new(state)),
+            Query(GifQuery {
+                q: "cats".to_string(),
+                limit: Some(5),
+                provider: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(payload.results.is_empty());
+    }
+}

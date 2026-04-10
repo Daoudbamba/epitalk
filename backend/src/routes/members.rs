@@ -323,3 +323,101 @@ async fn list_bans(
 
     Ok(Json(bans))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+    use crate::auth::test_require_auth;
+    use crate::repositories::{ServerRepository, UserRepository};
+    use crate::test_utils::{delete_server, delete_user, test_config, try_test_pool};
+
+    #[tokio::test]
+    async fn members_list_kick_and_ban_flow() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("mem-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("mem_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let member = UserRepository::create(
+            &pool,
+            &format!("mem-user-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("mem_user_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create member");
+
+        let server = ServerRepository::create(&pool, "Members", owner.id)
+            .await
+            .expect("create server");
+
+        MembershipRepository::create(&pool, member.id, server.id, MemberRole::Member)
+            .await
+            .expect("add member");
+
+        let owner_auth = test_require_auth(owner.id, &owner.email, &owner.username);
+
+        let listed = list_members(
+            State(state.clone()),
+            owner_auth.clone(),
+            Path(ServerPath { server_id: server.id }),
+        )
+        .await
+        .expect("list members")
+        .0;
+        assert!(listed.iter().any(|m| m.user_id == member.id));
+
+        let _ = kick_member(
+            State(state.clone()),
+            owner_auth.clone(),
+            Path(MemberPath { server_id: server.id, user_id: member.id }),
+        )
+        .await
+        .expect("kick member");
+
+        MembershipRepository::create(&pool, member.id, server.id, MemberRole::Member)
+            .await
+            .expect("re-add member");
+
+        let _ = ban_member(
+            State(state.clone()),
+            owner_auth.clone(),
+            Path(MemberPath { server_id: server.id, user_id: member.id }),
+            Json(BanMemberRequest { reason: Some("spam".to_string()), expires_at: None }),
+        )
+        .await
+        .expect("ban member");
+
+        let bans = list_bans(
+            State(state.clone()),
+            owner_auth.clone(),
+            Path(ServerPath { server_id: server.id }),
+        )
+        .await
+        .expect("list bans")
+        .0;
+        assert!(bans.iter().any(|b| b.user_id == member.id));
+
+        let _ = unban_member(
+            State(state.clone()),
+            owner_auth.clone(),
+            Path(MemberPath { server_id: server.id, user_id: member.id }),
+        )
+        .await
+        .expect("unban member");
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+        delete_user(&pool, member.id).await;
+    }
+}

@@ -28,6 +28,30 @@ fn make_token(secret: &str, user_id: Uuid, email: &str, username: &str) -> Strin
         .expect("failed to encode token")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jsonwebtoken::{decode, DecodingKey, Validation};
+
+    #[test]
+    fn make_token_roundtrip() {
+        let secret = "test-secret-key-at-least-32-chars";
+        let user_id = Uuid::new_v4();
+        let token = make_token(secret, user_id, "a@example.test", "alice");
+
+        let data = decode::<Claims>(
+            &token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &Validation::default(),
+        )
+        .expect("decode token");
+
+        assert_eq!(data.claims.sub, user_id);
+        assert_eq!(data.claims.email, "a@example.test");
+        assert_eq!(data.claims.username, "alice");
+    }
+}
+
 async fn run_client(
     name: &str,
     token: String,

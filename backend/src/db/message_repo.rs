@@ -574,6 +574,13 @@ mod tests {
         assert!(res.is_empty());
     }
 
+    #[tokio::test]
+    async fn search_in_channel_on_placeholder_returns_empty() {
+        let repo = MessageRepo::new_placeholder();
+        let res = repo.search_in_channel("chan", "hello", 1, 20).await;
+        assert!(res.is_empty());
+    }
+
     #[test]
     fn escape_mongo_regex_escapes_special_chars() {
         let raw = "a+b*(c)?[d]{e}|f.g\\h^i$j";

@@ -67,3 +67,35 @@ async fn get_message(
 
     Ok(Json(resp))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+    use crate::auth::test_require_auth;
+    use crate::repositories::UserRepository;
+    use crate::test_utils::{delete_user, test_config, try_test_pool};
+
+    #[tokio::test]
+    async fn get_message_rejects_invalid_id() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let user = UserRepository::create(
+            &pool,
+            &format!("msg-{}@example.test", uuid::Uuid::new_v4()),
+            "hash",
+            &format!("msg_{}", uuid::Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create user");
+
+        let auth = test_require_auth(user.id, &user.email, &user.username);
+        let result = get_message(State(state.clone()), auth, Path("bad-id".to_string())).await;
+        assert!(matches!(result, Err(AppError::BadRequest(_))));
+
+        delete_user(&pool, user.id).await;
+    }
+}

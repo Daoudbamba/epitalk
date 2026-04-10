@@ -278,3 +278,96 @@ impl MembershipRepository {
         Ok(bans)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::repositories::{ServerRepository, UserRepository};
+    use crate::test_utils::{delete_server, delete_user, try_test_pool};
+
+    #[tokio::test]
+    async fn membership_lifecycle_and_bans() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let owner = UserRepository::create(
+            &pool,
+            &format!("own-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("own_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let member = UserRepository::create(
+            &pool,
+            &format!("mem-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("mem_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create member");
+
+        let server = ServerRepository::create(&pool, "Members", owner.id)
+            .await
+            .expect("create server");
+
+        let membership = MembershipRepository::create(&pool, member.id, server.id, MemberRole::Member)
+            .await
+            .expect("create membership");
+        assert_eq!(membership.role, MemberRole::Member);
+
+        let is_member = MembershipRepository::is_member(&pool, member.id, server.id)
+            .await
+            .expect("is_member");
+        assert!(is_member);
+
+        let role = MembershipRepository::get_role(&pool, member.id, server.id)
+            .await
+            .expect("get_role")
+            .expect("role");
+        assert_eq!(role, MemberRole::Member);
+
+        let updated = MembershipRepository::update_role(&pool, member.id, server.id, MemberRole::Moderator)
+            .await
+            .expect("update role");
+        assert_eq!(updated.role, MemberRole::Moderator);
+
+        let ban = MembershipRepository::ban_user(
+            &pool,
+            server.id,
+            member.id,
+            owner.id,
+            Some("spam".to_string()),
+            None,
+        )
+        .await
+        .expect("ban user");
+        assert_eq!(ban.user_id, member.id);
+
+        let banned = MembershipRepository::is_banned(&pool, server.id, member.id)
+            .await
+            .expect("is_banned");
+        assert!(banned);
+
+        let bans = MembershipRepository::find_bans_by_server(&pool, server.id)
+            .await
+            .expect("list bans");
+        assert!(bans.iter().any(|b| b.user_id == member.id));
+
+        MembershipRepository::unban_user(&pool, server.id, member.id)
+            .await
+            .expect("unban user");
+
+        let banned_after = MembershipRepository::is_banned(&pool, server.id, member.id)
+            .await
+            .expect("is_banned");
+        assert!(!banned_after);
+
+        MembershipRepository::delete(&pool, member.id, server.id)
+            .await
+            .expect("delete membership");
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+        delete_user(&pool, member.id).await;
+    }
+}

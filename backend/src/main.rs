@@ -12,6 +12,11 @@ mod services;
 mod state;
 mod ws;
 
+#[cfg(test)]
+mod test_utils;
+#[cfg(test)]
+mod integration_tests;
+
 use axum::Router;
 use axum::routing::get;
 use std::net::SocketAddr;
@@ -255,4 +260,42 @@ async fn run_backend() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn configured_port_reads_env() {
+        let _guard = env_lock().lock().expect("env lock");
+        std::env::remove_var("PORT");
+        assert_eq!(configured_port(), 3001);
+
+        std::env::set_var("PORT", "4040");
+        assert_eq!(configured_port(), 4040);
+        std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn should_use_supervisor_respects_flags() {
+        let _guard = env_lock().lock().expect("env lock");
+        std::env::remove_var(CHILD_MODE_ENV);
+        std::env::remove_var(DISABLE_SUPERVISOR_ENV);
+        assert!(should_use_supervisor());
+
+        std::env::set_var(CHILD_MODE_ENV, "1");
+        assert!(!should_use_supervisor());
+        std::env::remove_var(CHILD_MODE_ENV);
+
+        std::env::set_var(DISABLE_SUPERVISOR_ENV, "1");
+        assert!(!should_use_supervisor());
+        std::env::remove_var(DISABLE_SUPERVISOR_ENV);
+    }
 }

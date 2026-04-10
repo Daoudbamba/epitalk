@@ -184,7 +184,7 @@ jobs:
           sqlx migrate run
 
       - name: Generate coverage report
-        run: cargo llvm-cov --all-features --lcov --output-path lcov.info -- --test-threads=1
+        run: cargo llvm-cov --all-features --lcov --output-path lcov.info --fail-under-lines 70 -- --test-threads=1
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

@@ -355,6 +355,8 @@ async fn search_messages(
 ) -> AppResult<Json<Vec<MessageResponse>>> {
     let user_id = auth.user_id;
 
+    let normalized_query = normalize_search_query(&query.q)?;
+
     // Check membership
     if !MembershipRepository::is_member(&state.db, user_id, params.server_id).await? {
         return Err(AppError::Forbidden(
@@ -376,7 +378,7 @@ async fn search_messages(
     // Use message service to search
     let messages = state
         .message_service
-        .search_messages(&params.channel_id.to_string(), &query.q, query.page, query.per_page)
+        .search_messages(&params.channel_id.to_string(), &normalized_query, query.page, query.per_page)
         .await
         .map_err(|_| {
             tracing::error!(channel_id = %params.channel_id, "Failed to search messages");
@@ -413,4 +415,100 @@ async fn search_messages(
     };
 
     Ok(Json(responses))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+    use crate::auth::test_require_auth;
+    use crate::models::ChannelKind;
+    use crate::repositories::{ServerRepository, UserRepository};
+    use crate::test_utils::{delete_server, delete_user, test_config, try_test_pool};
+
+    #[test]
+    fn normalize_search_query_rejects_empty_or_too_long() {
+        assert!(normalize_search_query("").is_err());
+        assert!(normalize_search_query("   ").is_err());
+
+        let too_long = "a".repeat(MAX_SEARCH_QUERY_LEN + 1);
+        assert!(normalize_search_query(&too_long).is_err());
+    }
+
+    #[test]
+    fn normalize_search_query_trims_whitespace() {
+        let q = normalize_search_query("  hello world  ").unwrap();
+        assert_eq!(q, "hello world");
+    }
+
+    #[tokio::test]
+    async fn channel_list_create_update_delete_flow() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("chan-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("chan_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let auth = test_require_auth(owner.id, &owner.email, &owner.username);
+        let server = ServerRepository::create(&pool, "Channels", owner.id)
+            .await
+            .expect("create server");
+
+        let listed = list_channels(State(state.clone()), auth.clone(), Path(ServerPath { server_id: server.id }))
+            .await
+            .expect("list channels")
+            .0;
+        assert!(!listed.is_empty());
+
+        let created = create_channel(
+            State(state.clone()),
+            auth.clone(),
+            Path(ServerPath { server_id: server.id }),
+            Json(CreateChannelRequest { name: "alpha".to_string(), kind: ChannelKind::Text }),
+        )
+        .await
+        .expect("create channel")
+        .0;
+
+        let updated = update_channel(
+            State(state.clone()),
+            auth.clone(),
+            Path(ChannelPath { server_id: server.id, channel_id: created.id }),
+            Json(UpdateChannelRequest { name: "beta".to_string() }),
+        )
+        .await
+        .expect("update channel")
+        .0;
+        assert_eq!(updated.name, "beta");
+
+        let messages = get_messages(
+            State(state.clone()),
+            auth.clone(),
+            Path(ChannelPath { server_id: server.id, channel_id: created.id }),
+            Query(MessagesQuery { page: 1, per_page: 50 }),
+        )
+        .await
+        .expect("get messages")
+        .0;
+        assert!(messages.is_empty());
+
+        let _ = delete_channel(
+            State(state.clone()),
+            auth.clone(),
+            Path(ChannelPath { server_id: server.id, channel_id: created.id }),
+        )
+        .await
+        .expect("delete channel");
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+    }
 }

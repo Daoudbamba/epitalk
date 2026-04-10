@@ -85,3 +85,27 @@ fn extract_peer_id(conversation_id: &str, my_id: &str) -> Option<String> {
         Some(parts[0].to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_peer_id_handles_both_orders() {
+        let my_id = "user-a";
+        let other = "user-b";
+
+        let conv1 = format!("dm:{}:{}", my_id, other);
+        let conv2 = format!("dm:{}:{}", other, my_id);
+
+        assert_eq!(extract_peer_id(&conv1, my_id).as_deref(), Some(other));
+        assert_eq!(extract_peer_id(&conv2, my_id).as_deref(), Some(other));
+    }
+
+    #[test]
+    fn extract_peer_id_rejects_invalid_format() {
+        assert!(extract_peer_id("", "user").is_none());
+        assert!(extract_peer_id("dm:onlyone", "user").is_none());
+        assert!(extract_peer_id("badprefix:user:a", "user").is_none());
+    }
+}
