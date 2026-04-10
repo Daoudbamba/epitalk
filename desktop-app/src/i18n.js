@@ -1,7 +1,14 @@
 const DEFAULT_LANGUAGE = "fr";
 
 function detectLanguage(env = process.env) {
-  const fromEnv = (env.EPITALK_LANG || env.LANG || "").toLowerCase();
+  const fromEnv = (
+    env.EPITALK_LANG ||
+    env.LC_ALL ||
+    env.LC_MESSAGES ||
+    env.LANGUAGE ||
+    env.LANG ||
+    ""
+  ).toLowerCase();
 
   if (fromEnv.startsWith("fr")) return "fr";
   if (fromEnv.startsWith("en")) return "en";

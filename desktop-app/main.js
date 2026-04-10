@@ -20,7 +20,7 @@ function createMainWindow() {
 app.whenReady().then(() => {
   createMainWindow();
 
-  const menu = Menu.buildFromTemplate(buildMenuTemplate());
+  const menu = Menu.buildFromTemplate(buildMenuTemplate(app.getLocale()));
   Menu.setApplicationMenu(menu);
 
   app.on("activate", () => {
