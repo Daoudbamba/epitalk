@@ -25,7 +25,7 @@ function createMainWindow() {
 app.whenReady().then(() => {
   const mainWindow = createMainWindow();
 
-  const menu = Menu.buildFromTemplate(buildMenuTemplate());
+  const menu = Menu.buildFromTemplate(buildMenuTemplate(app.getLocale()));
   Menu.setApplicationMenu(menu);
 
   mainWindow.webContents.once("did-finish-load", () => {
