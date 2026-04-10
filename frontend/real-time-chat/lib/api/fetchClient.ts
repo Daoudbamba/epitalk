@@ -5,6 +5,11 @@ const RETRY_TIMEOUT_MS = 45_000;
 const NON_REFRESHABLE_PATHS = ["/auth/login", "/auth/register", "/auth/refresh"];
 let refreshInFlight: Promise<string | null> | null = null;
 
+function isEnglishPreferred(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("epitalk_language") === "en";
+}
+
 export class FetchClient {
   constructor(private baseUrl: string = "") {}
 
@@ -144,10 +149,17 @@ export class FetchClient {
         }
         throw new ApiError(
           0,
-          "Le serveur met trop de temps a repondre. Verifiez qu'il est demarre et reessayez."
+          isEnglishPreferred()
+            ? "The server is taking too long to respond. Check that it is running and try again."
+            : "Le serveur met trop de temps a repondre. Verifiez qu'il est demarre et reessayez.",
         );
       }
-      throw new ApiError(0, "Impossible de contacter le serveur. Verifiez votre connexion.");
+      throw new ApiError(
+        0,
+        isEnglishPreferred()
+          ? "Unable to reach the server. Please check your connection."
+          : "Impossible de contacter le serveur. Verifiez votre connexion.",
+      );
     } finally {
       clearTimeout(timeoutId);
     }

@@ -267,6 +267,11 @@ function formatLastMessage(content: string): string {
   return content;
 }
 
+function isEnglishPreferred(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("epitalk_language") === "en";
+}
+
 export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   socket: null,
   isConnected: false,
@@ -383,7 +388,9 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
       if (!get().isConnected) {
         set({
           connectionState: "backoff",
-          error: "Connexion WebSocket instable. Reconnexion en cours...",
+          error: isEnglishPreferred()
+            ? "Unstable WebSocket connection. Reconnecting..."
+            : "Connexion WebSocket instable. Reconnexion en cours...",
         });
       }
     };

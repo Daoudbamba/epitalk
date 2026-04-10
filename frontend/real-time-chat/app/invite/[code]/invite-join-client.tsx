@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { serversApi } from "@/lib/api";
 import { ApiError } from "@/lib/api/errors";
 import { terminateSession } from "@/lib/auth/session";
+import { useLanguage } from "@/components/language-provider";
 
 export default function InviteJoinClient({ code }: { code: string }) {
   const router = useRouter();
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +31,7 @@ export default function InviteJoinClient({ code }: { code: string }) {
         router.replace("/login");
         return;
       }
-      setError(e instanceof Error ? e.message : "Erreur");
+      setError(e instanceof Error ? e.message : isEnglish ? "Error" : "Erreur");
     } finally {
       setLoading(false);
     }
@@ -37,10 +40,10 @@ export default function InviteJoinClient({ code }: { code: string }) {
   return (
     <div className="min-h-svh flex items-center justify-center p-6">
       <div className="w-full max-w-md rounded-lg border bg-background p-6 space-y-4">
-        <h1 className="text-lg font-semibold">Invitation</h1>
+        <h1 className="text-lg font-semibold">{isEnglish ? "Invitation" : "Invitation"}</h1>
 
         <p className="text-sm text-muted-foreground">
-          Code : <span className="font-mono">{code}</span>
+          {isEnglish ? "Code:" : "Code :"} <span className="font-mono">{code}</span>
         </p>
 
         {error && (
@@ -51,11 +54,17 @@ export default function InviteJoinClient({ code }: { code: string }) {
 
         <div className="flex gap-2">
           <Button onClick={onJoin} disabled={loading} className="flex-1">
-            {loading ? "Connexion..." : "Rejoindre le serveur"}
+            {loading
+              ? isEnglish
+                ? "Connecting..."
+                : "Connexion..."
+              : isEnglish
+                ? "Join server"
+                : "Rejoindre le serveur"}
           </Button>
 
           <Button variant="outline" onClick={() => router.push("/servers")} disabled={loading}>
-            Annuler
+            {isEnglish ? "Cancel" : "Annuler"}
           </Button>
         </div>
       </div>
