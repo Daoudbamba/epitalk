@@ -81,6 +81,8 @@ impl PresenceService {
     /// Retirer une connexion pour un user. Si plus aucune connexion -> offline.
     /// Retourne Some(new_status) si le statut a changé.
     pub fn remove_connection(&self, user_id: &str, conn_id: &str) -> Option<PresenceStatus> {
+        let mut should_remove_entry = false;
+
         if let Some(mut entry) = self.entries.get_mut(user_id) {
             entry.conns.remove(conn_id);
             let remaining = entry.conns.len();
@@ -88,12 +90,17 @@ impl PresenceService {
             if remaining == 0 {
                 entry.status = PresenceStatus::Offline;
                 entry.last_activity = Utc::now();
-                // remove entry to free memory
-                self.entries.remove(user_id);
-                tracing::info!(user = %user_id, conns = 0, status = ?PresenceStatus::Offline, "remove_connection: user now offline and entry removed");
-                return Some(PresenceStatus::Offline);
+                should_remove_entry = true;
             }
         }
+
+        if should_remove_entry {
+            // Remove after mutable entry guard is dropped to avoid map deadlock.
+            self.entries.remove(user_id);
+            tracing::info!(user = %user_id, conns = 0, status = ?PresenceStatus::Offline, "remove_connection: user now offline and entry removed");
+            return Some(PresenceStatus::Offline);
+        }
+
         None
     }
 

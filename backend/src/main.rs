@@ -16,6 +16,8 @@ mod ws;
 mod test_utils;
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod tests;
 
 use axum::Router;
 use axum::routing::get;
@@ -263,7 +265,7 @@ async fn run_backend() -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+mod main_tests {
     use super::*;
     use std::sync::{Mutex, OnceLock};
 
