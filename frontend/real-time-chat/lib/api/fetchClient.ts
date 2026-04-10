@@ -1,5 +1,10 @@
 import { ApiError, parseApiError } from "./errors";
 
+function isEnglishPreferred(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("epitalk_language") === "en";
+}
+
 export class FetchClient {
   constructor(private baseUrl: string = "") {}
 
@@ -31,7 +36,12 @@ export class FetchClient {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch {
-      throw new ApiError(0, "Impossible de contacter le serveur. Vérifiez votre connexion.");
+      throw new ApiError(
+        0,
+        isEnglishPreferred()
+          ? "Unable to reach the server. Please check your connection."
+          : "Impossible de contacter le serveur. Vérifiez votre connexion.",
+      );
     }
 
     if (!res.ok) {

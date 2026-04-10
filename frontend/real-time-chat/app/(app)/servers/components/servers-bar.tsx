@@ -61,7 +61,11 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     if (!activeServerId) return;
 
     if (!isOwner) {
-      setErr("Seul le créateur peut générer une invitation.");
+      setErr(
+        isEnglish
+          ? "Only the owner can generate an invite."
+          : "Seul le créateur peut générer une invitation.",
+      );
       return;
     }
 
@@ -75,7 +79,11 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
 
       setInviteLink(link);
       await navigator.clipboard.writeText(link).catch(() => {});
-      setOk("Invitation générée (lien copié).");
+      setOk(
+        isEnglish
+          ? "Invite generated (link copied)."
+          : "Invitation générée (lien copié).",
+      );
     } catch (err) {
       setErr(getErrorMessage(err));
     } finally {
@@ -86,13 +94,17 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
   const onCopyInvite = async () => {
     if (!inviteLink) return;
     await navigator.clipboard.writeText(inviteLink).catch(() => {});
-    setInfo("Lien copié.");
+    setInfo(isEnglish ? "Link copied." : "Lien copié.");
   };
 
   const onJoin = async () => {
     const code = extractInviteCode(inviteInput);
     if (!code) {
-      setErr("Colle un lien /invite/<code> ou un code valide.");
+      setErr(
+        isEnglish
+          ? "Paste a /invite/<code> link or a valid code."
+          : "Colle un lien /invite/<code> ou un code valide.",
+      );
       return;
     }
 
@@ -103,7 +115,7 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
       await serversApi.joinByInvite(code);
       setInviteInput("");
       await onRefresh();
-      setOk("Serveur rejoint.");
+      setOk(isEnglish ? "Server joined." : "Serveur rejoint.");
     } catch (err) {
       setErr(getErrorMessage(err));
     } finally {
@@ -117,15 +129,19 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     setStatus(null);
 
     if (isOwner) {
-      const ok = confirm("Tu es le créateur. Supprimer le serveur ?");
+      const ok = confirm(
+        isEnglish
+          ? "You are the owner. Delete this server?"
+          : "Tu es le créateur. Supprimer le serveur ?",
+      );
       if (!ok) return;
       await serversApi.delete(activeServerId);
-      setInfo("Serveur supprimé.");
+      setInfo(isEnglish ? "Server deleted." : "Serveur supprimé.");
     } else {
-      const ok = confirm("Quitter ce serveur ?");
+      const ok = confirm(isEnglish ? "Leave this server?" : "Quitter ce serveur ?");
       if (!ok) return;
       await serversApi.leave(activeServerId);
-      setInfo("Serveur quitté.");
+      setInfo(isEnglish ? "Server left." : "Serveur quitté.");
     }
 
     await onRefresh();
@@ -152,7 +168,9 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
     <div className="border-b px-4 py-2">
       <div className="flex items-center gap-2">
         {servers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucun serveur</p>
+          <p className="text-sm text-muted-foreground">
+            {isEnglish ? "No server" : "Aucun serveur"}
+          </p>
         ) : (
           servers.map((server) => (
             <Button
@@ -169,12 +187,12 @@ export function ServersBar({ onRefresh }: { onRefresh: () => Promise<void> }) {
           <input
             value={inviteInput}
             onChange={(e) => setInviteInput(e.target.value)}
-            placeholder="Lien d’invite ou code..."
+            placeholder={isEnglish ? "Invite link or code..." : "Lien d’invite ou code..."}
             className="h-9 w-56 rounded-md border px-3 text-sm bg-background"
           />
 
           <Button variant="outline" onClick={onJoin} disabled={joinDisabled}>
-            {joinLoading ? "..." : "Rejoindre"}
+            {joinLoading ? "..." : isEnglish ? "Join" : "Rejoindre"}
           </Button>
 
           <Button

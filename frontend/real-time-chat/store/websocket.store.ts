@@ -55,6 +55,11 @@ type WebSocketState = {
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/ws";
 
+function isEnglishPreferred(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("epitalk_language") === "en";
+}
+
 export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   socket: null,
   isConnected: false,
@@ -106,7 +111,11 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
     socket.onerror = (error) => {
       console.error("❌ WebSocket error:", error);
-      set({ error: "Erreur de connexion WebSocket" });
+      set({
+        error: isEnglishPreferred()
+          ? "WebSocket connection error"
+          : "Erreur de connexion WebSocket",
+      });
     };
 
     socket.onclose = (event) => {

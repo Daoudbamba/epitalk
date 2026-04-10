@@ -15,8 +15,15 @@ export class ApiError extends Error {
   }
 }
 
-// Traduction des messages backend -> francais
-const ERROR_TRANSLATIONS: Record<string, string> = {
+type Language = "fr" | "en";
+
+function getPreferredLanguage(): Language {
+  if (typeof window === "undefined") return "fr";
+  const stored = window.localStorage.getItem("epitalk_language");
+  return stored === "en" ? "en" : "fr";
+}
+
+const ERROR_TRANSLATIONS_FR: Record<string, string> = {
   // Auth
   "Email already registered":          "Cette adresse email est deja utilisee.",
   "email already registered":          "Cette adresse email est deja utilisee.",
@@ -53,8 +60,45 @@ const ERROR_TRANSLATIONS: Record<string, string> = {
   "Internal server error":             "Erreur interne du serveur. Reessayez plus tard.",
 };
 
+const ERROR_TRANSLATIONS_EN: Record<string, string> = {
+  // Auth
+  "Email already registered": "This email address is already in use.",
+  "email already registered": "This email address is already in use.",
+  "Username already taken": "This username is already taken.",
+  "username already taken": "This username is already taken.",
+  "Invalid credentials": "Incorrect email or password.",
+  "invalid credentials": "Incorrect email or password.",
+  "Invalid email or password": "Incorrect email or password.",
+  "Unauthorized": "You must be logged in to perform this action.",
+  "Token expired": "Your session has expired. Please sign in again.",
+  "Invalid token": "Invalid session. Please sign in again.",
+
+  // Servers
+  "Server not found": "Server not found.",
+  "Not a member": "You are not a member of this server.",
+  "Already a member": "You are already a member of this server.",
+  "Only the owner can do this": "Only the owner can perform this action.",
+  "Cannot kick the owner": "Cannot kick the owner.",
+  "Forbidden": "You do not have permission to perform this action.",
+
+  // Channels
+  "Channel not found": "Channel not found.",
+  "Channel name already exists": "A channel with this name already exists.",
+
+  // Invites
+  "Invite not found": "Invite not found or expired.",
+  "Invite expired": "This invite has expired.",
+  "Invite max uses reached": "This invite reached its maximum uses.",
+  "Invalid invite code": "Invalid invite code.",
+
+  // Generic
+  "Not found": "Resource not found.",
+  "Bad request": "Invalid request.",
+  "Internal server error": "Internal server error. Please try again later.",
+};
+
 // Messages par defaut selon le code HTTP
-const STATUS_MESSAGES: Record<number, string> = {
+const STATUS_MESSAGES_FR: Record<number, string> = {
   400: "Requete invalide. Verifiez les donnees saisies.",
   401: "Vous devez etre connecte pour effectuer cette action.",
   403: "Vous n'avez pas la permission d'effectuer cette action.",
@@ -67,16 +111,30 @@ const STATUS_MESSAGES: Record<number, string> = {
   503: "Service temporairement indisponible.",
 };
 
-function translateError(raw: string): string {
+const STATUS_MESSAGES_EN: Record<number, string> = {
+  400: "Invalid request. Please check your input.",
+  401: "You must be logged in to perform this action.",
+  403: "You do not have permission to perform this action.",
+  404: "Resource not found.",
+  409: "A conflict occurred. The resource may already exist.",
+  422: "Submitted data is invalid.",
+  429: "Too many requests. Please wait a moment.",
+  500: "Internal server error. Please try again later.",
+  502: "Server is temporarily unavailable.",
+  503: "Service temporarily unavailable.",
+};
+
+function translateError(raw: string, language: Language): string {
+  const translations = language === "en" ? ERROR_TRANSLATIONS_EN : ERROR_TRANSLATIONS_FR;
   // Correspondance exacte
-  if (ERROR_TRANSLATIONS[raw]) return ERROR_TRANSLATIONS[raw];
+  if (translations[raw]) return translations[raw];
   // Correspondance insensible a la casse
   const lower = raw.toLowerCase();
-  for (const [key, value] of Object.entries(ERROR_TRANSLATIONS)) {
+  for (const [key, value] of Object.entries(translations)) {
     if (key.toLowerCase() === lower) return value;
   }
   // Correspondance partielle (le message contient une cle connue)
-  for (const [key, value] of Object.entries(ERROR_TRANSLATIONS)) {
+  for (const [key, value] of Object.entries(translations)) {
     if (lower.includes(key.toLowerCase())) return value;
   }
   return raw;
@@ -87,6 +145,7 @@ export function parseApiError(
   status: number,
   payload: unknown
 ): ApiError {
+  const language = getPreferredLanguage();
   let rawMessage = "";
 
   // Cas : backend renvoie un objet JSON
@@ -120,14 +179,16 @@ export function parseApiError(
 
   // Traduire le message
   const message = rawMessage
-    ? translateError(rawMessage)
-    : STATUS_MESSAGES[status] || `Erreur ${status}`;
+    ? translateError(rawMessage, language)
+    : (language === "en" ? STATUS_MESSAGES_EN : STATUS_MESSAGES_FR)[status] ||
+      (language === "en" ? `Error ${status}` : `Erreur ${status}`);
 
   return new ApiError(status, message);
 }
 
 // Helper pour l'UI - a utiliser dans les catch
 export function getErrorMessage(error: unknown): string {
+  const language = getPreferredLanguage();
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) {
     const msg = error.message;
@@ -135,12 +196,12 @@ export function getErrorMessage(error: unknown): string {
       try {
         const parsed = JSON.parse(msg);
         const raw = parsed.error || parsed.message || msg;
-        return translateError(raw);
+        return translateError(raw, language);
       } catch {
         return msg;
       }
     }
     return msg;
   }
-  return "Une erreur est survenue.";
+  return language === "en" ? "An error occurred." : "Une erreur est survenue.";
 }
