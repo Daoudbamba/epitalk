@@ -32,6 +32,8 @@ import {
   Type,
 } from "lucide-react";
 import { useAppearanceStore, type Theme, type FontSize } from "@/store/appearance.store";
+import { useLanguage } from "@/components/language-provider";
+import { getSettingsNavLabel, getSettingsStatusLabel } from "@/lib/settings-i18n";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import type { UpdateProfileInput } from "@/lib/api/auth.api";
@@ -42,19 +44,19 @@ const API_BASE =
     : "http://localhost:3001";
 
 const STATUS_OPTIONS = [
-  { value: "ONLINE" as const, label: "Actif", color: "#22C55E", dot: "bg-green-500" },
-  { value: "IDLE" as const, label: "Inactif", color: "#F59E0B", dot: "bg-amber-500" },
-  { value: "DND" as const, label: "Silencieux", color: "#6B7280", dot: "bg-gray-500" },
-  { value: "OFFLINE" as const, label: "Hors ligne", color: "#EF4444", dot: "bg-red-500" },
+  { value: "ONLINE" as const, color: "#22C55E", dot: "bg-green-500" },
+  { value: "IDLE" as const, color: "#F59E0B", dot: "bg-amber-500" },
+  { value: "DND" as const, color: "#6B7280", dot: "bg-gray-500" },
+  { value: "OFFLINE" as const, color: "#EF4444", dot: "bg-red-500" },
 ];
 
 type Section = "profile" | "appearance" | "privacy" | "notifications";
 
-const NAV_ITEMS: { key: Section; label: string; icon: React.ReactNode }[] = [
-  { key: "profile", label: "Profil", icon: <User className="w-4 h-4" /> },
-  { key: "appearance", label: "Apparence", icon: <Palette className="w-4 h-4" /> },
-  { key: "privacy", label: "Confidentialité", icon: <Shield className="w-4 h-4" /> },
-  { key: "notifications", label: "Notifications", icon: <Bell className="w-4 h-4" /> },
+const NAV_ITEMS: { key: Section; icon: React.ReactNode }[] = [
+  { key: "profile", icon: <User className="w-4 h-4" /> },
+  { key: "appearance", icon: <Palette className="w-4 h-4" /> },
+  { key: "privacy", icon: <Shield className="w-4 h-4" /> },
+  { key: "notifications", icon: <Bell className="w-4 h-4" /> },
 ];
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode; preview: string; desc: string }[] = [
@@ -73,6 +75,8 @@ const FONT_SIZE_OPTIONS: { value: FontSize; label: string; example: string }[] =
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const setUser = useAuthStore((s) => s.setUser);
@@ -207,6 +211,20 @@ export default function SettingsPage() {
     return () => { clearTimeout(timer); controller.abort(); };
   }, [gifQuery, showGifPicker]);
 
+  const statusLabelByValue: Record<"ONLINE" | "IDLE" | "DND" | "OFFLINE", string> = {
+    ONLINE: getSettingsStatusLabel(language, "ONLINE"),
+    IDLE: getSettingsStatusLabel(language, "IDLE"),
+    DND: getSettingsStatusLabel(language, "DND"),
+    OFFLINE: getSettingsStatusLabel(language, "OFFLINE"),
+  };
+
+  const navLabelBySection: Record<Section, string> = {
+    profile: getSettingsNavLabel(language, "profile"),
+    appearance: getSettingsNavLabel(language, "appearance"),
+    privacy: getSettingsNavLabel(language, "privacy"),
+    notifications: getSettingsNavLabel(language, "notifications"),
+  };
+
   // Select a GIF from the picker as avatar
   const handleGifSelect = async (gifUrl: string) => {
     setUploading(true);
@@ -218,7 +236,13 @@ export default function SettingsPage() {
       setGifQuery("");
       setGifResults([]);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur lors de l'application du GIF");
+      setError(
+        e instanceof Error
+          ? e.message
+          : isEnglish
+            ? "Error while applying GIF"
+            : "Erreur lors de l'application du GIF",
+      );
     } finally {
       setUploading(false);
     }
@@ -257,7 +281,7 @@ export default function SettingsPage() {
       const updated = await authApi.updateProfile(payload);
       setUser(updated);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur lors de la sauvegarde");
+      setError(e instanceof Error ? e.message : isEnglish ? "Error while saving" : "Erreur lors de la sauvegarde");
     } finally {
       setSaving(false);
     }
@@ -270,7 +294,7 @@ export default function SettingsPage() {
       const updated = await authApi.uploadAvatar(file);
       setUser(updated);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur lors de l'upload");
+      setError(e instanceof Error ? e.message : isEnglish ? "Upload error" : "Erreur lors de l'upload");
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -339,7 +363,7 @@ export default function SettingsPage() {
             className="flex items-center gap-2 text-sm text-[var(--muted-foreground)] hover:text-[#023BFC] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Retour
+            {isEnglish ? "Back" : "Retour"}
           </Link>
         </div>
 
@@ -360,7 +384,9 @@ export default function SettingsPage() {
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
-              <div className="text-xs text-[var(--muted-foreground)]">{currentStatus?.label}</div>
+              <div className="text-xs text-[var(--muted-foreground)]">
+                {currentStatus ? statusLabelByValue[currentStatus.value] : ""}
+              </div>
             </div>
           </div>
         </div>
@@ -378,7 +404,7 @@ export default function SettingsPage() {
               }`}
             >
               {item.icon}
-              {item.label}
+              {navLabelBySection[item.key]}
             </button>
           ))}
         </nav>
@@ -390,7 +416,7 @@ export default function SettingsPage() {
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-all"
           >
             <LogOut className="w-4 h-4" />
-            Se déconnecter
+            {isEnglish ? "Sign out" : "Se deconnecter"}
           </button>
         </div>
       </aside>
@@ -399,13 +425,17 @@ export default function SettingsPage() {
       <main className="flex-1 min-h-0 overflow-y-auto">
         {section === "profile" && (
           <div className="max-w-2xl mx-auto p-8 space-y-8">
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">Mon profil</h1>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">
+              {isEnglish ? "My profile" : "Mon profil"}
+            </h1>
 
             {/* Banner + Avatar side by side */}
             <div className="flex gap-4 items-start">
               {/* Banner rectangle */}
               <div className="flex-1">
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-2 block">Bannière</label>
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-2 block">
+                  {isEnglish ? "Banner" : "Banniere"}
+                </label>
                 <div
                   className="h-28 rounded-2xl"
                   style={{
@@ -415,7 +445,9 @@ export default function SettingsPage() {
               </div>
               {/* Avatar square */}
               <div>
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-2 block">Avatar</label>
+                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-2 block">
+                  {isEnglish ? "Avatar" : "Avatar"}
+                </label>
                 <div className="relative w-28 h-28">
                   <div className="w-28 h-28 rounded-2xl border-2 border-[var(--border)] shadow-lg overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
                     {avatarUrl ? (
@@ -431,7 +463,7 @@ export default function SettingsPage() {
                       onClick={() => photoInputRef.current?.click()}
                       disabled={uploading}
                       className="p-1.5 rounded-lg bg-white/20 hover:bg-white/40 transition-colors cursor-pointer"
-                      title="Changer la photo"
+                      title={isEnglish ? "Change photo" : "Changer la photo"}
                     >
                       <ImageIcon className="w-5 h-5 text-white" />
                     </button>
@@ -439,7 +471,7 @@ export default function SettingsPage() {
                       onClick={() => { setShowGifPicker((v) => !v); setGifQuery(""); }}
                       disabled={uploading}
                       className="p-1.5 rounded-lg bg-white/20 hover:bg-white/40 transition-colors cursor-pointer"
-                      title="Choisir un GIF animé"
+                      title={isEnglish ? "Choose animated GIF" : "Choisir un GIF anime"}
                     >
                       <Play className="w-5 h-5 text-white" />
                     </button>
@@ -464,7 +496,7 @@ export default function SettingsPage() {
             {/* Aperçu du profil */}
             <div>
               <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-3 block">
-                Aperçu — tel que vu par les autres
+                {isEnglish ? "Preview - as seen by others" : "Apercu - tel que vu par les autres"}
               </label>
               <div className="flex gap-6 items-start">
                 {/* Normal / full card preview */}
@@ -497,9 +529,11 @@ export default function SettingsPage() {
                       )}
                       {user.created_at && (
                         <div className="mt-2 pt-2 border-t border-[var(--border)]">
-                          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide">Membre depuis</span>
+                          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide">
+                            {isEnglish ? "Member since" : "Membre depuis"}
+                          </span>
                           <div className="text-xs font-medium text-[var(--foreground)]">
-                            {new Date(user.created_at).toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" })}
+                            {new Date(user.created_at).toLocaleDateString(isEnglish ? "en-US" : "fr-FR", { year: "numeric", month: "short", day: "numeric" })}
                           </div>
                         </div>
                       )}
@@ -509,7 +543,9 @@ export default function SettingsPage() {
 
                 {/* Mini preview (member list style) */}
                 <div className="flex-1 space-y-3">
-                  <span className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Vue compacte</span>
+                  <span className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+                    {isEnglish ? "Compact view" : "Vue compacte"}
+                  </span>
                   <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 shadow-sm">
                     <div className="relative flex-shrink-0">
                       <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
@@ -527,7 +563,9 @@ export default function SettingsPage() {
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
-                      <div className="text-xs text-[var(--muted-foreground)] truncate">{currentStatus?.label}</div>
+                      <div className="text-xs text-[var(--muted-foreground)] truncate">
+                        {currentStatus ? statusLabelByValue[currentStatus.value] : ""}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -546,7 +584,9 @@ export default function SettingsPage() {
               {/* Username row */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
                 <div>
-                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Nom d&apos;utilisateur</div>
+                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+                    {isEnglish ? "Username" : "Nom d'utilisateur"}
+                  </div>
                   <div className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">{user.username}</div>
                 </div>
               </div>
@@ -565,7 +605,7 @@ export default function SettingsPage() {
                       onClick={() => setEmailRevealed((v) => !v)}
                       className="text-[#023BFC] text-xs font-medium hover:underline"
                     >
-                      {emailRevealed ? "Masquer" : "Afficher"}
+                      {emailRevealed ? (isEnglish ? "Hide" : "Masquer") : isEnglish ? "Show" : "Afficher"}
                     </button>
                   </div>
                 </div>
@@ -575,7 +615,7 @@ export default function SettingsPage() {
                   onClick={() => { setEditingEmail(true); setNewEmail(user.email); setEmailPassword(""); setError(null); }}
                   className="rounded-lg border-[var(--border)] text-[var(--foreground)] text-xs h-8 px-3"
                 >
-                  Modifier
+                  {isEnglish ? "Edit" : "Modifier"}
                 </Button>
               </div>
 
@@ -591,16 +631,18 @@ export default function SettingsPage() {
                   onClick={() => { setEditingPassword(true); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setError(null); }}
                   className="rounded-lg border-[var(--border)] text-[var(--foreground)] text-xs h-8 px-3"
                 >
-                  Modifier
+                  {isEnglish ? "Edit" : "Modifier"}
                 </Button>
               </div>
 
               {/* Member since row */}
               {user.created_at && (
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Membre depuis</div>
+                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
+                    {isEnglish ? "Member since" : "Membre depuis"}
+                  </div>
                   <div className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
-                    {new Date(user.created_at).toLocaleDateString("fr-FR", {
+                    {new Date(user.created_at).toLocaleDateString(isEnglish ? "en-US" : "fr-FR", {
                       year: "numeric",
                       month: "long",
                       day: "numeric",
@@ -781,13 +823,15 @@ export default function SettingsPage() {
             <div className="h-px bg-[var(--border)]" />
 
             {/* Edit form */}
-            <h2 className="text-lg font-bold text-[var(--foreground)]">Modifier le profil</h2>
+            <h2 className="text-lg font-bold text-[var(--foreground)]">
+              {isEnglish ? "Edit profile" : "Modifier le profil"}
+            </h2>
 
             <div className="space-y-5">
               {/* Username */}
               <div>
                 <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  Nom d&apos;utilisateur
+                  {isEnglish ? "Username" : "Nom d'utilisateur"}
                 </label>
                 <input
                   type="text"
@@ -801,7 +845,7 @@ export default function SettingsPage() {
               {/* Bio / Notes with emoji picker */}
               <div>
                 <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  Notes / Bio
+                  {isEnglish ? "Notes / Bio" : "Notes / Bio"}
                 </label>
                 <div className="relative">
                   <textarea
@@ -810,14 +854,14 @@ export default function SettingsPage() {
                     onChange={(e) => setEditBio(e.target.value)}
                     maxLength={500}
                     rows={3}
-                    placeholder="Écris quelque chose à propos de toi..."
+                    placeholder={isEnglish ? "Write something about yourself..." : "Ecris quelque chose a propos de toi..."}
                     className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all resize-none"
                   />
                   <button
                     type="button"
                     onClick={() => setShowEmojiPicker((v) => !v)}
                     className="absolute right-2 top-3 p-1.5 rounded-lg hover:bg-[var(--surface)] text-[var(--muted-foreground)] hover:text-[#023BFC] transition-colors"
-                    title="Ajouter un emoji"
+                    title={isEnglish ? "Add emoji" : "Ajouter un emoji"}
                   >
                     <Smile className="w-4 h-4" />
                   </button>
@@ -827,7 +871,7 @@ export default function SettingsPage() {
                         data={data}
                         onEmojiSelect={handleEmojiSelect}
                         theme="light"
-                        locale="fr"
+                        locale={isEnglish ? "en" : "fr"}
                         previewPosition="none"
                         skinTonePosition="search"
                       />
@@ -840,7 +884,7 @@ export default function SettingsPage() {
               {/* Status */}
               <div>
                 <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  Statut
+                  {isEnglish ? "Status" : "Statut"}
                 </label>
                 <div className="mt-1.5 grid grid-cols-2 gap-2">
                   {STATUS_OPTIONS.map((opt) => (
@@ -854,7 +898,7 @@ export default function SettingsPage() {
                       }`}
                     >
                       <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />
-                      {opt.label}
+                      {statusLabelByValue[opt.value]}
                     </button>
                   ))}
                 </div>
@@ -863,7 +907,7 @@ export default function SettingsPage() {
               {/* Banner Colors */}
               <div>
                 <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  Couleurs de la bannière
+                  {isEnglish ? "Banner colors" : "Couleurs de la banniere"}
                 </label>
                 <div
                   className="mt-2 h-14 rounded-xl"
@@ -873,7 +917,9 @@ export default function SettingsPage() {
                 />
                 <div className="flex gap-3 mt-2">
                   <div className="flex-1">
-                    <label className="text-xs text-[var(--muted-foreground)]">Couleur 1</label>
+                    <label className="text-xs text-[var(--muted-foreground)]">
+                      {isEnglish ? "Color 1" : "Couleur 1"}
+                    </label>
                     <div className="flex items-center gap-2 mt-1">
                       <input
                         type="color"
@@ -891,7 +937,9 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-[var(--muted-foreground)]">Couleur 2</label>
+                    <label className="text-xs text-[var(--muted-foreground)]">
+                      {isEnglish ? "Color 2" : "Couleur 2"}
+                    </label>
                     <div className="flex items-center gap-2 mt-1">
                       <input
                         type="color"
@@ -914,7 +962,7 @@ export default function SettingsPage() {
               {/* Avatar upload */}
               <div className="relative">
                 <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  Photo de profil
+                  {isEnglish ? "Profile picture" : "Photo de profil"}
                 </label>
                 <div className="mt-2 flex items-center gap-3">
                   {/* Current avatar preview */}
@@ -943,7 +991,7 @@ export default function SettingsPage() {
                         className="rounded-xl border-[var(--border)] hover:border-[#023BFC] hover:bg-[#023BFC]/5 text-[var(--foreground)] text-sm px-3 h-9 gap-2"
                       >
                         <ImageIcon className="w-4 h-4" />
-                        {uploading ? "Upload..." : "Photo"}
+                        {uploading ? (isEnglish ? "Upload..." : "Upload...") : isEnglish ? "Photo" : "Photo"}
                       </Button>
                       <Button
                         onClick={() => { setShowGifPicker((v) => !v); setGifQuery(""); }}
@@ -956,11 +1004,13 @@ export default function SettingsPage() {
                         }`}
                       >
                         <Play className="w-4 h-4" />
-                        GIF animé
+                        {isEnglish ? "Animated GIF" : "GIF anime"}
                       </Button>
                     </div>
                     <span className="text-xs text-[var(--muted-foreground)]">
-                      Photo : fichier JPG, PNG, WebP — GIF : recherche Tenor / Giphy
+                      {isEnglish
+                        ? "Photo: JPG, PNG, WebP file - GIF: Tenor / Giphy search"
+                        : "Photo : fichier JPG, PNG, WebP - GIF : recherche Tenor / Giphy"}
                     </span>
                   </div>
                 </div>
@@ -974,7 +1024,7 @@ export default function SettingsPage() {
                       <input
                         value={gifQuery}
                         onChange={(e) => setGifQuery(e.target.value)}
-                        placeholder="Rechercher un GIF (ex: cat, hello, dance...)"
+                        placeholder={isEnglish ? "Search GIF (ex: cat, hello, dance...)" : "Rechercher un GIF (ex: cat, hello, dance...)"}
                         autoFocus
                         className="flex-1 text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] outline-none bg-transparent"
                       />
@@ -990,7 +1040,13 @@ export default function SettingsPage() {
                     <div className="p-2 grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto">
                       {gifResults.length === 0 && !gifLoading && (
                         <div className="col-span-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
-                          {gifQuery ? "Aucun GIF trouvé" : "Tapez pour rechercher des GIFs"}
+                          {gifQuery
+                            ? isEnglish
+                              ? "No GIF found"
+                              : "Aucun GIF trouve"
+                            : isEnglish
+                              ? "Type to search GIFs"
+                              : "Tapez pour rechercher des GIFs"}
                         </div>
                       )}
                       {gifResults.map((g) => (
@@ -1007,7 +1063,7 @@ export default function SettingsPage() {
                     {uploading && (
                       <div className="p-3 border-t border-[var(--border)] flex items-center justify-center gap-2 text-sm text-[#7C3AED]">
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Application du GIF...
+                        {isEnglish ? "Applying GIF..." : "Application du GIF..."}
                       </div>
                     )}
                   </div>
@@ -1029,7 +1085,7 @@ export default function SettingsPage() {
                 disabled={saving}
                 className="w-full h-11 rounded-xl bg-gradient-to-r from-[#023BFC] to-[#3D6AFF] hover:from-[#023BFC]/90 hover:to-[#3D6AFF]/90 text-white border-0 shadow-lg"
               >
-                {saving ? "Enregistrement..." : "Enregistrer les modifications"}
+                {saving ? (isEnglish ? "Saving..." : "Enregistrement...") : isEnglish ? "Save changes" : "Enregistrer les modifications"}
               </Button>
             </div>
           </div>
@@ -1037,13 +1093,17 @@ export default function SettingsPage() {
 
         {section === "appearance" && (
           <div className="max-w-2xl mx-auto p-8 space-y-8">
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">Apparence</h1>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">
+              {isEnglish ? "Appearance" : "Apparence"}
+            </h1>
 
             {/* Theme selection */}
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Palette className="w-5 h-5 text-[var(--muted-foreground)]" />
-                <h2 className="text-lg font-semibold text-[var(--foreground)]">Thème</h2>
+                <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                  {isEnglish ? "Theme" : "Theme"}
+                </h2>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {THEME_OPTIONS.map((opt) => {
@@ -1079,7 +1139,9 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Type className="w-5 h-5 text-[var(--muted-foreground)]" />
-                <h2 className="text-lg font-semibold text-[var(--foreground)]">Taille de la police</h2>
+                <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                  {isEnglish ? "Font size" : "Taille de la police"}
+                </h2>
               </div>
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
                 {FONT_SIZE_OPTIONS.map((opt) => {
@@ -1106,7 +1168,9 @@ export default function SettingsPage() {
                 })}
               </div>
               <p className="text-xs text-[var(--muted-foreground)]">
-                La taille de police s&apos;applique aux messages et au contenu du serveur.
+                {isEnglish
+                  ? "Font size applies to messages and server content."
+                  : "La taille de police s'applique aux messages et au contenu du serveur."}
               </p>
             </div>
           </div>
@@ -1114,11 +1178,15 @@ export default function SettingsPage() {
 
         {section === "privacy" && (
           <div className="max-w-2xl mx-auto p-8 space-y-6">
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">Confidentialité</h1>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">
+              {isEnglish ? "Privacy" : "Confidentialite"}
+            </h1>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center space-y-3">
               <Shield className="w-12 h-12 mx-auto text-[var(--muted-foreground)]/40" />
               <p className="text-[var(--muted-foreground)] text-sm">
-                Les paramètres de confidentialité seront bientôt disponibles.
+                {isEnglish
+                  ? "Privacy settings will be available soon."
+                  : "Les parametres de confidentialite seront bientot disponibles."}
               </p>
             </div>
           </div>
@@ -1126,11 +1194,15 @@ export default function SettingsPage() {
 
         {section === "notifications" && (
           <div className="max-w-2xl mx-auto p-8 space-y-6">
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">Notifications</h1>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">
+              {isEnglish ? "Notifications" : "Notifications"}
+            </h1>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center space-y-3">
               <Bell className="w-12 h-12 mx-auto text-[var(--muted-foreground)]/40" />
               <p className="text-[var(--muted-foreground)] text-sm">
-                Les paramètres de notification seront bientôt disponibles.
+                {isEnglish
+                  ? "Notification settings will be available soon."
+                  : "Les parametres de notification seront bientot disponibles."}
               </p>
             </div>
           </div>
