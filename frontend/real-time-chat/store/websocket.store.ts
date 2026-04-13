@@ -31,6 +31,17 @@ type ClientEvent =
       payload: { channel_id: string; content: string; reply_to?: string };
     }
   | {
+      type: "MessageSchedule";
+      payload: {
+        channel_id: string;
+        content: string;
+        day_of_week: number;
+        hour: number;
+        minute: number;
+        reply_to?: string;
+      };
+    }
+  | {
       type: "MessageEdit";
       payload: { channel_id: string; message_id: string; content: string };
     }
@@ -189,6 +200,14 @@ type WebSocketState = {
   connect: (token: string) => void;
   disconnect: () => void;
   sendMessage: (channelId: string, content: string, replyTo?: string) => void;
+  sendScheduledMessage: (
+    channelId: string,
+    content: string,
+    dayOfWeek: number,
+    hour: number,
+    minute: number,
+    replyTo?: string,
+  ) => void;
   editMessage: (channelId: string, messageId: string, content: string) => void;
   deleteMessage: (channelId: string, messageId: string) => void;
   joinChannel: (channelId: string) => void;
@@ -518,6 +537,36 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
       socket.send(json);
     } else {
       console.error("❌ Cannot send message: WebSocket not connected");
+    }
+  },
+
+  sendScheduledMessage: (
+    channelId: string,
+    content: string,
+    dayOfWeek: number,
+    hour: number,
+    minute: number,
+    replyTo?: string,
+  ) => {
+    const { socket, currentChannelId } = get();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      if (currentChannelId !== channelId) {
+        get().joinChannel(channelId);
+      }
+      const event: ClientEvent = {
+        type: "MessageSchedule",
+        payload: {
+          channel_id: channelId,
+          content,
+          day_of_week: dayOfWeek,
+          hour,
+          minute,
+          reply_to: replyTo,
+        },
+      };
+      socket.send(JSON.stringify(event));
+    } else {
+      console.error("❌ Cannot schedule message: WebSocket not connected");
     }
   },
 

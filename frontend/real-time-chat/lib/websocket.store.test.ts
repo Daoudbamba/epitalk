@@ -144,4 +144,39 @@ describe("websocket.store reconnect behavior", () => {
     expect(state.error).toContain("Session expirée");
     expect(hoisted.logoutMock).toHaveBeenCalledTimes(1);
   });
+
+  it("sends MessageSchedule payload when scheduling a message", async () => {
+    const useWebSocketStore = await loadStore();
+
+    useWebSocketStore.getState().connect("token");
+    const ws = FakeWebSocket.instances.at(-1);
+    expect(ws).toBeDefined();
+
+    ws!.readyState = FakeWebSocket.OPEN;
+    ws!.onopen?.({} as Event);
+
+    useWebSocketStore
+      .getState()
+      .sendScheduledMessage("channel-1", "hello later", 5, 14, 30);
+
+    const scheduleCall = ws!.send.mock.calls
+      .map((call) => JSON.parse(call[0] as string))
+      .find((payload) => payload.type === "MessageSchedule");
+
+    expect(scheduleCall).toBeDefined();
+    const payload = scheduleCall as {
+      type: string;
+      payload: {
+        channel_id: string;
+        day_of_week: number;
+        hour: number;
+        minute: number;
+      };
+    };
+    expect(payload.type).toBe("MessageSchedule");
+    expect(payload.payload.channel_id).toBe("channel-1");
+    expect(payload.payload.day_of_week).toBe(5);
+    expect(payload.payload.hour).toBe(14);
+    expect(payload.payload.minute).toBe(30);
+  });
 });

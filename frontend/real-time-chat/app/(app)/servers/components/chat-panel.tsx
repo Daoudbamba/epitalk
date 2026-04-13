@@ -49,6 +49,7 @@ export function ChatPanel() {
   const isConnected = useWebSocketStore((s) => s.isConnected);
   const connect = useWebSocketStore((s) => s.connect);
   const sendMessage = useWebSocketStore((s) => s.sendMessage);
+  const sendScheduledMessage = useWebSocketStore((s) => s.sendScheduledMessage);
   const editMessage = useWebSocketStore((s) => s.editMessage);
   const deleteMessage = useWebSocketStore((s) => s.deleteMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
@@ -98,6 +99,10 @@ export function ChatPanel() {
   // Emoji reaction picker state
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const [showInputEmojis, setShowInputEmojis] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleDay, setScheduleDay] = useState("1");
+  const [scheduleHour, setScheduleHour] = useState("9");
+  const [scheduleMinute, setScheduleMinute] = useState("0");
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -262,6 +267,24 @@ export function ChatPanel() {
         editMessage(activeChannelId, editingMessageId, content);
         setEditingMessageId(null);
         setIsEditing(false);
+      } else if (scheduleOpen) {
+        const day = Number(scheduleDay);
+        const hour = Number(scheduleHour);
+        const minute = Number(scheduleMinute);
+
+        if (!(day >= 1 && day <= 7 && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59)) {
+          setError(
+            isEnglish
+              ? "Invalid schedule values (day 1-7, hour 0-23, minute 0-59)."
+              : "Valeurs de planification invalides (jour 1-7, heure 0-23, minute 0-59).",
+          );
+          return;
+        }
+
+        sendScheduledMessage(activeChannelId, content, day, hour, minute, replyTo || undefined);
+        setReplyTo(null);
+        setReplyToUsername(null);
+        setScheduleOpen(false);
       } else {
         sendMessage(activeChannelId, content, replyTo || undefined);
         setReplyTo(null);
@@ -889,6 +912,17 @@ export function ChatPanel() {
             />
 
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-x-3">
+              <button
+                type="button"
+                onClick={() => setScheduleOpen((v) => !v)}
+                title={isEnglish ? "Schedule weekly message" : "Programmer un message hebdomadaire"}
+                className="h-6 w-6 flex items-center justify-center"
+              >
+                <span className="text-[10px] font-bold text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition cursor-pointer">
+                  S
+                </span>
+              </button>
+
               <span title="Fonction à venir">
                 <Gift className="h-5 w-5 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] transition cursor-not-allowed" />
               </span>
@@ -936,7 +970,15 @@ export function ChatPanel() {
             onClick={onSend}
             disabled={!canLoad || sending || !isConnected || !value.trim()}
             className="h-12 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Envoyer le message"
+            title={
+              scheduleOpen
+                ? isEnglish
+                  ? "Schedule the message"
+                  : "Programmer le message"
+                : isEnglish
+                  ? "Send message"
+                  : "Envoyer le message"
+            }
           >
             {sending ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -945,6 +987,49 @@ export function ChatPanel() {
             )}
           </Button>
         </div>
+
+        {scheduleOpen && (
+          <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 flex flex-wrap items-end gap-3 text-xs">
+            <div className="flex flex-col gap-1">
+              <label>{isEnglish ? "Day (1=Mon ... 7=Sun)" : "Jour (1=Lun ... 7=Dim)"}</label>
+              <input
+                type="number"
+                min={1}
+                max={7}
+                value={scheduleDay}
+                onChange={(e) => setScheduleDay(e.target.value)}
+                className="w-36 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label>{isEnglish ? "Hour" : "Heure"}</label>
+              <input
+                type="number"
+                min={0}
+                max={23}
+                value={scheduleHour}
+                onChange={(e) => setScheduleHour(e.target.value)}
+                className="w-20 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label>{isEnglish ? "Minute" : "Minute"}</label>
+              <input
+                type="number"
+                min={0}
+                max={59}
+                value={scheduleMinute}
+                onChange={(e) => setScheduleMinute(e.target.value)}
+                className="w-20 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
+              />
+            </div>
+            <span className="text-[var(--muted-foreground)]">
+              {isEnglish
+                ? "The message will be sent at the next matching weekly slot (UTC)."
+                : "Le message sera envoye au prochain horaire hebdomadaire correspondant (UTC)."}
+            </span>
+          </div>
+        )}
 
         {/* GIF picker anchored to input bar */}
         {openGifPicker === "input" && (
