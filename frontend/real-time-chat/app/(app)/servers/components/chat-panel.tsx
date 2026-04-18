@@ -15,6 +15,7 @@ import {
   Trash2,
   X,
   Search,
+  Clock3,
 } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
@@ -23,10 +24,22 @@ import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
 import { messagesApi } from "@/lib/api";
 import type { Message } from "@/lib/api/schemas/messages.schema";
+import {
+  formatScheduledAt,
+  getNextWeeklyOccurrenceLocal,
+  toBackendUtcSchedule,
+} from "@/lib/schedule";
 import { useLanguage } from "@/components/language-provider";
 import { useAppearanceStore } from "@/store/appearance.store";
 
 const FONT_SIZE_MAP = { sm: "14px", base: "16px", lg: "18px", xl: "20px" } as const;
+
+type ScheduledPreview = {
+  local_id: string;
+  channel_id: string;
+  content: string;
+  scheduled_for: string;
+};
 
 export function ChatPanel() {
   const activeServerId = useServerStore((s) => s.activeServerId);
@@ -103,6 +116,9 @@ export function ChatPanel() {
   const [scheduleDay, setScheduleDay] = useState("1");
   const [scheduleHour, setScheduleHour] = useState("9");
   const [scheduleMinute, setScheduleMinute] = useState("0");
+  const [scheduledByChannel, setScheduledByChannel] = useState<
+    Record<string, ScheduledPreview[]>
+  >({});
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -155,6 +171,36 @@ export function ChatPanel() {
     return wsMessages[activeChannelId] || [];
   }, [activeChannelId, wsMessages]);
 
+  const dayOptions = useMemo(
+    () => [
+      { value: "1", label: isEnglish ? "Monday" : "Lundi" },
+      { value: "2", label: isEnglish ? "Tuesday" : "Mardi" },
+      { value: "3", label: isEnglish ? "Wednesday" : "Mercredi" },
+      { value: "4", label: isEnglish ? "Thursday" : "Jeudi" },
+      { value: "5", label: isEnglish ? "Friday" : "Vendredi" },
+      { value: "6", label: isEnglish ? "Saturday" : "Samedi" },
+      { value: "7", label: isEnglish ? "Sunday" : "Dimanche" },
+    ],
+    [isEnglish],
+  );
+
+  const scheduledMessages = useMemo(() => {
+    if (!activeChannelId) return [];
+    return scheduledByChannel[activeChannelId] || [];
+  }, [activeChannelId, scheduledByChannel]);
+
+  const schedulePreviewLabel = useMemo(() => {
+    const now = new Date();
+    const day = Number(scheduleDay);
+    const hour = Number(scheduleHour);
+    const minute = Number(scheduleMinute);
+    const next = getNextWeeklyOccurrenceLocal(now, day, hour, minute);
+    if (!next) {
+      return isEnglish ? "Invalid date/time" : "Date/heure invalide";
+    }
+    return formatScheduledAt(next, isEnglish ? "en" : "fr");
+  }, [isEnglish, scheduleDay, scheduleHour, scheduleMinute]);
+
   // Debug: log chat state when messages / channel change
   useEffect(() => {
     console.log("📚 ChatPanel state", {
@@ -200,6 +246,33 @@ export function ChatPanel() {
       (el as any).scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  // Remove local scheduled previews once their corresponding real message arrives.
+  useEffect(() => {
+    if (!activeChannelId || !user?.id) return;
+
+    setScheduledByChannel((prev) => {
+      const channelItems = prev[activeChannelId] || [];
+      if (channelItems.length === 0) return prev;
+
+      const remaining = channelItems.filter((scheduled) => {
+        const scheduledAtMs = new Date(scheduled.scheduled_for).getTime();
+        return !messages.some((message) => {
+          if (message.author_id !== user.id) return false;
+          if (message.content !== scheduled.content) return false;
+          const createdAtMs = new Date(message.created_at).getTime();
+          return createdAtMs >= scheduledAtMs - 60_000;
+        });
+      });
+
+      if (remaining.length === channelItems.length) return prev;
+
+      return {
+        ...prev,
+        [activeChannelId]: remaining,
+      };
+    });
+  }, [activeChannelId, messages, user?.id]);
 
   // Get username from message, members or fallback to author_id
   const getUsernameById = useCallback(
@@ -281,7 +354,41 @@ export function ChatPanel() {
           return;
         }
 
-        sendScheduledMessage(activeChannelId, content, day, hour, minute, replyTo || undefined);
+        const nextAt = getNextWeeklyOccurrenceLocal(new Date(), day, hour, minute);
+        if (!nextAt) {
+          setError(
+            isEnglish
+              ? "Unable to compute next schedule slot."
+              : "Impossible de calculer le prochain envoi programme.",
+          );
+          return;
+        }
+
+        const backendUtcSchedule = toBackendUtcSchedule(nextAt);
+
+        sendScheduledMessage(
+          activeChannelId,
+          content,
+          backendUtcSchedule.dayOfWeek,
+          backendUtcSchedule.hour,
+          backendUtcSchedule.minute,
+          replyTo || undefined,
+        );
+        setScheduledByChannel((prev) => {
+          const current = prev[activeChannelId] || [];
+          return {
+            ...prev,
+            [activeChannelId]: [
+              ...current,
+              {
+                local_id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                channel_id: activeChannelId,
+                content,
+                scheduled_for: nextAt.toISOString(),
+              },
+            ],
+          };
+        });
         setReplyTo(null);
         setReplyToUsername(null);
         setScheduleOpen(false);
@@ -574,6 +681,32 @@ export function ChatPanel() {
 
       {/* --- MESSAGES --- */}
       <div className="flex-1 overflow-y-auto flex flex-col py-4">
+        {canLoad && scheduledMessages.length > 0 && (
+          <div className="px-4 pb-3">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 dark:border-amber-900/60 dark:bg-amber-950/30 p-3">
+              <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-medium text-sm mb-2">
+                <Clock3 className="h-4 w-4" />
+                {isEnglish ? "Scheduled (visible only to you)" : "Programmes (visibles seulement pour vous)"}
+              </div>
+              <div className="space-y-2">
+                {scheduledMessages.map((scheduled) => (
+                  <div
+                    key={scheduled.local_id}
+                    className="rounded-lg border border-amber-200/80 dark:border-amber-900/70 bg-white/80 dark:bg-zinc-900/50 px-3 py-2"
+                  >
+                    <div className="text-xs text-amber-700 dark:text-amber-300 mb-1">
+                      {isEnglish ? "Will be sent:" : "Envoi prevu :"} {formatScheduledAt(new Date(scheduled.scheduled_for), isEnglish ? "en" : "fr")}
+                    </div>
+                    <div className="text-sm text-[var(--foreground)] whitespace-pre-wrap">
+                      {scheduled.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {!canLoad ? (
           <div className="px-4 text-sm text-muted-foreground">
             {isEnglish
@@ -916,11 +1049,14 @@ export function ChatPanel() {
                 type="button"
                 onClick={() => setScheduleOpen((v) => !v)}
                 title={isEnglish ? "Schedule weekly message" : "Programmer un message hebdomadaire"}
-                className="h-6 w-6 flex items-center justify-center"
+                className={`h-7 px-2 rounded-full border text-[11px] font-semibold transition flex items-center gap-1 ${
+                  scheduleOpen
+                    ? "border-amber-300 text-amber-700 bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:bg-amber-950/40"
+                    : "border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
               >
-                <span className="text-[10px] font-bold text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition cursor-pointer">
-                  S
-                </span>
+                <Clock3 className="h-3.5 w-3.5" />
+                {isEnglish ? "Later" : "Plus tard"}
               </button>
 
               <span title="Fonction à venir">
@@ -989,45 +1125,57 @@ export function ChatPanel() {
         </div>
 
         {scheduleOpen && (
-          <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 flex flex-wrap items-end gap-3 text-xs">
+          <div className="mt-2 rounded-xl border border-amber-200/70 dark:border-amber-900/70 bg-amber-50/60 dark:bg-amber-950/20 p-3 flex flex-wrap items-end gap-3 text-xs">
             <div className="flex flex-col gap-1">
-              <label>{isEnglish ? "Day (1=Mon ... 7=Sun)" : "Jour (1=Lun ... 7=Dim)"}</label>
-              <input
-                type="number"
-                min={1}
-                max={7}
+              <label>{isEnglish ? "Day" : "Jour"}</label>
+              <select
                 value={scheduleDay}
                 onChange={(e) => setScheduleDay(e.target.value)}
-                className="w-36 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
-              />
+                className="w-44 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
+              >
+                {dayOptions.map((day) => (
+                  <option key={day.value} value={day.value}>
+                    {day.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col gap-1">
               <label>{isEnglish ? "Hour" : "Heure"}</label>
-              <input
-                type="number"
-                min={0}
-                max={23}
+              <select
                 value={scheduleHour}
                 onChange={(e) => setScheduleHour(e.target.value)}
                 className="w-20 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
-              />
+              >
+                {Array.from({ length: 24 }, (_, hour) => (
+                  <option key={hour} value={String(hour)}>
+                    {hour.toString().padStart(2, "0")}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col gap-1">
               <label>{isEnglish ? "Minute" : "Minute"}</label>
-              <input
-                type="number"
-                min={0}
-                max={59}
+              <select
                 value={scheduleMinute}
                 onChange={(e) => setScheduleMinute(e.target.value)}
                 className="w-20 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
-              />
+              >
+                {Array.from({ length: 60 }, (_, minute) => (
+                  <option key={minute} value={String(minute)}>
+                    {minute.toString().padStart(2, "0")}
+                  </option>
+                ))}
+              </select>
             </div>
-            <span className="text-[var(--muted-foreground)]">
+            <div className="text-[var(--muted-foreground)] flex-1 min-w-52">
               {isEnglish
-                ? "The message will be sent at the next matching weekly slot (UTC)."
-                : "Le message sera envoye au prochain horaire hebdomadaire correspondant (UTC)."}
-            </span>
+                ? "The receiver will only see it when the scheduled time arrives."
+                : "Le destinataire le verra seulement a l'heure programmee."}
+              <div className="mt-1 text-[var(--foreground)] font-medium">
+                {isEnglish ? "Preview (local time):" : "Apercu (heure locale) :"} {schedulePreviewLabel}
+              </div>
+            </div>
           </div>
         )}
 

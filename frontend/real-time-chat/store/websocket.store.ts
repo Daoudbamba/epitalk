@@ -139,6 +139,15 @@ type ServerEvent =
     }
   | { type: "MessageDeleted"; payload: { id: string; channel_id: string } }
   | {
+      type: "MessagePinned";
+      payload: {
+        message_id: string;
+        channel_id: string;
+        pinned_by: string;
+        pinned_at: string;
+      };
+    }
+  | {
       type: "ReactionAdded";
       payload: {
         message_id: string;
