@@ -15,6 +15,8 @@ import {
   Trash2,
   X,
   Search,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
@@ -86,6 +88,42 @@ export function ChatPanel() {
   const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Pinned messages panel state
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [pinnedLoading, setPinnedLoading] = useState(false);
+
+  const loadPinnedMessages = async () => {
+    if (!activeServerId || !activeChannelId) return;
+    setPinnedLoading(true);
+    try {
+      const data = await messagesApi.listPinned(activeServerId, activeChannelId);
+      setPinnedMessages(data);
+    } catch (err) {
+      console.error("Failed to load pinned messages:", err);
+    } finally {
+      setPinnedLoading(false);
+    }
+  };
+
+  const handlePin = async (messageId: string) => {
+    if (!activeServerId || !activeChannelId) return;
+    try {
+      await messagesApi.pin(activeServerId, activeChannelId, messageId);
+    } catch (err) {
+      console.error("Failed to pin message:", err);
+    }
+  };
+
+  const handleUnpin = async (messageId: string) => {
+    if (!activeServerId || !activeChannelId) return;
+    try {
+      await messagesApi.unpin(activeServerId, activeChannelId, messageId);
+    } catch (err) {
+      console.error("Failed to unpin message:", err);
+    }
+  };
 
   // GIF picker state
   const [openGifPicker, setOpenGifPicker] = useState<"input" | null>(null);
@@ -418,11 +456,64 @@ export function ChatPanel() {
         <h2 className="font-bold text-md text-[var(--foreground)]">
           {activeChannelName ?? (isEnglish ? "no-channel" : "aucun-channel")}
         </h2>
-        <div className="ml-auto relative">
+        <div className="ml-auto flex items-center gap-1 relative">
+          <button
+            title={isEnglish ? "Pinned messages" : "Messages épinglés"}
+            onClick={() => {
+              setPinnedOpen((s) => !s);
+              if (!pinnedOpen) loadPinnedMessages();
+            }}
+            className={`h-8 w-8 rounded-md flex items-center justify-center transition ${pinnedOpen ? "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+          >
+            <Pin className="h-4 w-4" />
+          </button>
+
+          {pinnedOpen && (
+            <div className="absolute right-0 top-10 z-40 bg-white dark:bg-zinc-900 border rounded-md shadow-lg p-3 w-[min(90vw,28rem)]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-semibold text-sm">
+                  {isEnglish ? "Pinned messages" : "Messages épinglés"}
+                </span>
+                <button onClick={() => setPinnedOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {pinnedLoading ? (
+                <div className="flex items-center gap-2 text-sm text-zinc-500 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Chargement...
+                </div>
+              ) : pinnedMessages.length === 0 ? (
+                <div className="text-sm text-zinc-500">
+                  {isEnglish ? "No pinned messages." : "Aucun message épinglé."}
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-2 max-h-72 overflow-auto">
+                  {pinnedMessages.map((m) => (
+                    <li
+                      key={m.id}
+                      className="p-2 border rounded hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                      onClick={async () => {
+                        setPinnedOpen(false);
+                        await jumpToMessage(m.id, activeServerId ?? "", m.channel_id);
+                      }}
+                    >
+                      <div className="text-xs text-zinc-500 mb-0.5">
+                        {new Date(m.created_at).toLocaleString()}
+                      </div>
+                      <div className="text-sm text-zinc-700 dark:text-zinc-200 truncate">
+                        {m.content}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <button
             title="Rechercher"
             onClick={() => setSearchOpen((s) => !s)}
-            className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition ml-3"
+            className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
           >
             <Search className="h-4 w-4" />
           </button>
@@ -620,6 +711,17 @@ export function ChatPanel() {
                         <Trash2 className="h-4 w-4" />
                       </button>
                     )}
+                    {canModerate && (
+                      <button
+                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                        onClick={() =>
+                          msg.pinned_at ? handleUnpin(msg.id) : handlePin(msg.id)
+                        }
+                        title={msg.pinned_at ? (isEnglish ? "Unpin" : "Désépingler") : (isEnglish ? "Pin" : "Épingler")}
+                      >
+                        {msg.pinned_at ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                      </button>
+                    )}
                     <button
                       className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-amber-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
                       onClick={() =>
@@ -683,6 +785,12 @@ export function ChatPanel() {
                       </span>
                       {msg.edited_at && (
                         <span className="text-xs text-indigo-500">(édité)</span>
+                      )}
+                      {msg.pinned_at && (
+                        <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                          <Pin className="h-3 w-3" />
+                          {isEnglish ? "pinned" : "épinglé"}
+                        </span>
                       )}
                     </div>
 

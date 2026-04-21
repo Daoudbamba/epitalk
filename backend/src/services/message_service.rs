@@ -91,4 +91,31 @@ impl MessageService {
     pub async fn get_dm_conversations(&self, user_id: &str) -> Vec<Document> {
         self.repo.get_dm_conversations(user_id).await
     }
+
+    pub async fn pin_message(
+        &self,
+        message_id: ObjectId,
+        channel_id: &str,
+        pinned_by: &str,
+        pinned_at: &str,
+    ) -> mongodb::error::Result<Option<MessageDb>> {
+        self.repo.pin_message(message_id, channel_id, pinned_by, pinned_at).await
+    }
+
+    pub async fn unpin_message(
+        &self,
+        message_id: ObjectId,
+        channel_id: &str,
+    ) -> mongodb::error::Result<Option<MessageDb>> {
+        self.repo.unpin_message(message_id, channel_id).await
+    }
+
+    pub async fn list_pinned(
+        &self,
+        channel_id: &str,
+        page: u64,
+        per_page: u64,
+    ) -> Vec<MessageDb> {
+        self.repo.find_pinned_by_channel(channel_id, page, per_page).await
+    }
 }

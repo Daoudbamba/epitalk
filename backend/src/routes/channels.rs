@@ -15,7 +15,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    routing::get,
+    routing::{delete, get, post},
     Json, Router,
 };
 use mongodb::bson::oid::ObjectId;
@@ -40,7 +40,9 @@ pub fn router() -> Router<Arc<AppState>> {
                 .delete(delete_channel),
         )
         .route("/:channel_id/messages", get(get_messages))
-            .route("/:channel_id/messages/search", get(search_messages))
+        .route("/:channel_id/messages/search", get(search_messages))
+        .route("/:channel_id/messages/pinned", get(list_pinned_messages))
+        .route("/:channel_id/messages/:message_id/pin", post(pin_message_handler).delete(unpin_message_handler))
 }
 
 /// Path parameters for nested routes
@@ -415,6 +417,134 @@ async fn search_messages(
     };
 
     Ok(Json(responses))
+}
+
+// ---------------------------------------------------------
+// PINNED MESSAGES
+// ---------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct PinnedMessageResponse {
+    pub id: String,
+    pub server_id: String,
+    pub channel_id: String,
+    pub author_id: String,
+    pub username: String,
+    pub content: String,
+    pub created_at: String,
+    pub pinned_by: Option<String>,
+    pub pinned_at: Option<String>,
+}
+
+async fn list_pinned_messages(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Path(params): Path<ChannelPath>,
+    Query(query): Query<MessagesQuery>,
+) -> AppResult<Json<Vec<PinnedMessageResponse>>> {
+    if !MembershipRepository::is_member(&state.db, auth.user_id, params.server_id).await? {
+        return Err(AppError::Forbidden("Not a member of this server".to_string()));
+    }
+
+    let channel = ChannelRepository::find_by_id(&state.db, params.channel_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Channel not found".to_string()))?;
+    if channel.server_id != params.server_id {
+        return Err(AppError::NotFound("Channel not found in this server".to_string()));
+    }
+
+    let messages = state.message_service
+        .list_pinned(&params.channel_id.to_string(), query.page, query.per_page)
+        .await;
+
+    let mut result = Vec::new();
+    for m in messages {
+        let username = if let Ok(uuid) = Uuid::parse_str(&m.author_id) {
+            UserRepository::find_by_id(&state.db, uuid)
+                .await.ok().flatten()
+                .map(|u| u.username)
+                .unwrap_or_else(|| m.author_id.chars().take(8).collect())
+        } else {
+            m.author_id.chars().take(8).collect()
+        };
+        result.push(PinnedMessageResponse {
+            id: m.id.map(|o| o.to_hex()).unwrap_or_default(),
+            server_id: params.server_id.to_string(),
+            channel_id: m.channel_id,
+            author_id: m.author_id,
+            username,
+            content: m.content,
+            created_at: m.created_at,
+            pinned_by: m.pinned_by,
+            pinned_at: m.pinned_at,
+        });
+    }
+    Ok(Json(result))
+}
+
+async fn pin_message_handler(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Path(params): Path<MessagePath>,
+) -> AppResult<Json<serde_json::Value>> {
+    let role = MembershipRepository::get_role(&state.db, auth.user_id, params.server_id)
+        .await?
+        .ok_or_else(|| AppError::Forbidden("Not a member".to_string()))?;
+    if !role.can_delete_others_messages() {
+        return Err(AppError::Forbidden("Insufficient permissions to pin messages".to_string()));
+    }
+
+    let message_id = ObjectId::parse_str(&params.message_id)
+        .map_err(|_| AppError::BadRequest("Invalid message id".to_string()))?;
+    let pinned_at = chrono::Utc::now().to_rfc3339();
+    let pinned_by = auth.user_id.to_string();
+
+    state.message_service
+        .pin_message(message_id, &params.channel_id.to_string(), &pinned_by, &pinned_at)
+        .await
+        .map_err(|_| AppError::Internal("Failed to pin message".to_string()))?;
+
+    let room_id = params.channel_id.to_string();
+    state.hub.broadcast_room(&room_id, ServerEvent::MessagePinned {
+        message_id: params.message_id.clone(),
+        channel_id: room_id.clone(),
+        pinned_by: pinned_by.clone(),
+        pinned_at: pinned_at.clone(),
+    }).await;
+
+    Ok(Json(serde_json::json!({ "pinned": true })))
+}
+
+async fn unpin_message_handler(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Path(params): Path<MessagePath>,
+) -> AppResult<Json<serde_json::Value>> {
+    let role = MembershipRepository::get_role(&state.db, auth.user_id, params.server_id)
+        .await?
+        .ok_or_else(|| AppError::Forbidden("Not a member".to_string()))?;
+    if !role.can_delete_others_messages() {
+        return Err(AppError::Forbidden("Insufficient permissions to unpin messages".to_string()));
+    }
+
+    let message_id = ObjectId::parse_str(&params.message_id)
+        .map_err(|_| AppError::BadRequest("Invalid message id".to_string()))?;
+    let unpinned_at = chrono::Utc::now().to_rfc3339();
+
+    state.message_service
+        .unpin_message(message_id, &params.channel_id.to_string())
+        .await
+        .map_err(|_| AppError::Internal("Failed to unpin message".to_string()))?;
+
+    let room_id = params.channel_id.to_string();
+    state.hub.broadcast_room(&room_id, ServerEvent::MessageUnpinned {
+        message_id: params.message_id.clone(),
+        channel_id: room_id.clone(),
+        unpinned_by: auth.user_id.to_string(),
+        unpinned_at,
+    }).await;
+
+    Ok(Json(serde_json::json!({ "unpinned": true })))
 }
 
 #[cfg(test)]

@@ -165,7 +165,15 @@ type ServerEvent =
       };
     }
   | { type: "DmDeleted"; payload: { id: string; conversation_id: string } }
-  | { type: "Pong" };
+  | { type: "Pong" }
+  | {
+      type: "MessagePinned";
+      payload: { message_id: string; channel_id: string; pinned_by: string; pinned_at: string };
+    }
+  | {
+      type: "MessageUnpinned";
+      payload: { message_id: string; channel_id: string };
+    };
 
 type WebSocketState = {
   socket: WebSocket | null;
@@ -889,6 +897,24 @@ function handleServerEvent(
             ...state.messages,
             [channel_id]: channelMessages.map((message) =>
               message.id === message_id ? { ...message, pinned_by, pinned_at } : message,
+            ),
+          },
+        };
+      });
+      break;
+    }
+
+    case "MessageUnpinned": {
+      const { message_id, channel_id } = event.payload;
+      set((state) => {
+        const channelMessages = state.messages[channel_id] || [];
+        return {
+          messages: {
+            ...state.messages,
+            [channel_id]: channelMessages.map((message) =>
+              message.id === message_id
+                ? { ...message, pinned_by: null, pinned_at: null }
+                : message,
             ),
           },
         };
