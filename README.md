@@ -293,15 +293,15 @@ JWT_SECRET=your-super-secret-key-change-in-production
 JWT_EXPIRATION_HOURS=168
 
 # Serveur
-PORT=3000
+PORT=3001
 ```
 
 ### Frontend (.env.local)
 
 Créer `frontend/real-time-chat/.env.local` :
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:3000/api
-NEXT_PUBLIC_WS_URL=ws://localhost:3000/ws
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_WS_URL=ws://localhost:3001/ws
 ```
 
 ---
@@ -321,22 +321,22 @@ docker-compose up
 cd backend
 cargo run
 ```
-✅ Attendez : `Server listening on 0.0.0.0:3000`
+✅ Attendez : `Server listening on 0.0.0.0:3001`
 
 #### Terminal 3 : Frontend Next.js
 ```bash
 cd frontend/real-time-chat
-PORT=3001 npm run dev
+npm run dev
 ```
-✅ Attendez : `Local: http://localhost:3001`
+✅ Attendez : `Local: http://localhost:3000`
 
 ---
 
 ## 🌐 Accès
 
-- **Frontend** : http://localhost:3001
-- **Backend API** : http://localhost:3000/api
-- **WebSocket** : ws://localhost:3000/ws
+- **Frontend** : http://localhost:3000
+- **Backend API** : http://localhost:3001/api
+- **WebSocket** : ws://localhost:3001/ws
 
 ---
 

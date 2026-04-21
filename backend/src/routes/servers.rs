@@ -214,3 +214,112 @@ async fn transfer_ownership(
 
     Ok(Json(response))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::Json;
+    use axum::extract::State;
+    use crate::auth::test_require_auth;
+    use crate::repositories::{MembershipRepository, UserRepository};
+    use crate::test_utils::{delete_server as cleanup_server, delete_user, test_config, try_test_pool};
+
+    #[tokio::test]
+    async fn server_crud_and_transfer_flow() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("srv-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("srv_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let member = UserRepository::create(
+            &pool,
+            &format!("srv-member-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("srv_member_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create member");
+
+        let owner_auth = test_require_auth(owner.id, &owner.email, &owner.username);
+        let member_auth = test_require_auth(member.id, &member.email, &member.username);
+
+        let created = create_server(
+            State(state.clone()),
+            owner_auth.clone(),
+            Json(CreateServerRequest {
+                name: "Test Server".to_string(),
+            }),
+        )
+        .await
+        .expect("create server")
+        .0;
+
+        let server_id = created.id;
+
+        let servers = list_servers(State(state.clone()), owner_auth.clone())
+            .await
+            .expect("list servers");
+        assert!(servers.0.iter().any(|s| s.id == server_id));
+
+        let updated = update_server(
+            State(state.clone()),
+            owner_auth.clone(),
+            Path(server_id),
+            Json(UpdateServerRequest {
+                name: "Updated".to_string(),
+            }),
+        )
+        .await
+        .expect("update server")
+        .0;
+        assert_eq!(updated.name, "Updated");
+
+        MembershipRepository::create(&pool, member.id, server_id, MemberRole::Member)
+            .await
+            .expect("add member");
+
+        let _ = leave_server(
+            State(state.clone()),
+            member_auth.clone(),
+            Path(server_id),
+        )
+        .await
+        .expect("leave server");
+
+        MembershipRepository::create(&pool, member.id, server_id, MemberRole::Member)
+            .await
+            .expect("re-add member");
+
+        let transferred = transfer_ownership(
+            State(state.clone()),
+            owner_auth.clone(),
+            Path(server_id),
+            Json(TransferOwnershipRequest { new_owner_id: member.id }),
+        )
+        .await
+        .expect("transfer ownership")
+        .0;
+        assert_eq!(transferred.owner_id, member.id);
+
+        let _ = delete_server(
+            State(state.clone()),
+            test_require_auth(member.id, &member.email, &member.username),
+            Path(server_id),
+        )
+        .await
+        .expect("delete server");
+
+        cleanup_server(&pool, server_id).await;
+        delete_user(&pool, owner.id).await;
+        delete_user(&pool, member.id).await;
+    }
+}

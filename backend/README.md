@@ -54,7 +54,7 @@ psql -h localhost -U epitalk -d epitalk -f database/migrations/002_seed_data.sql
 
 ### 5. Access Adminer GUI
 
-Open http://localhost:8080 in your browser:
+Open http://localhost:3001 in your browser:
 - **System**: PostgreSQL
 - **Server**: postgres
 - **Username: epitalk
@@ -152,3 +152,19 @@ Indexes (to be created in `feat/db-mongo-indexes/hadrian`):
 - `{ channel_id: 1, created_at: -1 }` (primary)
 - `{ server_id: 1, created_at: -1 }` (optional)
 - `{ author_id: 1, created_at: -1 }` (optional)
+
+## Coverage
+
+You can run coverage with `cargo-llvm-cov` using Make targets:
+
+```bash
+# Full backend coverage summary
+make coverage
+
+# Core backend coverage summary (quality gate > 70%)
+make coverage-core
+```
+
+Notes:
+- Both targets set `EPITALK_SKIP_SLOW_TESTS=1` so long-running flow tests do not block coverage runs.
+- `coverage-core` excludes bootstrap and out-of-scope files used for manual tools or non-core paths.

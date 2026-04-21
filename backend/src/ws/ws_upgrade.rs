@@ -1,5 +1,7 @@
 use axum::{
     extract::{ws::WebSocketUpgrade, Query, State},
+    http::StatusCode,
+    Json,
     response::IntoResponse,
 };
 use serde::Deserialize;
@@ -23,7 +25,16 @@ pub async fn ws_handler(
     // 1. Validate JWT
     let claims = match validate_token(&params.token, &state.config.jwt_secret) {
         Ok(c) => c,
-        Err(_) => return "Unauthorized".into_response(),
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "error": "Unauthorized",
+                    "message": "Invalid or expired WebSocket token"
+                })),
+            )
+                .into_response();
+        },
     };
 
     let user_id = claims.sub;
@@ -36,15 +47,6 @@ pub async fn ws_handler(
     ws.on_upgrade(move |socket| async move {
         let conn_id = Uuid::new_v4();
         let user_id_str = user_id.to_string();
-
-        // Mark user online
-        presence.set_online(&user_id_str);
-
-        // Broadcast UserOnline to all connected clients
-        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
-            user_id: user_id_str.clone(),
-        };
-        hub.broadcast_all(online_event).await;
 
         handle_connection(
             socket,

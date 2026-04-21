@@ -191,3 +191,72 @@ impl UserRepository {
         Ok(user)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{delete_user, try_test_pool};
+
+    #[tokio::test]
+    async fn create_and_find_user_by_email_and_id() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let email = format!("user-{}@example.test", Uuid::new_v4());
+        let username = format!("user_{}", Uuid::new_v4().to_string().replace('-', ""));
+
+        let user = UserRepository::create(&pool, &email, "hash", &username)
+            .await
+            .expect("create user");
+
+        let by_email = UserRepository::find_by_email(&pool, &email)
+            .await
+            .expect("find by email")
+            .expect("user should exist");
+        assert_eq!(by_email.id, user.id);
+
+        let by_id = UserRepository::find_by_id(&pool, user.id)
+            .await
+            .expect("find by id")
+            .expect("user should exist");
+        assert_eq!(by_id.email, email);
+
+        delete_user(&pool, user.id).await;
+    }
+
+    #[tokio::test]
+    async fn update_profile_and_email_conflict() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let email1 = format!("profile-{}@example.test", Uuid::new_v4());
+        let email2 = format!("profile-{}@example.test", Uuid::new_v4());
+        let username1 = format!("profile_{}", Uuid::new_v4().to_string().replace('-', ""));
+        let username2 = format!("profile_{}", Uuid::new_v4().to_string().replace('-', ""));
+
+        let user1 = UserRepository::create(&pool, &email1, "hash", &username1)
+            .await
+            .expect("create user1");
+        let user2 = UserRepository::create(&pool, &email2, "hash", &username2)
+            .await
+            .expect("create user2");
+
+        let updated = UserRepository::update_profile(
+            &pool,
+            user1.id,
+            Some("newname"),
+            Some("bio"),
+            None,
+            Some("#000000"),
+            Some("#111111"),
+            Some(&UserStatus::Idle),
+            Some("dark"),
+        )
+        .await
+        .expect("update profile");
+        assert_eq!(updated.username, "newname");
+        assert_eq!(updated.theme, "dark");
+
+        let conflict = UserRepository::update_email(&pool, user2.id, &email1).await;
+        assert!(matches!(conflict, Err(AppError::Conflict(_))));
+
+        delete_user(&pool, user1.id).await;
+        delete_user(&pool, user2.id).await;
+    }
+}

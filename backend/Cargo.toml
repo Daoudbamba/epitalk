@@ -4,18 +4,20 @@ version = "0.1.0"
 edition = "2021"
 authors = ["James <james@epitech.eu>"]
 description = "EpiTalk Backend - Full REST API for authentication, RBAC, servers, channels, members & invites"
+default-run = "epitalk-backend"
 
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros", "ws", "multipart"] }
 tokio = { version = "1", features = ["full"] }
-tower = "0.4"
+tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 
 # WebSocket
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 tokio-stream = "0.1"
+url = "2"
 
 # Concurrent data structures
 dashmap = "5"

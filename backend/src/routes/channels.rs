@@ -7,12 +7,18 @@
 //! - PATCH  /:channel_id               - Update channel (ADMIN+)
 //! - DELETE /:channel_id               - Delete channel (ADMIN+)
 //! - GET    /:channel_id/messages      - Get message history
+//! - GET    /:channel_id/messages/search?q=... - Search messages in channel
+//! - GET    /:channel_id/messages/pinned - List pinned messages
+//! - PATCH  /:channel_id/messages/:message_id - Edit own message
+//! - POST   /:channel_id/messages/:message_id/pin - Pin message (MOD+)
+//! - DELETE /:channel_id/messages/:message_id/pin - Unpin message (MOD+)
 
 use axum::{
     extract::{Path, Query, State},
     routing::get,
     Json, Router,
 };
+use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -21,6 +27,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{ChannelResponse, CreateChannelRequest, UpdateChannelRequest};
 use crate::repositories::{ChannelRepository, MembershipRepository, UserRepository};
 use crate::state::AppState;
+use crate::ws::protocol::{validate_content, ServerEvent};
 use std::sync::Arc;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -33,6 +40,7 @@ pub fn router() -> Router<Arc<AppState>> {
                 .delete(delete_channel),
         )
         .route("/:channel_id/messages", get(get_messages))
+            .route("/:channel_id/messages/search", get(search_messages))
 }
 
 /// Path parameters for nested routes
@@ -45,6 +53,13 @@ pub struct ServerPath {
 pub struct ChannelPath {
     pub server_id: Uuid,
     pub channel_id: Uuid,
+}
+
+#[derive(serde::Deserialize)]
+pub struct MessagePath {
+    pub server_id: Uuid,
+    pub channel_id: Uuid,
+    pub message_id: String,
 }
 
 /// List all channels in a server
@@ -206,11 +221,37 @@ pub struct MessagesQuery {
     pub per_page: u64,
 }
 
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+    #[serde(default = "default_page")]
+    pub page: u64,
+    #[serde(default = "default_per_page")]
+    pub per_page: u64,
+}
+
 fn default_page() -> u64 {
     1
 }
 fn default_per_page() -> u64 {
     50
+}
+
+const MAX_SEARCH_QUERY_LEN: usize = 200;
+
+fn normalize_search_query(input: &str) -> AppResult<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::BadRequest(
+            "Search query must not be empty".to_string(),
+        ));
+    }
+    if trimmed.len() > MAX_SEARCH_QUERY_LEN {
+        return Err(AppError::BadRequest(
+            "Search query is too long".to_string(),
+        ));
+    }
+    Ok(trimmed.to_string())
 }
 
 #[derive(Serialize)]
@@ -222,6 +263,11 @@ pub struct MessageResponse {
     pub username: String,
     pub content: String,
     pub created_at: String,
+}
+
+#[derive(Deserialize)]
+pub struct EditMessageRequest {
+    pub content: String,
 }
 
 /// Get message history for a channel
@@ -298,4 +344,171 @@ async fn get_messages(
     };
 
     Ok(Json(responses))
+}
+
+/// Search messages in a channel (simple content search)
+async fn search_messages(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Path(params): Path<ChannelPath>,
+    Query(query): Query<SearchQuery>,
+) -> AppResult<Json<Vec<MessageResponse>>> {
+    let user_id = auth.user_id;
+
+    let normalized_query = normalize_search_query(&query.q)?;
+
+    // Check membership
+    if !MembershipRepository::is_member(&state.db, user_id, params.server_id).await? {
+        return Err(AppError::Forbidden(
+            "Not a member of this server".to_string(),
+        ));
+    }
+
+    // Verify channel belongs to server
+    let channel = ChannelRepository::find_by_id(&state.db, params.channel_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Channel not found".to_string()))?;
+
+    if channel.server_id != params.server_id {
+        return Err(AppError::NotFound(
+            "Channel not found in this server".to_string(),
+        ));
+    }
+
+    // Use message service to search
+    let messages = state
+        .message_service
+        .search_messages(&params.channel_id.to_string(), &normalized_query, query.page, query.per_page)
+        .await
+        .map_err(|_| {
+            tracing::error!(channel_id = %params.channel_id, "Failed to search messages");
+            AppError::Internal("Failed to search messages".to_string())
+        })?;
+
+    let responses: Vec<MessageResponse> = {
+        let mut result = Vec::new();
+        for m in messages {
+            let username = if let Ok(uuid) = uuid::Uuid::parse_str(&m.author_id) {
+                UserRepository::find_by_id(&state.db, uuid)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|u| u.username)
+                    .unwrap_or_else(|| m.author_id.chars().take(8).collect())
+            } else {
+                m.author_id.chars().take(8).collect()
+            };
+            result.push(MessageResponse {
+                id: m
+                    .id
+                    .map(|oid: mongodb::bson::oid::ObjectId| oid.to_hex())
+                    .unwrap_or_default(),
+                server_id: params.server_id.to_string(),
+                channel_id: m.channel_id,
+                author_id: m.author_id,
+                username,
+                content: m.content,
+                created_at: m.created_at,
+            });
+        }
+        result
+    };
+
+    Ok(Json(responses))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+    use crate::auth::test_require_auth;
+    use crate::models::ChannelKind;
+    use crate::repositories::{ServerRepository, UserRepository};
+    use crate::test_utils::{delete_server, delete_user, test_config, try_test_pool};
+
+    #[test]
+    fn normalize_search_query_rejects_empty_or_too_long() {
+        assert!(normalize_search_query("").is_err());
+        assert!(normalize_search_query("   ").is_err());
+
+        let too_long = "a".repeat(MAX_SEARCH_QUERY_LEN + 1);
+        assert!(normalize_search_query(&too_long).is_err());
+    }
+
+    #[test]
+    fn normalize_search_query_trims_whitespace() {
+        let q = normalize_search_query("  hello world  ").unwrap();
+        assert_eq!(q, "hello world");
+    }
+
+    #[tokio::test]
+    async fn channel_list_create_update_delete_flow() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("chan-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("chan_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let auth = test_require_auth(owner.id, &owner.email, &owner.username);
+        let server = ServerRepository::create(&pool, "Channels", owner.id)
+            .await
+            .expect("create server");
+
+        let listed = list_channels(State(state.clone()), auth.clone(), Path(ServerPath { server_id: server.id }))
+            .await
+            .expect("list channels")
+            .0;
+        assert!(!listed.is_empty());
+
+        let created = create_channel(
+            State(state.clone()),
+            auth.clone(),
+            Path(ServerPath { server_id: server.id }),
+            Json(CreateChannelRequest { name: "alpha".to_string(), kind: ChannelKind::Text }),
+        )
+        .await
+        .expect("create channel")
+        .0;
+
+        let updated = update_channel(
+            State(state.clone()),
+            auth.clone(),
+            Path(ChannelPath { server_id: server.id, channel_id: created.id }),
+            Json(UpdateChannelRequest { name: "beta".to_string() }),
+        )
+        .await
+        .expect("update channel")
+        .0;
+        assert_eq!(updated.name, "beta");
+
+        let messages = get_messages(
+            State(state.clone()),
+            auth.clone(),
+            Path(ChannelPath { server_id: server.id, channel_id: created.id }),
+            Query(MessagesQuery { page: 1, per_page: 50 }),
+        )
+        .await
+        .expect("get messages")
+        .0;
+        assert!(messages.is_empty());
+
+        let _ = delete_channel(
+            State(state.clone()),
+            auth.clone(),
+            Path(ChannelPath { server_id: server.id, channel_id: created.id }),
+        )
+        .await
+        .expect("delete channel");
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+    }
 }

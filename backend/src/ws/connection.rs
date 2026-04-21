@@ -6,14 +6,17 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use crate::repositories::{ChannelRepository, MembershipRepository, UserRepository};
+use crate::repositories::ChannelRepository;
+use crate::repositories::MembershipRepository;
+use crate::repositories::UserRepository;
 use crate::services::message_service::MessageService;
 use crate::services::presence_service::PresenceService;
+use crate::services::scheduled_message_service::next_weekly_occurrence;
 use crate::services::typing_service::TypingService;
 use crate::ws::hub::{ConnId, Hub};
 use mongodb::bson::oid::ObjectId;
 use crate::ws::protocol::{
-    validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_FRAME_BYTES,
+    validate_channel_id, validate_content, validate_schedule, ClientEvent, ServerEvent, MAX_FRAME_BYTES,
     TYPING_THROTTLE_MS,
 };
 use sqlx::PgPool;
@@ -127,7 +130,51 @@ pub async fn handle_connection(
 ) {
     // Canal interne pour envoyer des messages au client
     let (tx, rx) = mpsc::unbounded_channel();
+    // Register connection in hub so broadcast messages reach this socket
     hub.register_connection(&user_id, conn_id, tx);
+
+    // Register connection in presence service (stores conn id + last activity)
+    // and broadcast presence so other connected clients become aware.
+    // We do this here (after registering the connection) to avoid a race where
+    // broadcasts happen before the new socket is registered and thus the
+    // event is not received by clients already connected.
+    let conn_id_str = conn_id.to_string();
+    let changed = presence.add_connection(&user_id, &conn_id_str);
+    if changed {
+        // Broadcast both legacy UserOnline and structured PresenceUpdated
+        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
+            user_id: user_id.clone(),
+        };
+        hub.broadcast_all(online_event).await;
+
+        let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+            user_id: user_id.clone(),
+            status: "online".to_string(),
+            last_activity: chrono::Utc::now().to_rfc3339(),
+        };
+        hub.broadcast_all(presence_event).await;
+    }
+
+    // Send a presence snapshot to the newly connected client so existing users
+    // appear online immediately without waiting for new events.
+    if let Some(tx) = hub.sockets.get(&conn_id) {
+        for (uid, status, last_activity) in presence.snapshot() {
+            let status_str = match status {
+                crate::services::presence_service::PresenceStatus::Online => "online",
+                crate::services::presence_service::PresenceStatus::Idle => "idle",
+                crate::services::presence_service::PresenceStatus::Dnd => "dnd",
+                crate::services::presence_service::PresenceStatus::Offline => "offline",
+            };
+            let event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                user_id: uid,
+                status: status_str.to_string(),
+                last_activity: last_activity.to_rfc3339(),
+            };
+            if let Ok(json) = serde_json::to_string(&event) {
+                let _ = tx.send(Message::Text(json));
+            }
+        }
+    }
 
     let mut rx = UnboundedReceiverStream::new(rx);
     let (mut sender, mut receiver) = socket.split();
@@ -168,6 +215,17 @@ pub async fn handle_connection(
 
         // Cache: user_id (string) → username to avoid repeated PG lookups
         let mut username_cache: HashMap<String, String> = HashMap::new();
+
+        let current_user_uuid = match Uuid::parse_str(&user_id_recv) {
+            Ok(uid) => uid,
+            Err(_) => {
+                send_error(&hub_recv, &conn_id, "INVALID_USER_ID", "invalid user identifier");
+                if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                    let _ = tx.send(Message::Close(None));
+                }
+                return;
+            }
+        };
 
         while let Some(Ok(msg)) = receiver.next().await {
             let text = match msg {
@@ -236,7 +294,143 @@ pub async fn handle_connection(
                         None => continue,
                     };
 
-                    let reply_to_oid = if let Some(reply_id) = &reply_to {
+                    let server_uuid = match Uuid::parse_str(&server_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "invalid server mapping");
+                            continue;
+                        }
+                    };
+
+                    if MembershipRepository::is_banned(&pg_pool_recv, server_uuid, current_user_uuid)
+                        .await
+                        .unwrap_or(true)
+                    {
+                        send_error(&hub_recv, &conn_id, "BANNED", "You are banned from this server");
+                        if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                            let _ = tx.send(Message::Close(None));
+                        }
+                        break;
+                    }
+
+                    if !MembershipRepository::is_member(&pg_pool_recv, current_user_uuid, server_uuid)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        send_error(&hub_recv, &conn_id, "NOT_MEMBER", "You are not a member of this server");
+                        continue;
+                    }
+
+                    tracing::info!(
+                        "📩 MessageSend: server={}, channel={}, len={}",
+                        server_id,
+                        channel_id,
+                        content.len()
+                    );
+                    let reply_to_oid = if let Some(ref reply_id) = reply_to {
+                        match ObjectId::parse_str(reply_id) {
+                            Ok(oid) => Some(oid),
+                            Err(_) => {
+                                send_error(&hub_recv, &conn_id, "INVALID_REPLY_TO", "reply_to must be a valid message id");
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    let created_at = chrono::Utc::now().to_rfc3339();
+
+                    let id = match message_service_recv
+                        .create_message(
+                            channel_id.clone(),
+                            user_id_recv.clone(),
+                            content.clone(),
+                            created_at.clone(),
+                            reply_to_oid,
+                        )
+                        .await
+                    {
+                        Ok(id) => id,
+                        Err(e) => {
+                            tracing::error!(
+                                channel = %channel_id,
+                                user = %user_id_recv,
+                                "Failed to persist message in MongoDB: {e}"
+                            );
+                            send_error(
+                                &hub_recv,
+                                &conn_id,
+                                "MESSAGE_PERSIST_FAILED",
+                                "failed to persist message",
+                            );
+                            continue;
+                        },
+                    };
+
+                    tracing::info!("💾 Message saved to MongoDB with id={}", id.to_hex());
+
+                    let username = resolve_username(
+                        &user_id_recv,
+                        &pg_pool_recv,
+                        &mut username_cache,
+                    )
+                    .await;
+
+                    let event = ServerEvent::MessageNew {
+                        id: id.to_hex(),
+                        channel_id: channel_id.clone(),
+                        author_id: user_id_recv.clone(),
+                        username: username.clone(),
+                        content: content.clone(),
+                        created_at: created_at.clone(),
+                        reply_to: reply_to.clone(),
+                    };
+
+                    hub_recv.broadcast_room(&channel_id, event).await;
+                    // If sender is not in the room, send directly so UI updates.
+                    let in_room = hub_recv
+                        .rooms
+                        .get(&channel_id)
+                        .map(|r| r.contains(&conn_id))
+                        .unwrap_or(false);
+                    if !in_room {
+                        if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                            if let Ok(json) = serde_json::to_string(&ServerEvent::MessageNew {
+                                id: id.to_hex(),
+                                channel_id: channel_id.clone(),
+                                author_id: user_id_recv.clone(),
+                                username: username.clone(),
+                                content: content.clone(),
+                                created_at: created_at.clone(),
+                                reply_to: reply_to.clone(),
+                            }) {
+                                let _ = tx.send(Message::Text(json));
+                            }
+                        }
+                    }
+                },
+                ClientEvent::MessageSchedule {
+                    channel_id,
+                    content,
+                    day_of_week,
+                    hour,
+                    minute,
+                    reply_to,
+                } => {
+                    if let Err(reason) = validate_channel_id(&channel_id) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
+                        continue;
+                    }
+                    if let Err(reason) = validate_content(&content) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                        continue;
+                    }
+                    if let Err(reason) = validate_schedule(day_of_week, hour, minute) {
+                        send_error(&hub_recv, &conn_id, "INVALID_SCHEDULE", reason);
+                        continue;
+                    }
+
+                    let reply_to_oid = if let Some(ref reply_id) = reply_to {
                         match ObjectId::parse_str(reply_id) {
                             Ok(oid) => Some(oid),
                             Err(_) => {
@@ -253,44 +447,125 @@ pub async fn handle_connection(
                         None
                     };
 
-                    tracing::info!(
-                        "📩 MessageSend: server={}, channel={}, len={}",
-                        server_id,
-                        channel_id,
-                        content.len()
-                    );
-                    let created_at = chrono::Utc::now().to_rfc3339();
-
-                    let id = message_service_recv
-                        .create_message(
-                            channel_id.clone(),
-                            user_id_recv.clone(),
-                            content.clone(),
-                            created_at.clone(),
-                            reply_to_oid,
-                        )
-                        .await;
-
-                    tracing::info!("💾 Message saved to MongoDB with id={}", id.to_hex());
-
-                    let username = resolve_username(
-                        &user_id_recv,
+                    let server_id = match resolve_server_id(
+                        &channel_id,
                         &pg_pool_recv,
-                        &mut username_cache,
+                        &mut channel_server_cache,
+                        &hub_recv,
+                        &conn_id,
                     )
-                    .await;
-
-                    let event = ServerEvent::MessageNew {
-                        id: id.to_hex(),
-                        channel_id: channel_id.clone(),
-                        author_id: user_id_recv.clone(),
-                        username,
-                        content,
-                        created_at,
-                        reply_to,
+                    .await
+                    {
+                        Some(sid) => sid,
+                        None => continue,
                     };
 
-                    hub_recv.broadcast_room(&channel_id, event).await;
+                    let server_uuid = match Uuid::parse_str(&server_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "invalid server mapping");
+                            continue;
+                        }
+                    };
+
+                    if MembershipRepository::is_banned(&pg_pool_recv, server_uuid, current_user_uuid)
+                        .await
+                        .unwrap_or(true)
+                    {
+                        send_error(&hub_recv, &conn_id, "BANNED", "You are banned from this server");
+                        continue;
+                    }
+
+                    if !MembershipRepository::is_member(&pg_pool_recv, current_user_uuid, server_uuid)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        send_error(&hub_recv, &conn_id, "NOT_MEMBER", "You are not a member of this server");
+                        continue;
+                    }
+
+                    let now = chrono::Utc::now();
+                    let scheduled_for = match next_weekly_occurrence(now, day_of_week, hour, minute) {
+                        Some(at) => at,
+                        None => {
+                            send_error(&hub_recv, &conn_id, "INVALID_SCHEDULE", "invalid schedule values");
+                            continue;
+                        }
+                    };
+
+                    let ack = ServerEvent::MessageScheduled {
+                        channel_id: channel_id.clone(),
+                        day_of_week,
+                        hour,
+                        minute,
+                        scheduled_for: scheduled_for.to_rfc3339(),
+                    };
+                    if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                        if let Ok(json) = serde_json::to_string(&ack) {
+                            let _ = tx.send(Message::Text(json));
+                        }
+                    }
+
+                    let hub_scheduled = hub_recv.clone();
+                    let message_service_scheduled = message_service_recv.clone();
+                    let pg_pool_scheduled = pg_pool_recv.clone();
+                    let channel_id_scheduled = channel_id.clone();
+                    let user_id_scheduled = user_id_recv.clone();
+                    let content_scheduled = content.clone();
+                    let reply_to_hex = reply_to.clone();
+                    let reply_to_oid_scheduled = reply_to_oid;
+
+                    tokio::spawn(async move {
+                        let wait = scheduled_for
+                            .signed_duration_since(chrono::Utc::now())
+                            .to_std()
+                            .unwrap_or_else(|_| std::time::Duration::from_secs(0));
+                        tokio::time::sleep(wait).await;
+
+                        let created_at = chrono::Utc::now().to_rfc3339();
+                        let id = match message_service_scheduled
+                            .create_message(
+                                channel_id_scheduled.clone(),
+                                user_id_scheduled.clone(),
+                                content_scheduled.clone(),
+                                created_at.clone(),
+                                reply_to_oid_scheduled,
+                            )
+                            .await
+                        {
+                            Ok(id) => id,
+                            Err(e) => {
+                                tracing::error!(
+                                    channel = %channel_id_scheduled,
+                                    user = %user_id_scheduled,
+                                    "Failed to persist scheduled message in MongoDB: {e}"
+                                );
+                                return;
+                            }
+                        };
+
+                        let username = match Uuid::parse_str(&user_id_scheduled) {
+                            Ok(uid) => UserRepository::find_by_id(&pg_pool_scheduled, uid)
+                                .await
+                                .ok()
+                                .flatten()
+                                .map(|u| u.username)
+                                .unwrap_or_else(|| user_id_scheduled.chars().take(8).collect()),
+                            Err(_) => user_id_scheduled.chars().take(8).collect(),
+                        };
+
+                        let event = ServerEvent::MessageNew {
+                            id: id.to_hex(),
+                            channel_id: channel_id_scheduled.clone(),
+                            author_id: user_id_scheduled.clone(),
+                            username,
+                            content: content_scheduled.clone(),
+                            created_at,
+                            reply_to: reply_to_hex,
+                        };
+
+                        hub_scheduled.broadcast_room(&channel_id_scheduled, event).await;
+                    });
                 },
                 ClientEvent::MessageEdit {
                     channel_id,
@@ -346,7 +621,7 @@ pub async fn handle_connection(
 
                     let edited_at = chrono::Utc::now().to_rfc3339();
                     if let Err(e) = message_service_recv
-                        .edit_message(&msg_oid, &content, &edited_at)
+                        .edit_message(msg_oid, &channel_id, &user_id_recv, &content)
                         .await
                     {
                         tracing::error!("failed to edit message: {e}");
@@ -468,6 +743,33 @@ pub async fn handle_connection(
                         None => continue,
                     };
 
+                    let server_uuid = match Uuid::parse_str(&server_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "invalid server mapping");
+                            continue;
+                        }
+                    };
+
+                    if MembershipRepository::is_banned(&pg_pool_recv, server_uuid, current_user_uuid)
+                        .await
+                        .unwrap_or(true)
+                    {
+                        send_error(&hub_recv, &conn_id, "BANNED", "You are banned from this server");
+                        if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                            let _ = tx.send(Message::Close(None));
+                        }
+                        break;
+                    }
+
+                    if !MembershipRepository::is_member(&pg_pool_recv, current_user_uuid, server_uuid)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        send_error(&hub_recv, &conn_id, "NOT_MEMBER", "You are not a member of this server");
+                        continue;
+                    }
+
                     tracing::info!(
                         "🚪 JoinChannel: server={}, channel={}",
                         server_id,
@@ -588,6 +890,14 @@ pub async fn handle_connection(
                     hub_recv.broadcast_room(&channel_id, event).await;
                 },
                 ClientEvent::ReactionAdd { message_id, emoji } => {
+                    let message_oid = match ObjectId::parse_str(&message_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "message_id must be a valid ObjectId");
+                            continue;
+                        }
+                    };
+
                     // Resolve username for the reacting user
                     let username = resolve_username(
                         &user_id_recv,
@@ -597,7 +907,7 @@ pub async fn handle_connection(
                     .await;
 
                     match message_service_recv
-                        .add_reaction(&message_id, &emoji, &user_id_recv, Some(&username))
+                        .add_reaction(&message_oid, &emoji, &user_id_recv, Some(&username))
                         .await
                     {
                         Ok((Some(channel_id), was_added)) => {
@@ -627,8 +937,16 @@ pub async fn handle_connection(
                     }
                 },
                 ClientEvent::ReactionRemove { message_id, emoji } => {
+                    let message_oid = match ObjectId::parse_str(&message_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INVALID_MESSAGE_ID", "message_id must be a valid ObjectId");
+                            continue;
+                        }
+                    };
+
                     match message_service_recv
-                        .remove_reaction(&message_id, &emoji, &user_id_recv)
+                        .remove_reaction(&message_oid, &emoji, &user_id_recv)
                         .await
                     {
                         Ok(Some(channel_id)) => {
@@ -649,13 +967,44 @@ pub async fn handle_connection(
                 },
                 ClientEvent::Ping => {
                     hub_recv.heartbeat(&conn_id);
-                    // Refresh presence timestamp
-                    presence_recv.set_online(&user_id_recv);
+                    // Refresh presence timestamp; if status changed (idle -> online) broadcast update
+                    let changed = presence_recv.refresh_activity(&user_id_recv);
+                    if changed {
+                        let event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                            user_id: user_id_recv.clone(),
+                            status: "online".to_string(),
+                            last_activity: chrono::Utc::now().to_rfc3339(),
+                        };
+                        hub_recv.broadcast_all(event).await;
+                    }
                     if let Some(tx) = hub_recv.sockets.get(&conn_id) {
                         let event = ServerEvent::Pong;
                         if let Ok(json) = serde_json::to_string(&event) {
                             let _ = tx.send(Message::Text(json));
                         }
+                    }
+                },
+                ClientEvent::PresenceSet { status } => {
+                    // Map string -> PresenceStatus
+                    let st = match status.as_str() {
+                        "online" => crate::services::presence_service::PresenceStatus::Online,
+                        "idle" => crate::services::presence_service::PresenceStatus::Idle,
+                        "dnd" => crate::services::presence_service::PresenceStatus::Dnd,
+                        "offline" => crate::services::presence_service::PresenceStatus::Offline,
+                        other => {
+                            send_error(&hub_recv, &conn_id, "INVALID_PRESENCE", &format!("unknown status: {}", other));
+                            continue;
+                        }
+                    };
+
+                    let changed = presence_recv.set_status(&user_id_recv, st);
+                    if changed {
+                        let event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                            user_id: user_id_recv.clone(),
+                            status: status.clone(),
+                            last_activity: chrono::Utc::now().to_rfc3339(),
+                        };
+                        hub_recv.broadcast_all(event).await;
                     }
                 },
                 ClientEvent::MessageSendGif { channel_id, gif, caption } => {
@@ -697,7 +1046,7 @@ pub async fn handle_connection(
 
                     let created_at = chrono::Utc::now().to_rfc3339();
 
-                    let id = message_service_recv
+                    let id = match message_service_recv
                         .create_message(
                             channel_id.clone(),
                             user_id_recv.clone(),
@@ -705,7 +1054,24 @@ pub async fn handle_connection(
                             created_at.clone(),
                             None,
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(id) => id,
+                        Err(e) => {
+                            tracing::error!(
+                                channel = %channel_id,
+                                user = %user_id_recv,
+                                "Failed to persist GIF message in MongoDB: {e}"
+                            );
+                            send_error(
+                                &hub_recv,
+                                &conn_id,
+                                "MESSAGE_PERSIST_FAILED",
+                                "failed to persist message",
+                            );
+                            continue;
+                        }
+                    };
 
                     tracing::info!("💾 GIF message saved to MongoDB with id={}", id.to_hex());
 
@@ -720,12 +1086,32 @@ pub async fn handle_connection(
                         id: id.to_hex(),
                         channel_id: channel_id.clone(),
                         author_id: user_id_recv.clone(),
-                        username,
-                        content,
-                        created_at,
+                        username: username.clone(),
+                        content: content.clone(),
+                        created_at: created_at.clone(),
                         reply_to: None,
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
+                    let in_room = hub_recv
+                        .rooms
+                        .get(&channel_id)
+                        .map(|r| r.contains(&conn_id))
+                        .unwrap_or(false);
+                    if !in_room {
+                        if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                            if let Ok(json) = serde_json::to_string(&ServerEvent::MessageNew {
+                                id: id.to_hex(),
+                                channel_id: channel_id.clone(),
+                                author_id: user_id_recv.clone(),
+                                username: username.clone(),
+                                content: content.clone(),
+                                created_at: created_at.clone(),
+                                reply_to: None,
+                            }) {
+                                let _ = tx.send(Message::Text(json));
+                            }
+                        }
+                    }
                 },
                 // ─────────────────────────────────────────────
                 // DIRECT MESSAGES
@@ -769,7 +1155,7 @@ pub async fn handle_connection(
                     };
 
                     let created_at = chrono::Utc::now().to_rfc3339();
-                    let id = message_service_recv
+                    let id = match message_service_recv
                         .create_message(
                             conversation_id.clone(),
                             user_id_recv.clone(),
@@ -777,7 +1163,25 @@ pub async fn handle_connection(
                             created_at.clone(),
                             reply_to_oid,
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(id) => id,
+                        Err(e) => {
+                            tracing::error!(
+                                conversation = %conversation_id,
+                                user = %user_id_recv,
+                                recipient = %recipient_id,
+                                "Failed to persist DM in MongoDB: {e}"
+                            );
+                            send_error(
+                                &hub_recv,
+                                &conn_id,
+                                "MESSAGE_PERSIST_FAILED",
+                                "failed to persist message",
+                            );
+                            continue;
+                        }
+                    };
 
                     tracing::info!("💬 DM saved: id={}, conv={}", id.to_hex(), conversation_id);
 
@@ -889,7 +1293,10 @@ pub async fn handle_connection(
                         continue;
                     }
                     let edited_at = chrono::Utc::now().to_rfc3339();
-                    if let Err(e) = message_service_recv.edit_message(&msg_oid, &content, &edited_at).await {
+                    if let Err(e) = message_service_recv
+                        .edit_message(msg_oid, &conversation_id, &user_id_recv, &content)
+                        .await
+                    {
                         tracing::error!("failed to edit DM: {e}");
                         send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "failed to edit DM");
                         continue;
@@ -973,7 +1380,7 @@ pub async fn handle_connection(
                     })
                     .to_string();
                     let created_at = chrono::Utc::now().to_rfc3339();
-                    let id = message_service_recv
+                    let id = match message_service_recv
                         .create_message(
                             conversation_id.clone(),
                             user_id_recv.clone(),
@@ -981,7 +1388,25 @@ pub async fn handle_connection(
                             created_at.clone(),
                             None,
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(id) => id,
+                        Err(e) => {
+                            tracing::error!(
+                                conversation = %conversation_id,
+                                user = %user_id_recv,
+                                recipient = %recipient_id,
+                                "Failed to persist DM GIF in MongoDB: {e}"
+                            );
+                            send_error(
+                                &hub_recv,
+                                &conn_id,
+                                "MESSAGE_PERSIST_FAILED",
+                                "failed to persist message",
+                            );
+                            continue;
+                        }
+                    };
                     tracing::info!("💾 DM GIF saved: id={}, conv={}", id.to_hex(), conversation_id);
                     let username = resolve_username(&user_id_recv, &pg_pool_recv, &mut username_cache).await;
                     let event = ServerEvent::DmNew {
@@ -1018,18 +1443,47 @@ pub async fn handle_connection(
     let _ = recv_task.await;
 
     // Nettoyage connexion
+    // Log connection cleanup for debugging resets and presence transitions
+    let conn_count_before = hub
+        .connections
+        .get(&user_id)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    tracing::info!(user = %user_id, conn = %conn_id, before = conn_count_before, "Cleaning up connection");
+
     hub.unregister_connection(&user_id, &conn_id);
+
+    let conn_count_after = hub
+        .connections
+        .get(&user_id)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    tracing::info!(user = %user_id, conn = %conn_id, after = conn_count_after, "Connection unregistered");
 
     // Clean up typing state for this user
     typing_service.cleanup();
 
-    // Si plus aucune connexion pour ce user → offline
-    if !hub.connections.contains_key(&user_id) {
-        presence.set_offline(&user_id);
-        let event = ServerEvent::UserOffline {
-            user_id: user_id.clone(),
-        };
-        hub.broadcast_all(event).await;
+    // Retirer la connexion de la présence. Si plus aucune connexion => offline.
+    if let Some(new_status) = presence.remove_connection(&user_id, &conn_id.to_string()) {
+        tracing::info!(user = %user_id, new_status = ?new_status, "Presence changed after removing connection");
+        match new_status {
+            crate::services::presence_service::PresenceStatus::Offline => {
+                let offline_event = ServerEvent::UserOffline { user_id: user_id.clone() };
+                hub.broadcast_all(offline_event).await;
+
+                let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                    user_id: user_id.clone(),
+                    status: "offline".to_string(),
+                    last_activity: chrono::Utc::now().to_rfc3339(),
+                };
+                hub.broadcast_all(presence_event).await;
+            }
+            _ => {
+                // other statuses not expected here
+            }
+        }
+    } else {
+        tracing::info!(user = %user_id, "Connection removed but user still has other connections");
     }
 }
 

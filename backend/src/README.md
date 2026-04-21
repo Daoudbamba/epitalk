@@ -135,7 +135,7 @@ Variables d'environnement (`.env`):
 
 ```bash
 DATABASE_URL=postgres://epitalk:Epitalk94!@localhost:5432/epitalk
-PORT=3000
+PORT=3001
 RUST_LOG=epitalk_backend=debug,tower_http=debug
 ```
 
@@ -150,7 +150,7 @@ docker compose up -d
 # Lancer le backend
 cargo run
 
-# Le serveur écoute sur http://localhost:3000
+# Le serveur écoute sur http://localhost:3001
 ```
 
 ## 📝 Request/Response Examples

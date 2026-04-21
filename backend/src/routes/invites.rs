@@ -181,6 +181,13 @@ async fn join_server(
         return Err(AppError::Conflict("Already a member of this server".to_string()));
     }
 
+    // Check if user is currently banned from this server
+    if MembershipRepository::is_banned(&state.db, invite.server_id, user_id).await? {
+        return Err(AppError::Forbidden(
+            "You are banned from this server".to_string(),
+        ));
+    }
+
     // Add user as MEMBER
     MembershipRepository::create(&state.db, user_id, invite.server_id, MemberRole::Member).await?;
 
@@ -197,4 +204,93 @@ async fn join_server(
     response.member_count = Some(member_count);
 
     Ok(Json(response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+    use crate::auth::test_require_auth;
+    use crate::repositories::{MembershipRepository, ServerRepository, UserRepository};
+    use crate::test_utils::{delete_server, delete_user, test_config, try_test_pool};
+
+    #[tokio::test]
+    async fn invite_create_list_join_delete_flow() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("inv-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("inv_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let member = UserRepository::create(
+            &pool,
+            &format!("inv-member-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("inv_member_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create member");
+
+        let server = ServerRepository::create(&pool, "Invites", owner.id)
+            .await
+            .expect("create server");
+
+        let auth = test_require_auth(owner.id, &owner.email, &owner.username);
+        let invite = create_invite(
+            State(state.clone()),
+            auth.clone(),
+            Path(ServerPath { server_id: server.id }),
+            Json(CreateInviteRequest { expires_in_hours: Some(24), max_uses: Some(2) }),
+        )
+        .await
+        .expect("create invite")
+        .0;
+
+        let listed = list_invites(
+            State(state.clone()),
+            auth.clone(),
+            Path(ServerPath { server_id: server.id }),
+        )
+        .await
+        .expect("list invites")
+        .0;
+        assert!(listed.iter().any(|i| i.code == invite.code));
+
+        let join_auth = test_require_auth(member.id, &member.email, &member.username);
+        let joined = join_server(
+            State(state.clone()),
+            join_auth.clone(),
+            Json(JoinServerRequest { code: invite.code.clone() }),
+        )
+        .await
+        .expect("join server")
+        .0;
+        assert_eq!(joined.id, server.id);
+
+        let member_role = MembershipRepository::get_role(&pool, member.id, server.id)
+            .await
+            .expect("role")
+            .expect("member role");
+        assert_eq!(member_role, MemberRole::Member);
+
+        let _ = delete_invite(
+            State(state.clone()),
+            auth.clone(),
+            Path(InvitePath { server_id: server.id, invite_id: invite.code.clone() }),
+        )
+        .await
+        .expect("delete invite");
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+        delete_user(&pool, member.id).await;
+    }
 }

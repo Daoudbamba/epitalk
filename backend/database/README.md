@@ -58,7 +58,7 @@ psql -h localhost -U EpiTalk -d EpiTalk
 # Password: EpiTalk_password
 
 # Ou via Adminer
-open http://localhost:8080
+open http://localhost:3001
 ```
 
 ## 📊 Schéma de Base de Données
