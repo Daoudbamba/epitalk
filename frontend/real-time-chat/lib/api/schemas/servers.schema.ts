@@ -31,6 +31,7 @@ export const MemberSchema = z.object({
   username: z.string(),
   role: z.enum(["Owner", "Admin", "Moderator", "Member"]),
   joined_at: z.string(),
+  avatar_url: z.string().nullable().optional(),
 });
 
 // Alias for convenience

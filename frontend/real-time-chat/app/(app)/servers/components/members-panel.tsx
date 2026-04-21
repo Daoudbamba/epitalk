@@ -311,8 +311,17 @@ export function MembersPanel({
                 <div className="flex items-center gap-2">
                   {/* Avatar with online indicator */}
                   <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-[var(--muted)] flex items-center justify-center text-xs font-semibold text-[var(--foreground)]">
-                      {(m.username || "U").slice(0, 2).toUpperCase()}
+                    <div className="w-8 h-8 rounded-full bg-[var(--muted)] flex items-center justify-center text-xs font-semibold text-[var(--foreground)] overflow-hidden">
+                      {m.avatar_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}${m.avatar_url}`}
+                          alt={m.username}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        (m.username || "U").slice(0, 2).toUpperCase()
+                      )}
                     </div>
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${

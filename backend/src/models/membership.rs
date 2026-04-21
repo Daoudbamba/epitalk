@@ -111,6 +111,7 @@ pub struct MemberResponse {
     pub username: String,
     pub role: MemberRole,
     pub joined_at: DateTime<Utc>,
+    pub avatar_url: Option<String>,
 }
 
 /// Update member role request

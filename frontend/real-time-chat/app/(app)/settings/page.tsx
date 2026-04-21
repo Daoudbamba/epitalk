@@ -81,6 +81,8 @@ export default function SettingsPage() {
   const logout = useAuthStore((s) => s.logout);
   const setUser = useAuthStore((s) => s.setUser);
   const disconnect = useWebSocketStore((s) => s.disconnect);
+  const presence = useWebSocketStore((s) => s.presence);
+  const setPresence = useWebSocketStore((s) => s.setPresence);
 
   const theme = (user?.theme as Theme) || "light";
   const fontSize = useAppearanceStore((s) => s.fontSize);
@@ -103,7 +105,6 @@ export default function SettingsPage() {
   const [editBio, setEditBio] = useState("");
   const [editColor1, setEditColor1] = useState("#023BFC");
   const [editColor2, setEditColor2] = useState("#3D6AFF");
-  const [editStatus, setEditStatus] = useState<"ONLINE" | "IDLE" | "DND" | "OFFLINE">("ONLINE");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +142,6 @@ export default function SettingsPage() {
     setEditBio(user.bio || "");
     setEditColor1(user.banner_color_1 || "#023BFC");
     setEditColor2(user.banner_color_2 || "#3D6AFF");
-    setEditStatus(user.status || "ONLINE");
     setError(null);
   }, [user]);
 
@@ -274,7 +274,6 @@ export default function SettingsPage() {
       if (editBio !== (user.bio || "")) payload.bio = editBio;
       if (editColor1 !== (user.banner_color_1 || "#023BFC")) payload.banner_color_1 = editColor1;
       if (editColor2 !== (user.banner_color_2 || "#3D6AFF")) payload.banner_color_2 = editColor2;
-      if (editStatus !== (user.status || "ONLINE")) payload.status = editStatus;
 
       if (Object.keys(payload).length === 0) return;
 
@@ -887,20 +886,29 @@ export default function SettingsPage() {
                   {isEnglish ? "Status" : "Statut"}
                 </label>
                 <div className="mt-1.5 grid grid-cols-2 gap-2">
-                  {STATUS_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setEditStatus(opt.value)}
-                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                        editStatus === opt.value
-                          ? "border-[#023BFC] bg-[#023BFC]/5 text-[#023BFC]"
-                          : "border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:border-[#023BFC]/30"
-                      }`}
-                    >
-                      <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />
-                      {statusLabelByValue[opt.value]}
-                    </button>
-                  ))}
+                  {(["online", "idle", "dnd"] as const).map((s) => {
+                    const dot = s === "online" ? "bg-green-500" : s === "idle" ? "bg-amber-400" : "bg-red-500";
+                    const label = s === "online"
+                      ? (isEnglish ? "Online" : "En ligne")
+                      : s === "idle"
+                        ? (isEnglish ? "Idle" : "Inactif")
+                        : (isEnglish ? "Do not disturb" : "Ne pas déranger");
+                    const current = user ? (presence[user.id]?.status ?? "online") : "online";
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setPresence(s)}
+                        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                          current === s
+                            ? "border-[#023BFC] bg-[#023BFC]/5 text-[#023BFC]"
+                            : "border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:border-[#023BFC]/30"
+                        }`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
