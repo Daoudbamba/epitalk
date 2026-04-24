@@ -7,7 +7,9 @@ import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
 import { useWebSocketStore } from "@/store/websocket.store";
+import { usePresenceStore } from "@/store/presence.store";
 import { useDmStore } from "@/store/dm.store";
+import type { PresenceStatus } from "@/lib/ws/types";
 import { serversApi } from "@/lib/api";
 import { ApiError, getErrorMessage } from "@/lib/api/errors";
 import { useLanguage } from "@/components/language-provider";
@@ -33,7 +35,7 @@ export function MembersPanel({
   const setMembers = useMemberStore((s) => s.setMembers);
   const membersLoading = useMemberStore((s) => s.loading);
   const setMembersLoading = useMemberStore((s) => s.setLoading);
-  const presence = useWebSocketStore((s) => s.presence);
+  const presence = usePresenceStore((s) => s.presence);
   const setPresence = useWebSocketStore((s) => s.setPresence);
   const setActivePeer = useDmStore((s) => s.setActivePeer);
   const { language } = useLanguage();
@@ -74,6 +76,12 @@ export function MembersPanel({
       try {
         const data = await serversApi.listMembers(activeServerId);
         setMembers(data);
+        const { setUserPresence } = usePresenceStore.getState();
+        for (const member of data) {
+          if (member.status) {
+            setUserPresence(member.user_id, member.status.toLowerCase() as PresenceStatus);
+          }
+        }
       } catch (err) {
         if (err instanceof ApiError && err.status === 403) {
           setMembers([]);

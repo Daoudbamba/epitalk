@@ -34,7 +34,7 @@ impl MembershipRepository {
     pub async fn find_by_server(pool: &PgPool, server_id: Uuid) -> AppResult<Vec<MemberResponse>> {
         let members = sqlx::query_as::<_, MemberResponse>(
             r#"
-            SELECT m.user_id, u.username, m.role, m.joined_at, u.avatar_url
+            SELECT m.user_id, u.username, m.role, m.joined_at, u.avatar_url, u.status::TEXT AS status
             FROM memberships m
             INNER JOIN users u ON m.user_id = u.id
             WHERE m.server_id = $1
