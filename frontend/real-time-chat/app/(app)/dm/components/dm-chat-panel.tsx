@@ -64,6 +64,9 @@ export function DmChatPanel() {
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const [showInputEmojis, setShowInputEmojis] = useState(false);
 
+  // GIF lightbox state
+  const [openGifLightbox, setOpenGifLightbox] = useState<string | null>(null);
+
   // GIF picker state
   const [openGifPicker, setOpenGifPicker] = useState<"input" | null>(null);
   const [gifQuery, setGifQuery] = useState("");
@@ -375,12 +378,13 @@ export function DmChatPanel() {
                       const gifMessage = parseGifContent(msg.content);
                       if (gifMessage) {
                         return (
-                          <div className="mt-2 rounded-md border border-[var(--border)] p-2 bg-[var(--surface)]">
+                          <div className="mt-2">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={gifMessage.gif.url}
-                              alt="GIF"
-                              className="h-36 w-full rounded-md object-cover"
+                              alt={gifMessage.caption || "GIF"}
+                              className="max-h-90 max-w-[70%] rounded-md object-contain cursor-pointer"
+                              onClick={() => setOpenGifLightbox(gifMessage.gif.url)}
                             />
                             {gifMessage.caption && (
                               <p className="mt-1 text-sm text-[var(--muted-foreground)]">{gifMessage.caption}</p>
@@ -438,6 +442,22 @@ export function DmChatPanel() {
               );
             })}
             <div ref={bottomRef} />
+
+            {/* GIF lightbox */}
+            {openGifLightbox && (
+              <div
+                className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+                onClick={() => setOpenGifLightbox(null)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={openGifLightbox}
+                  alt="GIF full"
+                  className="max-h-[90vh] max-w-[90vw] object-contain rounded-md shadow-lg"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            )}
           </div>
         )}
 
