@@ -8,6 +8,10 @@ import { useNotificationStore } from "@/store/notifications.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useServerStore } from "@/store/server.store";
 
+// Cache pour éviter les doublons de notifications (key = message_id, value = timestamp)
+const notificationCache = new Map<string, number>();
+const NOTIFICATION_DEDUP_TIME = 1000; // 1 seconde
+
 // Types basés sur le protocole WebSocket du backend
 export interface WsMessage {
   id: string;
@@ -897,46 +901,82 @@ export const useWebSocketStore = create<WebSocketState>()(
 async function triggerMessageNotification(
   channelId: string,
   username: string,
-  content: string
+  content: string,
+  authorId: string
 ) {
-  const notificationStore = useNotificationStore.getState();
-  const currentUser = useAuthStore.getState().user;
-  
-  // Don't notify if user is looking at this channel
-  const currentChannelId = useWebSocketStore.getState().currentChannelId;
-  if (currentChannelId === channelId) {
-    return;
+  try {
+    console.log("🔔 [ServerNotif] ===== START =====");
+    console.log("🔔 [ServerNotif] Channel:", channelId, "Username:", username, "Content:", content.substring(0, 20));
+    
+    // Check dedup cache
+    if (notificationCache.has(`msg-${channelId}`)) {
+      const lastTime = notificationCache.get(`msg-${channelId}`) || 0;
+      if (Date.now() - lastTime < NOTIFICATION_DEDUP_TIME) {
+        console.log("🔔 [ServerNotif] ❌ SKIPPED - duplicate within", NOTIFICATION_DEDUP_TIME, "ms");
+        return;
+      }
+    }
+    notificationCache.set(`msg-${channelId}`, Date.now());
+    console.log("🔔 [ServerNotif] ✅ Passed dedup check");
+    
+    const notificationStore = useNotificationStore.getState();
+    const currentUser = useAuthStore.getState().user;
+    
+    console.log("🔔 [ServerNotif] Current user ID:", currentUser?.id);
+    console.log("🔔 [ServerNotif] Message author ID:", authorId);
+    
+    // Don't notify if the author is the current user (don't notify about own messages)
+    if (authorId === currentUser?.id) {
+      console.log("🔔 [ServerNotif] ❌ SKIPPED - this is our own message");
+      return;
+    }
+
+    // Try to get channel name from local store
+    const channelStore = useChannelStore.getState();
+    console.log("🔔 [ServerNotif] Available channels in store:", channelStore.channels.length);
+    
+    const localChannel = channelStore.channels.find((c) => c.id === channelId);
+    console.log("🔔 [ServerNotif] Found channel in store:", localChannel?.name || "NOT FOUND");
+    
+    const channelName = localChannel?.name || "channel";
+    const serverId = localChannel?.server_id;
+
+    // Try to get server name from local store
+    const serverStore = useServerStore.getState();
+    console.log("🔔 [ServerNotif] Available servers in store:", serverStore.servers.length);
+    
+    const localServer = serverId ? serverStore.servers.find((s) => s.id === serverId) : null;
+    console.log("🔔 [ServerNotif] Found server in store:", localServer?.name || "NOT FOUND");
+    
+    const serverName = localServer?.name || "Serveur";
+
+    // Format the notification message
+    const displayContent = content.length > 50 
+      ? content.substring(0, 47) + "..."
+      : content;
+
+    console.log("🔔 [ServerNotif] 📢 SHOWING NOTIFICATION:");
+    console.log("   Title:", `${username} in ${serverName}`);
+    console.log("   Message:", `#${channelName}: ${displayContent}`);
+
+    // Show the notification - ALWAYS show it for server messages
+    const result = notificationStore.showNotification({
+      type: "server_message",
+      title: `${username} in ${serverName}`,
+      message: `#${channelName}: ${displayContent}`,
+      // Don't pass userId - it's not a DM, it's a channel message
+      data: {
+        channelId,
+        channelName,
+        serverId,
+        serverName,
+      },
+    });
+    
+    console.log("🔔 [ServerNotif] ===== END (SUCCESS) =====");
+  } catch (error) {
+    console.error("🔔 [ServerNotif] ❌ ERROR:", error);
   }
-
-  // Try to get channel name from local store
-  const channelStore = useChannelStore.getState();
-  const localChannel = channelStore.channels.find((c) => c.id === channelId);
-  const channelName = localChannel?.name || "channel";
-  const serverId = localChannel?.server_id;
-
-  // Try to get server name from local store
-  const serverStore = useServerStore.getState();
-  const localServer = serverStore.servers.find((s) => s.id === serverId);
-  const serverName = localServer?.name || "Server";
-
-  // Format the notification message
-  const displayContent = content.length > 50 
-    ? content.substring(0, 47) + "..."
-    : content;
-
-  // Show the notification
-  notificationStore.showNotification({
-    type: "server_message",
-    title: `${username} in ${serverName}`,
-    message: `#${channelName}: ${displayContent}`,
-    userId: currentUser?.id,
-    data: {
-      channelId,
-      channelName,
-      serverId,
-      serverName,
-    },
-  });
 }
 
 // Handle incoming server events
@@ -983,7 +1023,7 @@ function handleServerEvent(
       });
 
       // Trigger notification for new server message
-      triggerMessageNotification(channel_id, username || author_id, content);
+      triggerMessageNotification(channel_id, username || author_id, content, author_id);
 
       break;
     }
@@ -1316,6 +1356,18 @@ function handleServerEvent(
         created_at,
         reply_to,
       } = event.payload;
+      
+      // Check dedup cache for DM - skip if duplicate
+      let shouldShowNotification = true;
+      if (notificationCache.has(id)) {
+        const lastTime = notificationCache.get(id) || 0;
+        if (Date.now() - lastTime < NOTIFICATION_DEDUP_TIME) {
+          console.log("🔔 [DM Notification] Skipped - duplicate within", NOTIFICATION_DEDUP_TIME, "ms");
+          shouldShowNotification = false;
+        }
+      }
+      notificationCache.set(id, Date.now());
+      
       const newMessage: WsMessage = {
         id,
         channel_id: conversation_id,
@@ -1361,13 +1413,14 @@ function handleServerEvent(
             last_message_at: created_at,
           });
 
-          // Show notification if message is from someone else and not historical
-          if (author_id !== authUser.id) {
+          // Show notification if message is from someone else and passed dedup check
+          if (author_id !== authUser.id && shouldShowNotification) {
             // Check if message is historical (more than 5 seconds old)
             const messageTime = new Date(created_at).getTime();
             const now = Date.now();
             const isHistorical = now - messageTime > 5000; // 5 seconds threshold
             
+            console.log("🔔 [DM Notification] Showing notification for message:", id);
             useNotificationStore.getState().showNotification({
               type: "dm",
               title: `Message de ${peerUsername}`,
