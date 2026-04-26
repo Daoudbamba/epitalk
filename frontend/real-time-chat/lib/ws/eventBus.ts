@@ -25,6 +25,7 @@ const DISPATCH: Partial<Record<ServerEvent["type"], (payload: AnyPayload) => voi
   UserOnline: (p) => presenceHandler.onUserOnline(p as never),
   UserOffline: (p) => presenceHandler.onUserOffline(p as never),
   PresenceUpdated: (p) => presenceHandler.onPresenceUpdated(p as never),
+  PresenceSync: (p) => presenceHandler.onPresenceSync(p as never),
 
   TypingStart: (p) => typingHandler.onTypingStart(p as never),
   TypingStop: (p) => typingHandler.onTypingStop(p as never),

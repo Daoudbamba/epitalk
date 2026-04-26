@@ -118,13 +118,29 @@ export const ReactionRemovedSchema = z.object({
   user_id: z.string(),
 });
 
-export const UserOnlineSchema = z.object({ user_id: z.string() });
-export const UserOfflineSchema = z.object({ user_id: z.string() });
+export const UserOnlineSchema = z.object({
+  user_id: z.string(),
+  // Backend may send the preserved status (idle/dnd) on reconnect
+  status: z.enum(["online", "idle", "dnd", "offline"]).optional().default("online"),
+});
+export const UserOfflineSchema = z.object({
+  user_id: z.string(),
+  status: z.enum(["online", "idle", "dnd", "offline"]).optional().default("offline"),
+});
 
 export const PresenceUpdatedSchema = z.object({
   user_id: z.string(),
   status: z.enum(["online", "idle", "dnd", "offline"]),
   last_activity: z.string().optional(),
+});
+
+const PresenceUserSchema = z.object({
+  user_id: z.string(),
+  status: z.string(),
+});
+
+export const PresenceSyncSchema = z.object({
+  users: z.array(PresenceUserSchema),
 });
 
 export const TypingStartSchema = z.object({
@@ -192,6 +208,7 @@ export const ServerEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("UserOnline"), payload: UserOnlineSchema }),
   z.object({ type: z.literal("UserOffline"), payload: UserOfflineSchema }),
   z.object({ type: z.literal("PresenceUpdated"), payload: PresenceUpdatedSchema }),
+  z.object({ type: z.literal("PresenceSync"), payload: PresenceSyncSchema }),
   z.object({ type: z.literal("TypingStart"), payload: TypingStartSchema }),
   z.object({ type: z.literal("TypingStop"), payload: TypingStopSchema }),
   z.object({ type: z.literal("UserJoined"), payload: UserJoinedSchema }),
