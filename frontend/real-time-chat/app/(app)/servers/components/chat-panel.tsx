@@ -946,8 +946,10 @@ export function ChatPanel() {
                             </p>
                           )}
                           {msg.attachment_url && (() => {
-                            const url = msg.attachment_url!;
-                            const isImage = /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(url);
+                            const raw = msg.attachment_url!;
+                            const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+                            const url = raw.startsWith("http") ? raw : `${base}${raw}`;
+                            const isImage = /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(raw);
                             if (isImage) {
                               return (
                                 // eslint-disable-next-line @next/next/no-img-element
@@ -959,6 +961,8 @@ export function ChatPanel() {
                                 />
                               );
                             }
+                            const filename = raw.split("/").pop() ?? raw;
+                            const displayName = filename.length > 30 ? `${filename.slice(0, 30)}...` : filename;
                             return (
                               <a
                                 href={url}
@@ -968,7 +972,7 @@ export function ChatPanel() {
                                 className="mt-2 inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 underline"
                               >
                                 <FileText className="h-4 w-4 shrink-0" />
-                                {url.split("/").pop()}
+                                {displayName}
                               </a>
                             );
                           })()}
