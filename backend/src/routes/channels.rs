@@ -14,7 +14,7 @@
 //! - DELETE /:channel_id/messages/:message_id/pin - Unpin message (MOD+)
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -43,6 +43,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/:channel_id/messages/search", get(search_messages))
         .route("/:channel_id/messages/pinned", get(list_pinned_messages))
         .route("/:channel_id/messages/:message_id/pin", post(pin_message_handler).delete(unpin_message_handler))
+        .route("/:channel_id/upload", post(upload_attachment).layer(DefaultBodyLimit::max(10 * 1024 * 1024)))
 }
 
 /// Path parameters for nested routes
@@ -217,6 +218,13 @@ async fn delete_channel(
 
 #[derive(Deserialize)]
 pub struct MessagesQuery {
+    pub before: Option<String>,
+    #[serde(default = "default_per_page")]
+    pub per_page: u64,
+}
+
+#[derive(Deserialize)]
+pub struct PaginationQuery {
     #[serde(default = "default_page")]
     pub page: u64,
     #[serde(default = "default_per_page")]
@@ -257,6 +265,13 @@ fn normalize_search_query(input: &str) -> AppResult<String> {
 }
 
 #[derive(Serialize)]
+pub struct ReactionResponse {
+    pub emoji: String,
+    pub user_id: String,
+    pub username: Option<String>,
+}
+
+#[derive(Serialize)]
 pub struct MessageResponse {
     pub id: String,
     pub server_id: String,
@@ -265,6 +280,11 @@ pub struct MessageResponse {
     pub username: String,
     pub content: String,
     pub created_at: String,
+    pub reply_to: Option<String>,
+    pub attachment_url: Option<String>,
+    pub reactions: Vec<ReactionResponse>,
+    pub pinned_by: Option<String>,
+    pub pinned_at: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -299,22 +319,28 @@ async fn get_messages(
         ));
     }
 
-    // Get messages from MongoDB
-    let messages = state
-        .message_service
-        .get_history(
-            &params.channel_id.to_string(),
-            query.page,
-            query.per_page,
-        )
-        .await
-        .map_err(|_| {
-            tracing::error!(
-                channel_id = %params.channel_id,
-                "Failed to fetch messages"
-            );
-            AppError::Internal("Failed to fetch messages".to_string())
-        })?;
+    // Get messages from MongoDB (cursor-based if `before` is provided, otherwise page 1)
+    let messages = if let Some(ref before_hex) = query.before {
+        let before_oid = ObjectId::parse_str(before_hex)
+            .map_err(|_| AppError::BadRequest("invalid before cursor".to_string()))?;
+        state
+            .message_service
+            .get_history_before(&params.channel_id.to_string(), &before_oid, query.per_page)
+            .await
+            .map_err(|_| {
+                tracing::error!(channel_id = %params.channel_id, "Failed to fetch messages before cursor");
+                AppError::Internal("Failed to fetch messages".to_string())
+            })?
+    } else {
+        state
+            .message_service
+            .get_history(&params.channel_id.to_string(), 1, query.per_page)
+            .await
+            .map_err(|_| {
+                tracing::error!(channel_id = %params.channel_id, "Failed to fetch messages");
+                AppError::Internal("Failed to fetch messages".to_string())
+            })?
+    };
 
     let responses: Vec<MessageResponse> = {
         let mut result = Vec::new();
@@ -329,17 +355,24 @@ async fn get_messages(
             } else {
                 m.author_id.chars().take(8).collect()
             };
+            let reactions = m.reactions.unwrap_or_default().into_iter().map(|r| ReactionResponse {
+                emoji: r.emoji,
+                user_id: r.user_id,
+                username: r.username,
+            }).collect();
             result.push(MessageResponse {
-                id: m
-                    .id
-                    .map(|oid: mongodb::bson::oid::ObjectId| oid.to_hex())
-                    .unwrap_or_default(),
+                id: m.id.map(|oid| oid.to_hex()).unwrap_or_default(),
                 server_id: params.server_id.to_string(),
                 channel_id: m.channel_id,
                 author_id: m.author_id,
                 username,
                 content: m.content,
                 created_at: m.created_at,
+                reply_to: m.reply_to.map(|oid| oid.to_hex()),
+                attachment_url: m.attachment_url,
+                reactions,
+                pinned_by: m.pinned_by,
+                pinned_at: m.pinned_at,
             });
         }
         result
@@ -400,17 +433,24 @@ async fn search_messages(
             } else {
                 m.author_id.chars().take(8).collect()
             };
+            let reactions = m.reactions.unwrap_or_default().into_iter().map(|r| ReactionResponse {
+                emoji: r.emoji,
+                user_id: r.user_id,
+                username: r.username,
+            }).collect();
             result.push(MessageResponse {
-                id: m
-                    .id
-                    .map(|oid: mongodb::bson::oid::ObjectId| oid.to_hex())
-                    .unwrap_or_default(),
+                id: m.id.map(|oid| oid.to_hex()).unwrap_or_default(),
                 server_id: params.server_id.to_string(),
                 channel_id: m.channel_id,
                 author_id: m.author_id,
                 username,
                 content: m.content,
                 created_at: m.created_at,
+                reply_to: m.reply_to.map(|oid| oid.to_hex()),
+                attachment_url: m.attachment_url,
+                reactions,
+                pinned_by: m.pinned_by,
+                pinned_at: m.pinned_at,
             });
         }
         result
@@ -440,7 +480,7 @@ async fn list_pinned_messages(
     State(state): State<Arc<AppState>>,
     auth: RequireAuth,
     Path(params): Path<ChannelPath>,
-    Query(query): Query<MessagesQuery>,
+    Query(query): Query<PaginationQuery>,
 ) -> AppResult<Json<Vec<PinnedMessageResponse>>> {
     if !MembershipRepository::is_member(&state.db, auth.user_id, params.server_id).await? {
         return Err(AppError::Forbidden("Not a member of this server".to_string()));
@@ -545,6 +585,90 @@ async fn unpin_message_handler(
     }).await;
 
     Ok(Json(serde_json::json!({ "unpinned": true })))
+}
+
+#[derive(Serialize)]
+struct UploadResponse {
+    url: String,
+}
+
+async fn upload_attachment(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Path(params): Path<ChannelPath>,
+    mut multipart: Multipart,
+) -> AppResult<Json<UploadResponse>> {
+    if !MembershipRepository::is_member(&state.db, auth.user_id, params.server_id).await? {
+        return Err(AppError::Forbidden("Not a member of this server".to_string()));
+    }
+
+    let upload_dir = state.config.upload_dir.clone();
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .map_err(|e| AppError::Internal(format!("Cannot create upload dir: {e}")))?;
+
+    let mut file_url: Option<String> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Invalid multipart: {e}")))?
+    {
+        if field.name().unwrap_or("") != "file" {
+            continue;
+        }
+
+        let file_name = field.file_name().unwrap_or("file").to_string();
+        let content_type = field.content_type().unwrap_or("").to_string();
+
+        let ext = match content_type.as_str() {
+            "image/jpeg" => "jpg",
+            "image/png" => "png",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            "application/pdf" => "pdf",
+            _ => {
+                let lower = file_name.to_lowercase();
+                if lower.ends_with(".jpg") || lower.ends_with(".jpeg") { "jpg" }
+                else if lower.ends_with(".png") { "png" }
+                else if lower.ends_with(".gif") { "gif" }
+                else if lower.ends_with(".webp") { "webp" }
+                else if lower.ends_with(".pdf") { "pdf" }
+                else {
+                    return Err(AppError::Validation("Unsupported file type. Allowed: jpg, png, gif, webp, pdf".to_string()));
+                }
+            }
+        };
+
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("Failed to read file: {e}")))?;
+
+        if data.len() > 10 * 1024 * 1024 {
+            return Err(AppError::Validation("File must be under 10 MB".to_string()));
+        }
+
+        let filename = format!(
+            "attach_{}_{}_{}.{}",
+            auth.user_id,
+            params.channel_id,
+            chrono::Utc::now().timestamp_millis(),
+            ext
+        );
+        let filepath = format!("{}/{}", upload_dir, filename);
+
+        tokio::fs::write(&filepath, &data)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to save file: {e}")))?;
+
+        file_url = Some(format!("/uploads/{}", filename));
+    }
+
+    let url = file_url
+        .ok_or_else(|| AppError::BadRequest("No file field in multipart form".to_string()))?;
+
+    Ok(Json(UploadResponse { url }))
 }
 
 #[cfg(test)]

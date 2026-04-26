@@ -9,11 +9,18 @@ type DmState = {
   loading: boolean;
   /** conversationId → ordered DM messages */
   dmMessages: Record<string, WsMessage[]>;
+  /** conversationId → oldest message id cursor */
+  dmCursors: Record<string, string | null>;
 
   setConversations(conversations: DmConversation[]): void;
   setActivePeer(peerId: string | null): void;
   fetchConversations(): Promise<void>;
   addOrUpdateConversation(conv: DmConversation): void;
+
+  setDmMessages(conversationId: string, msgs: WsMessage[]): void;
+  prependDmMessages(conversationId: string, older: WsMessage[]): void;
+  setDmCursor(conversationId: string, cursor: string | null): void;
+  clearDmMessages(conversationId: string): void;
 
   addDmMessage(conversationId: string, msg: WsMessage): void;
   updateDmMessage(conversationId: string, id: string, patch: Partial<WsMessage>): void;
@@ -26,6 +33,7 @@ export const useDmStore = create<DmState>((set, get) => ({
   activePeerId: null,
   loading: false,
   dmMessages: {},
+  dmCursors: {},
 
   setConversations(conversations) {
     set({ conversations });
@@ -61,6 +69,48 @@ export const useDmStore = create<DmState>((set, get) => ({
         return { conversations: updated };
       }
       return { conversations: [conv, ...s.conversations] };
+    });
+  },
+
+  setDmMessages(conversationId, incoming) {
+    set((s) => {
+      const existing = s.dmMessages[conversationId] ?? [];
+      const byId = new Map<string, WsMessage>();
+      for (const m of existing) byId.set(m.id, m);
+      for (const m of incoming) byId.set(m.id, m);
+      const merged = Array.from(byId.values()).sort((a, b) =>
+        a.created_at.localeCompare(b.created_at),
+      );
+      return { dmMessages: { ...s.dmMessages, [conversationId]: merged } };
+    });
+  },
+
+  prependDmMessages(conversationId, older) {
+    set((s) => {
+      const existing = s.dmMessages[conversationId] ?? [];
+      const existingIds = new Set(existing.map((m) => m.id));
+      const newMsgs = older.filter((m) => !existingIds.has(m.id));
+      if (newMsgs.length === 0) return s;
+      return {
+        dmMessages: {
+          ...s.dmMessages,
+          [conversationId]: [...newMsgs, ...existing],
+        },
+      };
+    });
+  },
+
+  setDmCursor(conversationId, cursor) {
+    set((s) => ({ dmCursors: { ...s.dmCursors, [conversationId]: cursor } }));
+  },
+
+  clearDmMessages(conversationId) {
+    set((s) => {
+      const msgs = { ...s.dmMessages };
+      const curs = { ...s.dmCursors };
+      delete msgs[conversationId];
+      delete curs[conversationId];
+      return { dmMessages: msgs, dmCursors: curs };
     });
   },
 

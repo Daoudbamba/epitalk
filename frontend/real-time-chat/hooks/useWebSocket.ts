@@ -13,15 +13,17 @@ import { wsManager } from "@/lib/ws/manager";
  */
 export function useWebSocket() {
   const token = useAuthStore((s) => s.token);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const connect = useWebSocketStore((s) => s.connect);
 
   useEffect(() => {
-    if (!token) return;
+    if (!hasHydrated || !token) return;
     // Only connect if the manager is fully idle (not reconnecting)
     if (!wsManager.isReady() && wsManager.getState() === "idle") {
+      console.debug("[useWebSocket] token available, triggering connect | state:", wsManager.getState());
       connect(token);
     }
-  }, [token, connect]);
+  }, [token, hasHydrated, connect]);
 
   return {
     // Channel messages

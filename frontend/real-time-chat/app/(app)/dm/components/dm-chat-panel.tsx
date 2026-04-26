@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2, X } from "lucide-react";
+import { Paperclip, FileText, Smile, Gift, Sticker, Send, Loader2, CornerUpLeft, Edit3, Trash2, X, ArrowLeft } from "lucide-react";
 import { useWebSocketStore, type WsMessage } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useDmStore } from "@/store/dm.store";
 import { useAppearanceStore } from "@/store/appearance.store";
+import { dmApi } from "@/lib/api";
 
 const FONT_SIZE_MAP = { sm: "14px", base: "16px", lg: "18px", xl: "20px" } as const;
 
@@ -20,6 +21,7 @@ export function DmChatPanel() {
   const token = useAuthStore((s) => s.token);
 
   const activePeerId = useDmStore((s) => s.activePeerId);
+  const setActivePeer = useDmStore((s) => s.setActivePeer);
   const conversations = useDmStore((s) => s.conversations);
 
   const isConnected = useWebSocketStore((s) => s.isConnected);
@@ -30,8 +32,14 @@ export function DmChatPanel() {
   const sendDmGif = useWebSocketStore((s) => s.sendDmGif);
   const joinDm = useWebSocketStore((s) => s.joinDm);
   const leaveDm = useWebSocketStore((s) => s.leaveDm);
-  const dmMessages = useWebSocketStore((s) => s.dmMessages);
   const socket = useWebSocketStore((s) => s.socket);
+
+  // DM message store (source of truth)
+  const dmMessagesByConv = useDmStore((s) => s.dmMessages);
+  const setDmMsgs = useDmStore((s) => s.setDmMessages);
+  const prependDmMsgs = useDmStore((s) => s.prependDmMessages);
+  const setDmCursor = useDmStore((s) => s.setDmCursor);
+  const clearDmMessages = useDmStore((s) => s.clearDmMessages);
   const fontSize = useAppearanceStore((s) => s.fontSize);
   const chatFontSize = FONT_SIZE_MAP[fontSize] || "16px";
 
@@ -50,13 +58,15 @@ export function DmChatPanel() {
 
   const messages: WsMessage[] = useMemo(() => {
     if (!conversationId) return [];
-    const list = dmMessages[conversationId] || [];
+    const list = dmMessagesByConv[conversationId] ?? [];
     return [...list].sort((a, b) => a.created_at.localeCompare(b.created_at));
-  }, [conversationId, dmMessages]);
+  }, [conversationId, dmMessagesByConv]);
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -74,7 +84,12 @@ export function DmChatPanel() {
   const [gifLoading, setGifLoading] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const scrollAnchorRef = useRef<number | null>(null);
   const prevPeerRef = useRef<string | null>(null);
+
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Connect WebSocket
   useEffect(() => {
@@ -83,25 +98,117 @@ export function DmChatPanel() {
     }
   }, [token, isConnected, connect]);
 
-  // Join DM room when peer changes
+  // Re-join DM conversation whenever the WebSocket (re)connects — backend
+  // requires an explicit JoinDm even after a page refresh.
+  useEffect(() => {
+    if (!isConnected || !activePeerId) return;
+    joinDm(activePeerId);
+  }, [isConnected, activePeerId, joinDm]);
+
+  // On peer change: leave old, purge cache, fetch if empty, join new
   useEffect(() => {
     const prevPeer = prevPeerRef.current;
     if (prevPeer && prevPeer !== activePeerId) {
       leaveDm(prevPeer);
-    }
-    if (activePeerId && isConnected) {
-      joinDm(activePeerId);
+      if (user) {
+        const oldConvId = dmConversationId(user.id, prevPeer);
+        clearDmMessages(oldConvId);
+      }
     }
     prevPeerRef.current = activePeerId;
-  }, [activePeerId, isConnected, joinDm, leaveDm]);
 
-  // Scroll to bottom
-  useEffect(() => {
-    const el = bottomRef.current;
-    if (el && typeof el.scrollIntoView === "function") {
-      el.scrollIntoView({ behavior: "smooth" });
+    if (!activePeerId || !isConnected || !user) return;
+
+    const convId = dmConversationId(user.id, activePeerId);
+    setHasMore(true);
+    setLoadingMore(false);
+
+    const cached = useDmStore.getState().getDmMessages(convId);
+    if (cached.length === 0) {
+      void (async () => {
+        try {
+          const data = await dmApi.listMessages(activePeerId);
+          const wsMsgs: WsMessage[] = data.map((m) => ({
+            id: m.id,
+            channel_id: m.conversation_id,
+            author_id: m.author_id,
+            username: m.username,
+            content: m.content,
+            created_at: m.created_at,
+            reply_to: m.reply_to,
+            attachment_url: m.attachment_url,
+          }));
+          setDmMsgs(convId, wsMsgs);
+          if (wsMsgs.length > 0) setDmCursor(convId, wsMsgs[0].id);
+          setHasMore(data.length >= 50);
+        } catch (err) {
+          console.warn("Failed to load DM history:", err);
+        } finally {
+          joinDm(activePeerId);
+        }
+      })();
+    } else {
+      joinDm(activePeerId);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePeerId, isConnected]);
+
+  // Scroll to bottom for new messages only
+  useEffect(() => {
+    if (scrollAnchorRef.current !== null) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Restore scroll position after prepend
+  useLayoutEffect(() => {
+    if (scrollAnchorRef.current === null) return;
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight - scrollAnchorRef.current;
+    scrollAnchorRef.current = null;
+  }, [messages]);
+
+  // Load older DM messages (infinite scroll up)
+  const loadOlderDmMessages = useCallback(async () => {
+    if (!activePeerId || !user || !hasMore || loadingMore) return;
+    const convId = dmConversationId(user.id, activePeerId);
+    const msgs = useDmStore.getState().getDmMessages(convId);
+    if (!msgs.length) return;
+
+    const el = scrollContainerRef.current;
+    if (el) scrollAnchorRef.current = el.scrollHeight - el.scrollTop;
+
+    setLoadingMore(true);
+    try {
+      const data = await dmApi.listMessages(activePeerId, { before: msgs[0].id });
+      if (data.length > 0) {
+        const wsMsgs: WsMessage[] = data.map((m) => ({
+          id: m.id,
+          channel_id: m.conversation_id,
+          author_id: m.author_id,
+          username: m.username,
+          content: m.content,
+          created_at: m.created_at,
+          reply_to: m.reply_to,
+        }));
+        prependDmMsgs(convId, wsMsgs);
+        setDmCursor(convId, wsMsgs[0].id);
+      }
+      if (data.length < 50) setHasMore(false);
+    } catch (err) {
+      console.warn("Failed to load older DM messages:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [activePeerId, user, hasMore, loadingMore, prependDmMsgs, setDmCursor]);
+
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      if (e.currentTarget.scrollTop < 150 && hasMore && !loadingMore) {
+        void loadOlderDmMessages();
+      }
+    },
+    [hasMore, loadingMore, loadOlderDmMessages],
+  );
 
   // GIF search effect
   useEffect(() => {
@@ -178,7 +285,7 @@ export function DmChatPanel() {
   const onSend = async () => {
     if (!activePeerId || !conversationId) return;
     const content = value.trim();
-    if (!content) return;
+    if (!content && !attachmentFile) return;
     if (!isConnected) {
       setError("Non connecté au serveur");
       return;
@@ -188,14 +295,21 @@ export function DmChatPanel() {
     setError(null);
 
     try {
+      let attachmentUrl: string | undefined;
+      if (attachmentFile) {
+        const result = await dmApi.uploadAttachment(attachmentFile);
+        attachmentUrl = result.url;
+      }
+
       if (isEditing && editingMessageId) {
         editDm(conversationId, editingMessageId, content);
         setEditingMessageId(null);
         setIsEditing(false);
       } else {
-        sendDm(activePeerId, content, replyTo || undefined);
+        sendDm(activePeerId, content, replyTo || undefined, attachmentUrl);
         setReplyTo(null);
         setReplyToUsername(null);
+        setAttachmentFile(null);
       }
       setValue("");
     } catch (e) {
@@ -210,6 +324,7 @@ export function DmChatPanel() {
     setEditingMessageId(null);
     setReplyTo(null);
     setValue("");
+    setAttachmentFile(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -221,7 +336,7 @@ export function DmChatPanel() {
 
   if (!activePeerId) {
     return (
-      <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden items-center justify-center">
+      <div className="h-full border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden items-center justify-center">
         <div className="text-center text-[var(--muted-foreground)]">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--surface)] flex items-center justify-center">
             <Send className="w-8 h-8 text-[var(--muted-foreground)]" />
@@ -234,9 +349,16 @@ export function DmChatPanel() {
   }
 
   return (
-    <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden">
+    <div className="h-full border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden">
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm shrink-0">
+        <button
+          className="md:hidden mr-3 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition"
+          onClick={() => setActivePeer(null)}
+          title="Retour"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center text-[10px] font-semibold text-white mr-3">
           {(peerUsername ?? "?").slice(0, 2).toUpperCase()}
         </div>
@@ -246,7 +368,16 @@ export function DmChatPanel() {
       </div>
 
       {/* --- MESSAGES --- */}
-      <div className="flex-1 overflow-y-auto flex flex-col py-4">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto flex flex-col py-4"
+        onScroll={handleScroll}
+      >
+        {loadingMore && (
+          <div className="flex justify-center py-2">
+            <Loader2 className="h-4 w-4 animate-spin text-[var(--muted-foreground)]" />
+          </div>
+        )}
         {messages.length === 0 && !isConnected ? (
           <div className="px-4 text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -365,10 +496,14 @@ export function DmChatPanel() {
                     {msg.reply_to && (() => {
                       const original = messages.find((m) => m.id === msg.reply_to);
                       return (
-                        <div className="text-xs text-[var(--muted-foreground)] italic mb-1 bg-[var(--surface)] p-2 rounded-md">
+                        <div className="text-xs text-[var(--muted-foreground)] italic mb-1 bg-[var(--surface)] p-2 rounded-md max-h-16 overflow-hidden">
                           Réponse à {original ? getUsernameById(original.author_id, original.username) : msg.reply_to.slice(0, 8)}:
                           <div className="truncate max-w-full">
-                            {original ? original.content : "message introuvable"}
+                            {original
+                              ? original.content.startsWith('{"type":"gif"')
+                                ? "🖼 GIF"
+                                : original.content
+                              : "message introuvable"}
                           </div>
                         </div>
                       );
@@ -393,9 +528,40 @@ export function DmChatPanel() {
                         );
                       }
                       return (
-                        <p className="text-[var(--muted-foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
-                          {msg.content}
-                        </p>
+                        <>
+                          {msg.content && (
+                            <p className="text-[var(--muted-foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
+                              {msg.content}
+                            </p>
+                          )}
+                          {msg.attachment_url && (() => {
+                            const url = msg.attachment_url!;
+                            const isImage = /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(url);
+                            if (isImage) {
+                              return (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={url}
+                                  alt="attachment"
+                                  className="mt-2 max-w-xs max-h-64 rounded-md object-contain cursor-pointer"
+                                  onClick={() => setOpenGifLightbox(url)}
+                                />
+                              );
+                            }
+                            return (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download
+                                className="mt-2 inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 underline"
+                              >
+                                <FileText className="h-4 w-4 shrink-0" />
+                                {url.split("/").pop()}
+                              </a>
+                            );
+                          })()}
+                        </>
                       );
                     })()}
 
@@ -485,28 +651,74 @@ export function DmChatPanel() {
             </button>
           </div>
         )}
+
+        {/* Attachment preview */}
+        {attachmentFile && (
+          <div className="mb-2 flex items-center gap-3 px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-sm">
+            {attachmentFile.type.startsWith("image/") ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={URL.createObjectURL(attachmentFile)}
+                alt="preview"
+                className="h-16 w-16 rounded object-cover shrink-0"
+              />
+            ) : (
+              <FileText className="h-8 w-8 text-indigo-500 shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="truncate font-medium text-[var(--foreground)]">{attachmentFile.name}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {attachmentFile.size < 1024 * 1024
+                  ? `${(attachmentFile.size / 1024).toFixed(1)} KB`
+                  : `${(attachmentFile.size / (1024 * 1024)).toFixed(1)} MB`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAttachmentFile(null)}
+              className="text-[var(--muted-foreground)] hover:text-red-500 transition shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              if (file.size > 10 * 1024 * 1024) {
+                setError("Le fichier doit faire moins de 10 Mo");
+                return;
+              }
+              setAttachmentFile(file);
+            }
+            e.target.value = "";
+          }}
+        />
+
         <div className="relative flex items-center gap-2">
           <div className="relative flex-1">
             <button
               type="button"
               className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 bg-[var(--muted-foreground)] hover:bg-[var(--muted-foreground)] transition rounded-full p-1 flex items-center justify-center text-white"
-              disabled
-              title="Fonction à venir"
+              onClick={() => fileInputRef.current?.click()}
+              title="Joindre un fichier"
             >
-              <Plus className="text-white" />
+              <Paperclip className="text-white h-3.5 w-3.5" />
             </button>
 
             <Input
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={!activePeerId || sending || !isConnected}
+              disabled={!activePeerId || sending}
               className="px-14 pr-32 py-6 bg-[var(--muted)]/90 border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[var(--muted-foreground)] placeholder:text-[var(--muted-foreground)]"
-              placeholder={
-                !isConnected
-                  ? "Connexion en cours..."
-                  : `Envoyer un message à ${peerUsername ?? ""}`
-              }
+              placeholder={`Envoyer un message à ${peerUsername ?? ""}`}
             />
 
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-x-3">
@@ -553,7 +765,7 @@ export function DmChatPanel() {
           {/* Bouton Envoyer */}
           <Button
             onClick={onSend}
-            disabled={!activePeerId || sending || !isConnected || !value.trim()}
+            disabled={!activePeerId || sending || !isConnected || (!value.trim() && !attachmentFile)}
             className="h-12 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Envoyer le message"
           >

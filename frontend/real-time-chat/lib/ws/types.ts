@@ -20,6 +20,7 @@ export interface WsMessage {
   content: string;
   created_at: string;
   reply_to?: string;
+  attachment_url?: string | null;
   reactions?: Array<{
     emoji: string;
     user_id: string;
@@ -41,7 +42,7 @@ export interface GifPayload {
 // ─── Client → Server events ───────────────────────────────────────────────────
 
 export type ClientEvent =
-  | { type: "MessageSend"; payload: { channel_id: string; content: string; reply_to?: string } }
+  | { type: "MessageSend"; payload: { channel_id: string; content: string; reply_to?: string; attachment_url?: string } }
   | { type: "MessageEdit"; payload: { channel_id: string; message_id: string; content: string } }
   | { type: "MessageDelete"; payload: { channel_id: string; message_id: string } }
   | { type: "MessageSendGif"; payload: { channel_id: string; gif: GifPayload; caption?: string | null } }
@@ -49,7 +50,7 @@ export type ClientEvent =
   | { type: "LeaveChannel"; payload: { channel_id: string } }
   | { type: "TypingStart"; payload: { channel_id: string } }
   | { type: "TypingStop"; payload: { channel_id: string } }
-  | { type: "DmSend"; payload: { recipient_id: string; content: string; reply_to?: string } }
+  | { type: "DmSend"; payload: { recipient_id: string; content: string; reply_to?: string; attachment_url?: string } }
   | { type: "DmEdit"; payload: { conversation_id: string; message_id: string; content: string } }
   | { type: "DmDelete"; payload: { conversation_id: string; message_id: string } }
   | { type: "DmSendGif"; payload: { recipient_id: string; gif: GifPayload; caption?: string | null } }
@@ -73,7 +74,8 @@ export const MessageNewSchema = z.object({
   username: z.string().optional(),
   content: z.string(),
   created_at: z.string(),
-  reply_to: z.string().optional(),
+  reply_to: z.string().nullish(),
+  attachment_url: z.string().nullable().optional(),
   reactions: z.array(ReactionSchema).optional(),
 });
 
@@ -154,7 +156,8 @@ export const DmNewSchema = z.object({
   username: z.string(),
   content: z.string(),
   created_at: z.string(),
-  reply_to: z.string().optional(),
+  reply_to: z.string().nullish(),
+  attachment_url: z.string().nullable().optional(),
 });
 
 export const DmEditedSchema = z.object({

@@ -4,11 +4,13 @@ import type { WsMessage } from "@/lib/ws/types";
 type MessageState = {
   /** channelId → ordered messages */
   messages: Record<string, WsMessage[]>;
-  /** channelId → last pagination cursor (for future infinite scroll) */
+  /** channelId → oldest message id (cursor for infinite scroll) */
   cursors: Record<string, string | null>;
   currentChannelId: string | null;
 
   setMessages(channelId: string, msgs: WsMessage[]): void;
+  prependMessages(channelId: string, older: WsMessage[]): void;
+  setCursor(channelId: string, cursor: string | null): void;
   addMessage(channelId: string, msg: WsMessage): void;
   updateMessage(channelId: string, id: string, patch: Partial<WsMessage>): void;
   removeMessage(channelId: string, id: string): void;
@@ -34,6 +36,22 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       );
       return { messages: { ...s.messages, [channelId]: merged } };
     });
+  },
+
+  prependMessages(channelId, older) {
+    set((s) => {
+      const existing = s.messages[channelId] ?? [];
+      const existingIds = new Set(existing.map((m) => m.id));
+      const newMsgs = older.filter((m) => !existingIds.has(m.id));
+      if (newMsgs.length === 0) return s;
+      return {
+        messages: { ...s.messages, [channelId]: [...newMsgs, ...existing] },
+      };
+    });
+  },
+
+  setCursor(channelId, cursor) {
+    set((s) => ({ cursors: { ...s.cursors, [channelId]: cursor } }));
   },
 
   addMessage(channelId, msg) {
@@ -74,8 +92,10 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   clearChannel(channelId) {
     set((s) => {
       const msgs = { ...s.messages };
+      const curs = { ...s.cursors };
       delete msgs[channelId];
-      return { messages: msgs };
+      delete curs[channelId];
+      return { messages: msgs, cursors: curs };
     });
   },
 

@@ -27,7 +27,8 @@ export const messageHandler = {
       username: payload.username,
       content: payload.content,
       created_at: payload.created_at,
-      reply_to: payload.reply_to,
+      reply_to: payload.reply_to ?? undefined,
+      attachment_url: payload.attachment_url,
       reactions: payload.reactions,
     });
   },

@@ -3,9 +3,17 @@ import { MessageListSchema, MessageSchema, type Message } from "./schemas/messag
 
 export function createMessagesApi(client: FetchClient) {
   return {
-    list: async (serverId: string, channelId: string): Promise<Message[]> => {
+    list: async (
+      serverId: string,
+      channelId: string,
+      params?: { before?: string; limit?: number },
+    ): Promise<Message[]> => {
+      const qs = new URLSearchParams();
+      if (params?.before) qs.set("before", params.before);
+      if (params?.limit) qs.set("per_page", String(params.limit));
+      const query = qs.toString() ? `?${qs.toString()}` : "";
       const data = await client.get<Message[]>(
-        `/servers/${serverId}/channels/${channelId}/messages`
+        `/servers/${serverId}/channels/${channelId}/messages${query}`,
       );
       return MessageListSchema.parse(data);
     },
@@ -70,6 +78,19 @@ export function createMessagesApi(client: FetchClient) {
     unpin: async (serverId: string, channelId: string, messageId: string): Promise<void> => {
       await client.delete<{ unpinned: boolean }>(
         `/servers/${serverId}/channels/${channelId}/messages/${messageId}/pin`
+      );
+    },
+
+    uploadAttachment: async (
+      serverId: string,
+      channelId: string,
+      file: File,
+    ): Promise<{ url: string }> => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return client.postFile<{ url: string }>(
+        `/servers/${serverId}/channels/${channelId}/upload`,
+        formData,
       );
     },
   };

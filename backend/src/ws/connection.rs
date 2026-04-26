@@ -15,8 +15,8 @@ use crate::services::typing_service::TypingService;
 use crate::ws::hub::{ConnId, Hub};
 use mongodb::bson::oid::ObjectId;
 use crate::ws::protocol::{
-    validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_FRAME_BYTES,
-    TYPING_THROTTLE_MS,
+    validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_CONTENT_LEN,
+    MAX_FRAME_BYTES, TYPING_THROTTLE_MS,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -270,13 +270,19 @@ pub async fn handle_connection(
                     channel_id,
                     content,
                     reply_to,
+                    attachment_url,
                 } => {
                     if let Err(reason) = validate_channel_id(&channel_id) {
                         send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
                         continue;
                     }
-                    if let Err(reason) = validate_content(&content) {
-                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                    if attachment_url.is_none() {
+                        if let Err(reason) = validate_content(&content) {
+                            send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                            continue;
+                        }
+                    } else if content.len() > MAX_CONTENT_LEN {
+                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", "message content exceeds maximum length");
                         continue;
                     }
 
@@ -346,6 +352,7 @@ pub async fn handle_connection(
                             content.clone(),
                             created_at.clone(),
                             reply_to_oid,
+                            attachment_url.clone(),
                         )
                         .await
                     {
@@ -383,6 +390,7 @@ pub async fn handle_connection(
                         content: content.clone(),
                         created_at: created_at.clone(),
                         reply_to: reply_to.clone(),
+                        attachment_url: attachment_url.clone(),
                     };
 
                     hub_recv.broadcast_room(&channel_id, event).await;
@@ -402,6 +410,7 @@ pub async fn handle_connection(
                                 content: content.clone(),
                                 created_at: created_at.clone(),
                                 reply_to: reply_to.clone(),
+                                attachment_url: attachment_url.clone(),
                             }) {
                                 let _ = tx.send(Message::Text(json));
                             }
@@ -957,7 +966,7 @@ pub async fn handle_connection(
                 // ─────────────────────────────────────────────
                 // DIRECT MESSAGES
                 // ─────────────────────────────────────────────
-                ClientEvent::DmSend { recipient_id, content, reply_to } => {
+                ClientEvent::DmSend { recipient_id, content, reply_to, attachment_url } => {
                     // Validate recipient UUID
                     let recipient_uuid = match Uuid::parse_str(&recipient_id) {
                         Ok(u) => u,
@@ -966,8 +975,13 @@ pub async fn handle_connection(
                             continue;
                         }
                     };
-                    if let Err(reason) = validate_content(&content) {
-                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                    if attachment_url.is_none() {
+                        if let Err(reason) = validate_content(&content) {
+                            send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                            continue;
+                        }
+                    } else if content.len() > MAX_CONTENT_LEN {
+                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", "message content exceeds maximum length");
                         continue;
                     }
                     // Prevent sending DM to self
@@ -1003,6 +1017,7 @@ pub async fn handle_connection(
                             content.clone(),
                             created_at.clone(),
                             reply_to_oid,
+                            attachment_url.clone(),
                         )
                         .await
                     {
@@ -1036,6 +1051,7 @@ pub async fn handle_connection(
                         content,
                         created_at,
                         reply_to,
+                        attachment_url,
                     };
 
                     // Broadcast to the DM room (users currently viewing)

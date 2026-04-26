@@ -39,7 +39,7 @@ type WebSocketState = {
   disconnect(): void;
 
   // ── Channel messages ────────────────────────────────────────────────────────
-  sendMessage(channelId: string, content: string, replyTo?: string): void;
+  sendMessage(channelId: string, content: string, replyTo?: string, attachmentUrl?: string): void;
   editMessage(channelId: string, messageId: string, content: string): void;
   deleteMessage(channelId: string, messageId: string): void;
   sendGif(
@@ -59,7 +59,7 @@ type WebSocketState = {
   setCurrentChannel(channelId: string | null): void;
 
   // ── DM ──────────────────────────────────────────────────────────────────────
-  sendDm(recipientId: string, content: string, replyTo?: string): void;
+  sendDm(recipientId: string, content: string, replyTo?: string, attachmentUrl?: string): void;
   editDm(conversationId: string, messageId: string, content: string): void;
   deleteDm(conversationId: string, messageId: string): void;
   sendDmGif(
@@ -88,6 +88,7 @@ function isEnglish(): boolean {
 export const useWebSocketStore = create<WebSocketState>((set, get) => {
   // ── React to manager state transitions ──────────────────────────────────────
   wsManager.onStateChange((state, meta) => {
+    console.debug("[WS store] state →", state, "| attempt:", meta.attempt, "| nextDelay:", meta.nextDelayMs, "ms");
     set({
       connectionState: state,
       isConnected: state === "connected",
@@ -146,6 +147,7 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
 
   // ── React to Error server events ────────────────────────────────────────────
   wsManager.onMessage((event) => {
+    console.debug("[WS store] event received:", event.type);
     if (event.type !== "Error") return;
     const { code, message } = event.payload;
 
@@ -196,12 +198,13 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
 
     // ── Channel messages ──────────────────────────────────────────────────────
 
-    sendMessage(channelId, content, replyTo) {
+    sendMessage(channelId, content, replyTo, attachmentUrl) {
       if (get().currentChannelId !== channelId) get().joinChannel(channelId);
       wsManager.send("MessageSend", {
         channel_id: channelId,
         content,
         reply_to: replyTo,
+        attachment_url: attachmentUrl,
       });
     },
 
@@ -267,11 +270,12 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
 
     // ── DM ────────────────────────────────────────────────────────────────────
 
-    sendDm(recipientId, content, replyTo) {
+    sendDm(recipientId, content, replyTo, attachmentUrl) {
       wsManager.send("DmSend", {
         recipient_id: recipientId,
         content,
         reply_to: replyTo,
+        attachment_url: attachmentUrl,
       });
     },
 

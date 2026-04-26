@@ -27,6 +27,8 @@ pub struct MessageDb {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<ObjectId>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachment_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reactions: Option<Vec<Reaction>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pinned_by: Option<String>,
@@ -259,6 +261,44 @@ impl MessageRepo {
         }
 
         // On renvoie l'historique dans l'ordre chronologique
+        messages.reverse();
+        messages
+    }
+
+    // ---------------------------------------------------------
+    // 📜 GET HISTORY BEFORE cursor (cursor-based pagination)
+    // Returns per_page messages with _id < before_id, chronological order
+    // ---------------------------------------------------------
+    pub async fn find_by_channel_before(
+        &self,
+        channel_id: &str,
+        before_id: &ObjectId,
+        per_page: u64,
+    ) -> Vec<MessageDb> {
+        let collection = match self.collection.as_ref() {
+            Some(c) => c,
+            None => return vec![],
+        };
+
+        let filter = doc! {
+            "channel_id": channel_id,
+            "_id": { "$lt": before_id },
+        };
+        let options = FindOptions::builder()
+            .sort(doc! { "_id": -1 })
+            .limit(Some(per_page as i64))
+            .build();
+
+        let mut cursor = match collection.find(filter, options).await {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+
+        let mut messages = Vec::new();
+        while let Some(msg) = cursor.try_next().await.unwrap_or(None) {
+            messages.push(msg);
+        }
+
         messages.reverse();
         messages
     }
@@ -539,6 +579,7 @@ mod tests {
             content: "hello".into(),
             created_at: "now".into(),
             reply_to: None,
+            attachment_url: None,
             reactions: None,
             pinned_by: None,
             pinned_at: None,

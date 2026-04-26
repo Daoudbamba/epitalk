@@ -20,6 +20,7 @@ pub enum ClientEvent {
         channel_id: String,
         content: String,
         reply_to: Option<String>,
+        attachment_url: Option<String>,
     },
     MessageEdit {
         channel_id: String,
@@ -64,6 +65,7 @@ pub enum ClientEvent {
         recipient_id: String,
         content: String,
         reply_to: Option<String>,
+        attachment_url: Option<String>,
     },
     /// Edit a direct message
     DmEdit {
@@ -111,6 +113,7 @@ pub enum ServerEvent {
         content: String,
         created_at: String,
         reply_to: Option<String>,
+        attachment_url: Option<String>,
     },
     MessageEdited {
         id: String,
@@ -215,6 +218,7 @@ pub enum ServerEvent {
         content: String,
         created_at: String,
         reply_to: Option<String>,
+        attachment_url: Option<String>,
     },
 
     /// A direct message was edited
@@ -327,6 +331,7 @@ mod tests {
             content: "hello".into(),
             created_at: "2024-01-01T00:00:00Z".into(),
             reply_to: None,
+            attachment_url: None,
         };
 
         let json = serde_json::to_string(&event).unwrap();

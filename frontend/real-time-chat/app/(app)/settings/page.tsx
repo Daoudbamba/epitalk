@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useAppearanceStore, type Theme, type FontSize } from "@/store/appearance.store";
 import { useLanguage } from "@/components/language-provider";
-import { getSettingsNavLabel, getSettingsStatusLabel } from "@/lib/settings-i18n";
+import { getSettingsNavLabel } from "@/lib/settings-i18n";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import type { UpdateProfileInput } from "@/lib/api/auth.api";
@@ -34,13 +34,6 @@ const API_BASE =
   typeof window !== "undefined"
     ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
     : "http://localhost:3001";
-
-const STATUS_OPTIONS = [
-  { value: "ONLINE" as const, color: "#22C55E", dot: "bg-green-500" },
-  { value: "IDLE" as const, color: "#F59E0B", dot: "bg-amber-500" },
-  { value: "DND" as const, color: "#6B7280", dot: "bg-gray-500" },
-  { value: "OFFLINE" as const, color: "#EF4444", dot: "bg-red-500" },
-];
 
 type Section = "profile" | "appearance" | "privacy" | "notifications";
 
@@ -131,13 +124,6 @@ export default function SettingsPage() {
     }
   }, [showEmojiPicker]);
 
-
-  const statusLabelByValue: Record<"ONLINE" | "IDLE" | "DND" | "OFFLINE", string> = {
-    ONLINE: getSettingsStatusLabel(language, "ONLINE"),
-    IDLE: getSettingsStatusLabel(language, "IDLE"),
-    DND: getSettingsStatusLabel(language, "DND"),
-    OFFLINE: getSettingsStatusLabel(language, "OFFLINE"),
-  };
 
   const navLabelBySection: Record<Section, string> = {
     profile: getSettingsNavLabel(language, "profile"),
@@ -246,7 +232,6 @@ export default function SettingsPage() {
   }
 
   const avatarUrl = user.avatar_url ? `${API_BASE}${user.avatar_url}` : null;
-  const currentStatus = STATUS_OPTIONS.find((s) => s.value === (user.status || "ONLINE"));
 
   return (
     <div className="h-full flex bg-[var(--surface)]">
@@ -274,15 +259,9 @@ export default function SettingsPage() {
                   {user.username.slice(0, 2)}
                 </span>
               )}
-              {currentStatus && (
-                <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
-              )}
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
-              <div className="text-xs text-[var(--muted-foreground)]">
-                {currentStatus ? statusLabelByValue[currentStatus.value] : ""}
-              </div>
             </div>
           </div>
         </div>
@@ -369,9 +348,6 @@ export default function SettingsPage() {
                       <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     </div>
                   )}
-                  {currentStatus && (
-                    <span className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-3 border-[var(--card)] ${currentStatus.dot}`} />
-                  )}
                 </div>
               </div>
             </div>
@@ -401,9 +377,6 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </div>
-                      {currentStatus && (
-                        <span className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
-                      )}
                     </div>
                     <div className="mt-2">
                       <div className="font-bold text-[var(--foreground)]">{user.username}</div>
@@ -440,15 +413,9 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </div>
-                      {currentStatus && (
-                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
-                      )}
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
-                      <div className="text-xs text-[var(--muted-foreground)] truncate">
-                        {currentStatus ? statusLabelByValue[currentStatus.value] : ""}
-                      </div>
                     </div>
                   </div>
                 </div>

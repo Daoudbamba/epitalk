@@ -17,6 +17,7 @@ impl MessageService {
         content: String,
         created_at: String,
         reply_to: Option<ObjectId>,
+        attachment_url: Option<String>,
     ) -> mongodb::error::Result<ObjectId> {
         let msg = MessageDb {
             id: None,
@@ -25,6 +26,7 @@ impl MessageService {
             content,
             created_at,
             reply_to,
+            attachment_url,
             reactions: None,
             pinned_by: None,
             pinned_at: None,
@@ -40,6 +42,15 @@ impl MessageService {
         per_page: u64,
     ) -> Result<Vec<MessageDb>, ()> {
         Ok(self.repo.find_by_channel(channel_id, page, per_page).await)
+    }
+
+    pub async fn get_history_before(
+        &self,
+        channel_id: &str,
+        before_id: &ObjectId,
+        per_page: u64,
+    ) -> Result<Vec<MessageDb>, ()> {
+        Ok(self.repo.find_by_channel_before(channel_id, before_id, per_page).await)
     }
 
     pub async fn search_messages(&self, channel_id: &str, q: &str, page: u64, per_page: u64) -> Result<Vec<MessageDb>, ()> {

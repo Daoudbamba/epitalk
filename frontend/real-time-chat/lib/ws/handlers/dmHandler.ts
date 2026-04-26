@@ -26,7 +26,7 @@ function formatLastMessage(content: string): string {
 
 export const dmHandler = {
   onDmNew(payload: DmNew): void {
-    const { id, conversation_id, author_id, username, content, created_at, reply_to } =
+    const { id, conversation_id, author_id, username, content, created_at, reply_to, attachment_url } =
       payload;
 
     useDmStore.getState().addDmMessage(conversation_id, {
@@ -36,7 +36,8 @@ export const dmHandler = {
       username,
       content,
       created_at,
-      reply_to,
+      reply_to: reply_to ?? undefined,
+      attachment_url,
     });
 
     const authUser = useAuthStore.getState().user;

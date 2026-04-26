@@ -1,5 +1,6 @@
 import type { ConnectionState, ServerEvent } from "./types";
 import { ServerEventSchema } from "./types";
+import { useAuthStore } from "@/store/auth.store";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -50,12 +51,20 @@ export class WebSocketManager {
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   connect(token: string): void {
+    console.debug("[WS] connect() — state:", this._state, "| readyState:", this._socket?.readyState ?? "none");
     if (
       this._socket &&
       (this._socket.readyState === WebSocket.OPEN ||
         this._socket.readyState === WebSocket.CONNECTING)
     ) {
       return;
+    }
+    // Detach and close any stale socket in CLOSING/CLOSED state to prevent
+    // its onclose handler from nulling out the new socket we are about to open.
+    if (this._socket) {
+      this._socket.onclose = null;
+      this._socket.close();
+      this._socket = null;
     }
     this._token = token;
     this._intentionalClose = false;
@@ -64,6 +73,7 @@ export class WebSocketManager {
   }
 
   disconnect(): void {
+    console.debug("[WS] disconnect() — intentional close");
     this._intentionalClose = true;
     this._attempt = 0;
     this._nextDelayMs = null;
@@ -114,11 +124,16 @@ export class WebSocketManager {
   // ─── Private ────────────────────────────────────────────────────────────────
 
   private _openSocket(): void {
-    if (!this._token) return;
+    const token = useAuthStore.getState().token;
+    if (!token) {
+      console.debug("[WS] _openSocket: no token in auth store, aborting");
+      return;
+    }
 
+    console.debug("[WS] _openSocket() — attempt", this._attempt, "| url:", WS_BASE);
     this._setState("connecting", { attempt: this._attempt, nextDelayMs: null });
 
-    const url = `${WS_BASE}?token=${encodeURIComponent(this._token)}`;
+    const url = `${WS_BASE}?token=${encodeURIComponent(token)}`;
     const socket = new WebSocket(url);
     this._socket = socket;
 
@@ -134,6 +149,7 @@ export class WebSocketManager {
     }
 
     socket.onopen = (): void => {
+      console.debug("[WS] onopen — connection established");
       this._attempt = 0;
       this._nextDelayMs = null;
       this._setState("connected", { attempt: 0, nextDelayMs: null });
@@ -151,6 +167,7 @@ export class WebSocketManager {
           "type" in json &&
           (json as { type: string }).type === "Pong"
         ) {
+          console.debug("[WS] event received: Pong");
           this._clearPongTimer();
           // Still notify listeners so the store can track heartbeat
           for (const l of this._messageListeners) {
@@ -164,6 +181,7 @@ export class WebSocketManager {
           console.warn("[WS] Unknown/invalid event:", result.error.flatten());
           return;
         }
+        console.debug("[WS] event received:", result.data.type);
         for (const l of this._messageListeners) l(result.data);
       } catch (e) {
         console.error("[WS] Parse error:", e);
@@ -171,12 +189,14 @@ export class WebSocketManager {
     };
 
     socket.onerror = (): void => {
+      console.debug("[WS] onerror — socket error | isReady:", this.isReady());
       if (!this.isReady()) {
         this._setState("backoff", { attempt: this._attempt, nextDelayMs: null });
       }
     };
 
     socket.onclose = (ev: CloseEvent): void => {
+      console.debug("[WS] onclose — code:", ev.code, "| reason:", ev.reason || "(none)", "| intentional:", this._intentionalClose);
       this._socket = null;
       this._stopHeartbeat();
 
@@ -233,12 +253,14 @@ export class WebSocketManager {
     this._nextDelayMs = delay;
     const isDegraded = this._attempt > DEGRADED_THRESHOLD;
 
+    console.debug("[WS] scheduleReconnect — attempt:", this._attempt, "| delay:", delay, "ms | degraded:", isDegraded);
     this._setState(isDegraded ? "degraded" : "backoff", {
       attempt: this._attempt,
       nextDelayMs: delay,
     });
 
     this._reconnectTimer = setTimeout(() => {
+      console.debug("[WS] reconnect timer fired — attempt:", this._attempt);
       if (this._token) this._openSocket();
     }, delay);
   }
