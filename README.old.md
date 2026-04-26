@@ -133,7 +133,7 @@ DATABASE_URL=postgres://epitalk:Epitalk94!@localhost:5432/epitalk
 MONGO_URL=mongodb://localhost:27017/epitalk
 JWT_SECRET=your-super-secret-key-at-least-32-chars
 JWT_EXPIRATION_HOURS=24
-PORT=8080
+PORT=3001
 ```
 
 ### 4. Lancer le backend
@@ -144,7 +144,7 @@ cargo run
 ```
 
 ```
-🚀 Server listening on 0.0.0.0:8080
+🚀 Server listening on 0.0.0.0:3001
 ```
 
 ### 5. Lancer le frontend
@@ -165,9 +165,9 @@ npm run dev
 | Service | URL |
 |---------|-----|
 | **Frontend** | http://localhost:3000 |
-| **API REST** | http://localhost:8080/api |
-| **WebSocket** | ws://localhost:8080/ws |
-| **Health Check** | http://localhost:8080/health |
+| **API REST** | http://localhost:3001/api |
+| **WebSocket** | ws://localhost:3001/ws |
+| **Health Check** | http://localhost:3001/health |
 
 ---
 
@@ -222,7 +222,7 @@ Les diagrammes sont disponibles dans `docs/uml/` :
 
 ## 📡 API REST
 
-Base URL : `http://localhost:8080/api`
+Base URL : `http://localhost:3001/api`
 
 ### Authentification
 
@@ -276,7 +276,7 @@ Base URL : `http://localhost:8080/api`
 
 ## 🔌 WebSocket
 
-Endpoint : `ws://localhost:8080/ws`
+Endpoint : `ws://localhost:3001/ws`
 
 ### Messages Client → Serveur
 

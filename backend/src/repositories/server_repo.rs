@@ -190,3 +190,60 @@ impl ServerRepository {
         Ok(count.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::MemberRole;
+    use crate::repositories::{MembershipRepository, UserRepository};
+    use crate::test_utils::{delete_server, delete_user, try_test_pool};
+
+    #[tokio::test]
+    async fn create_update_transfer_and_delete_server() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let owner_email = format!("owner-{}@example.test", Uuid::new_v4());
+        let owner_username = format!("owner_{}", Uuid::new_v4().to_string().replace('-', ""));
+        let new_owner_email = format!("owner2-{}@example.test", Uuid::new_v4());
+        let new_owner_username = format!("owner2_{}", Uuid::new_v4().to_string().replace('-', ""));
+
+        let owner = UserRepository::create(&pool, &owner_email, "hash", &owner_username)
+            .await
+            .expect("create owner");
+        let new_owner = UserRepository::create(&pool, &new_owner_email, "hash", &new_owner_username)
+            .await
+            .expect("create new owner");
+
+        let server = ServerRepository::create(&pool, "Server", owner.id)
+            .await
+            .expect("create server");
+
+        let found = ServerRepository::find_by_id(&pool, server.id)
+            .await
+            .expect("find server")
+            .expect("server exists");
+        assert_eq!(found.owner_id, owner.id);
+
+        let updated = ServerRepository::update(&pool, server.id, "Updated")
+            .await
+            .expect("update server");
+        assert_eq!(updated.name, "Updated");
+
+        MembershipRepository::create(&pool, new_owner.id, server.id, MemberRole::Member)
+            .await
+            .expect("add member");
+
+        let transferred = ServerRepository::transfer_ownership(&pool, server.id, new_owner.id, owner.id)
+            .await
+            .expect("transfer ownership");
+        assert_eq!(transferred.owner_id, new_owner.id);
+
+        let count = ServerRepository::get_member_count(&pool, server.id)
+            .await
+            .expect("member count");
+        assert!(count >= 2);
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+        delete_user(&pool, new_owner.id).await;
+    }
+}

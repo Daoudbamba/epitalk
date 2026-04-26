@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Head from "next/head";
 import { Providers } from "./providers";
+import { ThemeInitializer } from "./theme-initializer";
 
 export const metadata: Metadata = {
   title: "Real Time Chat",
@@ -15,7 +16,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
       <Head>
         <link
           rel="stylesheet"
@@ -23,6 +24,7 @@ export default function RootLayout({
         />
       </Head>
       <body>
+        <ThemeInitializer />
         <Providers>{children}</Providers>
       </body>
     </html>

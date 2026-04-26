@@ -31,12 +31,35 @@ export const MemberSchema = z.object({
   username: z.string(),
   role: z.enum(["Owner", "Admin", "Moderator", "Member"]),
   joined_at: z.string(),
+  avatar_url: z.string().nullable().optional(),
+  status: z.string().nullable().optional(),
 });
 
 // Alias for convenience
 export type MemberId = string;
 
 export type Member = z.infer<typeof MemberSchema>;
+
+// Ban schema - matches backend BanResponse
+export const BanSchema = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  username: z.string(),
+  banned_by: z.string(),
+  reason: z.string().nullable(),
+  expires_at: z.string().nullable(),
+  created_at: z.string(),
+});
+
+export type Ban = z.infer<typeof BanSchema>;
+
+// Request body for ban endpoint
+export const BanMemberRequestSchema = z.object({
+  reason: z.string().nullable().optional(),
+  expires_at: z.string().nullable().optional(),
+});
+
+export type BanMemberRequest = z.infer<typeof BanMemberRequestSchema>;
 
 // Invite schema - matches backend InviteResponse
 export const InviteSchema = z.object({

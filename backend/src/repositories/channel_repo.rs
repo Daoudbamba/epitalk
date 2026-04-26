@@ -112,3 +112,52 @@ impl ChannelRepository {
         Ok(count.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::repositories::UserRepository;
+    use crate::test_utils::{delete_server, delete_user, try_test_pool};
+
+    #[tokio::test]
+    async fn create_update_and_delete_channel() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let email = format!("chan-{}@example.test", Uuid::new_v4());
+        let username = format!("chan_{}", Uuid::new_v4().to_string().replace('-', ""));
+
+        let owner = UserRepository::create(&pool, &email, "hash", &username)
+            .await
+            .expect("create owner");
+
+        let server = crate::repositories::ServerRepository::create(&pool, "Chan Server", owner.id)
+            .await
+            .expect("create server");
+
+        let channel = ChannelRepository::create(&pool, server.id, "alpha", ChannelKind::Text)
+            .await
+            .expect("create channel");
+
+        let by_id = ChannelRepository::find_by_id(&pool, channel.id)
+            .await
+            .expect("find channel")
+            .expect("channel exists");
+        assert_eq!(by_id.name, "alpha");
+
+        let updated = ChannelRepository::update(&pool, channel.id, "beta")
+            .await
+            .expect("update channel");
+        assert_eq!(updated.name, "beta");
+
+        let list = ChannelRepository::find_by_server(&pool, server.id)
+            .await
+            .expect("find by server");
+        assert!(list.iter().any(|c| c.id == channel.id));
+
+        ChannelRepository::delete(&pool, channel.id)
+            .await
+            .expect("delete channel");
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+    }
+}

@@ -8,7 +8,7 @@ https://api.discord-clone.example.com/api/v1
 
 En développement local :
 ```
-http://localhost:8080/api/v1
+http://localhost:3001/api/v1
 ```
 
 ## Authentification

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import {
   DEFAULT_LANGUAGE,
   getTranslations,
@@ -25,23 +25,29 @@ export function LanguageProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [language, setLanguageState] = useState<Language>(() => {
+  // Important: pour éviter les erreurs d'hydratation, on ne lit pas
+  // window/localStorage dans l'état initial. On commence toujours avec
+  // DEFAULT_LANGUAGE, identique côté serveur et client, puis on ajuste
+  // la langue dans un useEffect uniquement côté client.
+  const [language, setLanguageState] = useState<Language>(DEFAULT_LANGUAGE);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
-      return DEFAULT_LANGUAGE;
+      return;
     }
 
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored === "fr" || stored === "en") {
-      return stored;
+      setLanguageState(stored);
+      return;
     }
 
     const browserLang = window.navigator.language.slice(0, 2);
     if (browserLang === "fr" || browserLang === "en") {
-      return browserLang;
+      setLanguageState(browserLang);
+      return;
     }
-
-    return DEFAULT_LANGUAGE;
-  });
+  }, []);
 
   const setLanguage = (next: Language) => {
     setLanguageState(next);

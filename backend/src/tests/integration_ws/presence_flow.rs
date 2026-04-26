@@ -1,73 +1,59 @@
-//! Integration tests for WebSocket presence (online/offline) flow.
+//! Executable tests for presence lifecycle semantics.
 //!
-//! These tests verify the real-time presence system:
-//! 1. When a user connects via WS → UserOnline event is broadcast
-//! 2. When a user disconnects → UserOffline event is broadcast
-//! 3. Multiple connections from same user don't double-count
-//! 4. Online status is queryable via REST API
-//!
-//! # Architecture
-//! - `PresenceService` (DashMap): tracks `user_id → online`
-//! - `ws_upgrade.rs`: broadcasts `UserOnline` on connect
-//! - `connection.rs`: broadcasts `UserOffline` on last connection close
-//! - `routes/servers.rs` GET `/servers/{id}/online`: returns list of online user_ids
+//! These tests validate the behavior expected by the WebSocket presence flow
+//! without requiring a live network server.
 
 #[cfg(test)]
 mod tests {
-    /// Verifies that connecting via WS triggers a UserOnline broadcast.
-    ///
-    /// Flow:
-    /// 1. Client A connects to WS (already in a server)
-    /// 2. Client B connects to WS
-    /// 3. Client A should receive: {"type":"UserOnline","payload":{"user_id":"B_ID"}}
+    use std::time::Duration;
+
+    use crate::services::presence_service::{PresenceService, PresenceStatus};
+
     #[test]
-    #[ignore = "requires running backend + databases"]
-    fn user_online_broadcast_on_connect() {
-        // The ws_upgrade handler:
-        //   1. Validates JWT token
-        //   2. Calls presence.set_online(user_id)
-        //   3. Broadcasts ServerEvent::UserOnline to all connected clients
-        //   4. Starts the connection handler
-        assert!(true, "Test scaffold – run with live backend");
+    fn first_connection_transitions_user_to_online() {
+        let svc = PresenceService::new();
+        let changed = svc.add_connection("u1", "c1");
+        assert!(changed);
+        assert!(svc.is_online("u1"));
     }
 
-    /// Verifies that disconnecting triggers a UserOffline broadcast.
-    ///
-    /// Flow:
-    /// 1. Client A and Client B are connected
-    /// 2. Client B disconnects (sends close frame)
-    /// 3. Client A receives: {"type":"UserOffline","payload":{"user_id":"B_ID"}}
     #[test]
-    #[ignore = "requires running backend + databases"]
-    fn user_offline_broadcast_on_disconnect() {
-        // The connection cleanup in handle_connection:
-        //   1. Calls hub.unregister_connection()
-        //   2. Checks if user has any remaining connections
-        //   3. If none → presence.set_offline(user_id)
-        //   4. Broadcasts ServerEvent::UserOffline
-        assert!(true, "Test scaffold – run with live backend");
+    fn multiple_connections_require_last_disconnect_for_offline() {
+        let svc = PresenceService::new();
+        let _ = svc.add_connection("u1", "c1");
+        let changed_second = svc.add_connection("u1", "c2");
+        assert!(!changed_second);
+
+        let first_remove = svc.remove_connection("u1", "c1");
+        assert!(first_remove.is_none());
+        assert!(svc.is_online("u1"));
+
+        let second_remove = svc.remove_connection("u1", "c2");
+        assert_eq!(second_remove, Some(PresenceStatus::Offline));
+        assert!(!svc.is_online("u1"));
     }
 
-    /// Verifies that multiple WS connections from the same user
-    /// only trigger offline after ALL connections close.
-    ///
-    /// Flow:
-    /// 1. User A opens 2 WS connections
-    /// 2. Connection 1 closes → no UserOffline (connection 2 still active)
-    /// 3. Connection 2 closes → UserOffline broadcast
     #[test]
-    #[ignore = "requires running backend + databases"]
-    fn multiple_connections_single_offline() {
-        assert!(true, "Test scaffold – run with live backend");
+    fn refresh_activity_reactivates_idle_user() {
+        let svc = PresenceService::new();
+        let _ = svc.set_online("u1");
+        let _ = svc.set_status("u1", PresenceStatus::Idle);
+        let changed = svc.refresh_activity("u1");
+
+        assert!(changed);
+        assert_eq!(svc.get_status("u1"), PresenceStatus::Online);
     }
 
-    /// Verifies the REST endpoint returns online users correctly.
-    ///
-    /// GET /api/servers/{server_id}/online
-    /// Should return an array of user_ids that are currently connected.
     #[test]
-    #[ignore = "requires running backend + databases"]
-    fn online_endpoint_returns_connected_users() {
-        assert!(true, "Test scaffold – run with live backend");
+    fn scan_for_idle_marks_stale_online_users() {
+        let mut svc = PresenceService::new();
+        svc.idle_threshold = Duration::from_millis(1);
+
+        let _ = svc.set_online("u1");
+        std::thread::sleep(Duration::from_millis(3));
+
+        let changed = svc.scan_for_idle();
+        assert!(changed.contains(&"u1".to_string()));
+        assert_eq!(svc.get_status("u1"), PresenceStatus::Offline);
     }
 }

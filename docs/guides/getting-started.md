@@ -57,7 +57,7 @@ JWT_PUBLIC_KEY_PATH=./keys/jwt_public.pem
 
 # Server
 HOST=127.0.0.1
-PORT=8080
+PORT=3001
 RUST_LOG=info
 ```
 
@@ -109,12 +109,12 @@ cd backend
 cargo run
 ```
 
-Le serveur démarre sur `http://localhost:8080`
+Le serveur démarre sur `http://localhost:3001`
 
 ### Vérifier que ça fonctionne
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:3001/health
 # {"status":"ok","version":"1.0.0"}
 ```
 
@@ -141,7 +141,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8080:8080"
+      - "3001:3001"
     environment:
       - DATABASE_URL=postgres://postgres:password@postgres:5432/discord_clone
       - MONGODB_URI=mongodb://mongo:27017/discord_clone

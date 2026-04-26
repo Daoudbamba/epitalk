@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { Channel } from "@/lib/api/schemas/channels.schema";
 
 type ChannelState = {
@@ -9,10 +10,18 @@ type ChannelState = {
   reset: () => void;
 };
 
-export const useChannelStore = create<ChannelState>((set) => ({
-  channels: [],
-  activeChannelId: null,
-  setChannels: (channels) => set({ channels }),
-  setActiveChannel: (id) => set({ activeChannelId: id }),
-  reset: () => set({ channels: [], activeChannelId: null }),
-}));
+export const useChannelStore = create<ChannelState>()(
+  persist(
+    (set) => ({
+      channels: [],
+      activeChannelId: null,
+      setChannels: (channels) => set({ channels }),
+      setActiveChannel: (id) => set({ activeChannelId: id }),
+      reset: () => set({ channels: [], activeChannelId: null }),
+    }),
+    {
+      name: "channel-store",
+      partialize: (state) => ({ activeChannelId: state.activeChannelId }),
+    },
+  ),
+);
