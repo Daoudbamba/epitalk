@@ -1,4 +1,8 @@
 import { useMessageStore } from "@/store/message.store";
+import { useNotificationStore } from "@/store/notifications.store";
+import { useAuthStore } from "@/store/auth.store";
+import { useChannelStore } from "@/store/channel.store";
+import { useServerStore } from "@/store/server.store";
 import type { z } from "zod";
 import type {
   MessageNewSchema,
@@ -31,6 +35,39 @@ export const messageHandler = {
       attachment_url: payload.attachment_url,
       reactions: payload.reactions,
     });
+
+    // Trigger notification for new server message
+    const currentUser = useAuthStore.getState().user;
+    if (payload.author_id !== currentUser?.id) {
+      // Detect if this is a historical message (loaded from archive during JoinChannel)
+      // Messages older than 5 seconds are considered historical
+      const messageTimestamp = new Date(payload.created_at).getTime();
+      const now = Date.now();
+      const messageAgeMs = now - messageTimestamp;
+      const isHistorical = messageAgeMs > 5000; // 5 seconds threshold
+
+      const channelStore = useChannelStore.getState();
+      const serverStore = useServerStore.getState();
+      
+      const channel = channelStore.channels.find((c) => c.id === payload.channel_id);
+      const server = channel ? serverStore.servers.find((s) => s.id === channel.server_id) : null;
+      
+      const channelName = channel?.name || "channel";
+      const serverName = server?.name || "Serveur";
+      
+      useNotificationStore.getState().showNotification({
+        type: "server_message",
+        title: `${payload.username} in ${serverName}`,
+        message: `#${channelName}: ${payload.content.substring(0, 100)}`,
+        isHistorical,
+        data: {
+          channelId: payload.channel_id,
+          channelName,
+          serverId: server?.id,
+          serverName,
+        },
+      });
+    }
   },
 
   onMessageEdited(payload: MessageEdited): void {

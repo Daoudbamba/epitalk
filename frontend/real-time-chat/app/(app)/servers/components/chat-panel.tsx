@@ -18,6 +18,7 @@ import {
   PinOff,
   Paperclip,
   FileText,
+  Clock3,
 } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
@@ -409,10 +410,17 @@ export function ChatPanel() {
     currentMemberRole === "Moderator";
 
   const onSend = async () => {
-    if (!activeChannelId || !canLoad) return;
+    console.log("🔵 [onSend] Called:", { activeChannelId, canLoad, activeServerId });
+    if (!activeChannelId || !canLoad) {
+      console.error("❌ [onSend] Blocked - activeChannelId:", activeChannelId, "canLoad:", canLoad);
+      return;
+    }
 
     const content = value.trim();
-    if (!content && !attachmentFile) return;
+    if (!content && !attachmentFile) {
+      console.log("⚠️ [onSend] Empty content and no attachment");
+      return;
+    }
 
     if (!isConnected) {
       setError(isEnglish ? "Not connected to the server" : "Non connecté au serveur");
@@ -486,6 +494,7 @@ export function ChatPanel() {
         setReplyToUsername(null);
         setScheduleOpen(false);
       } else {
+        console.log("🔵 [onSend] About to call sendMessage:", { activeChannelId, content: content.substring(0, 50), replyTo, attachmentUrl });
         sendMessage(activeChannelId, content, replyTo || undefined, attachmentUrl);
         setReplyTo(null);
         setReplyToUsername(null);

@@ -93,7 +93,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     // Show toast notification in-app
     if (type === "server_message") {
       console.log("📢 [Notif] 🟢 Showing SERVER MESSAGE toast (custom component)");
-      toast.custom((t) =>
+      toast.custom((t: any) =>
         React.createElement(ServerMessageToast, {
           serverName: data?.serverName || "Serveur",
           channelName: data?.channelName || "channel",
@@ -113,7 +113,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       );
     } else if (type === "dm") {
       console.log("📢 [Notif] 🟢 Showing DM toast (custom component)");
-      toast.custom((t) =>
+      toast.custom((t: any) =>
         React.createElement(DMMessageToast, {
           username: title.replace("Message de ", ""), // Extract username from title
           message: message,

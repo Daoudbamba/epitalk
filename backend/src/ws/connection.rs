@@ -16,7 +16,7 @@ use crate::services::typing_service::TypingService;
 use crate::ws::hub::{ConnId, Hub};
 use mongodb::bson::oid::ObjectId;
 use crate::ws::protocol::{
-    validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_CONTENT_LEN,
+    validate_channel_id, validate_content, validate_schedule, ClientEvent, ServerEvent, MAX_CONTENT_LEN,
     MAX_FRAME_BYTES, TYPING_THROTTLE_MS,
 };
 use sqlx::PgPool;
@@ -618,6 +618,7 @@ pub async fn handle_connection(
                                 content_scheduled.clone(),
                                 created_at.clone(),
                                 reply_to_oid_scheduled,
+                                None,
                             )
                             .await
                         {
@@ -650,6 +651,7 @@ pub async fn handle_connection(
                             content: content_scheduled.clone(),
                             created_at,
                             reply_to: reply_to_hex,
+                            attachment_url: None,
                         };
 
                         hub_scheduled.broadcast_room(&channel_id_scheduled, event).await;

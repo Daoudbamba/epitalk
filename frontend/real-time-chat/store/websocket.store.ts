@@ -26,7 +26,7 @@ initEventBus();
 type ClientEvent =
   | {
       type: "MessageSend";
-      payload: { channel_id: string; content: string; reply_to?: string };
+      payload: { channel_id: string; content: string; reply_to?: string; attachment_url?: string };
     }
   | {
       type: "MessageSchedule";
@@ -208,6 +208,7 @@ type WebSocketState = {
 
   // ── Channel messages ────────────────────────────────────────────────────────
   sendMessage(channelId: string, content: string, replyTo?: string, attachmentUrl?: string): void;
+  sendScheduledMessage(channelId: string, content: string, dayOfWeek: number, hour: number, minute: number, replyTo?: string): void;
   editMessage(channelId: string, messageId: string, content: string): void;
   deleteMessage(channelId: string, messageId: string): void;
   sendGif(
@@ -225,6 +226,8 @@ type WebSocketState = {
   getMessages(channelId: string): WsMessage[];
   clearMessages(channelId: string): void;
   setCurrentChannel(channelId: string | null): void;
+  loadMessages(channelId: string): Promise<void>;
+  loadDmMessages(conversationId: string): Promise<void>;
 
   // ── DM ──────────────────────────────────────────────────────────────────────
   sendDm(recipientId: string, content: string, replyTo?: string, attachmentUrl?: string): void;
@@ -311,31 +314,92 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
         }
       });
     }
-  },
+  });
 
-  sendMessage: (channelId: string, content: string, replyTo?: string) => {
-    const { socket, currentChannelId } = get();
-    console.log("📤 Sending message:", {
+  wsManager.onMessage((event) => {
+    console.debug("[WS store] event received:", event.type);
+    if (event.type !== "Error") return;
+    const { code, message } = event.payload;
+
+    if (code === "BANNED" || code === "NOT_MEMBER") {
+      const channelId = get().currentChannelId;
+      if (channelId) {
+        useMessageStore.getState().clearChannel(channelId);
+        useTypingStore.getState().clearChannel(channelId);
+      }
+      const label =
+        code === "BANNED"
+          ? isEnglish()
+            ? "You have been banned from this server."
+            : "Vous avez été banni de ce serveur."
+          : isEnglish()
+            ? "You are not a member of this server."
+            : "Vous n'êtes pas membre de ce serveur.";
+      set({ error: `[${code}] ${label}`, currentChannelId: null });
+      return;
+    }
+
+    set({ error: `[${code}] ${message}` });
+  });
+
+  return {
+    socket: null,
+    isConnected: false,
+    connectionState: "idle",
+    reconnectAttempt: 0,
+    nextRetryDelayMs: null,
+    currentChannelId: null,
+    currentDmPeerId: null,
+    error: null,
+    messages: {},
+    dmMessages: {},
+    typingUsers: {},
+    presence: {},
+
+    sendMessage: (channelId: string, content: string, replyTo?: string, attachmentUrl?: string) => {
+    const { socket, currentChannelId, isConnected } = get();
+    console.log("📤 [sendMessage] Called with:", {
       channelId,
-      content,
+      content: content.substring(0, 50),
       replyTo,
+      attachmentUrl,
       socketState: socket?.readyState,
+      isConnected,
+      currentChannelId,
     });
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      if (currentChannelId !== channelId) {
-        get().joinChannel(channelId);
-      }
-      const event: ClientEvent = {
-        type: "MessageSend",
-        payload: { channel_id: channelId, content, reply_to: replyTo },
-      };
-      const json = JSON.stringify(event);
-      console.log("📤 Sending WebSocket event:", json);
-      socket.send(json);
-    } else {
-      console.error("❌ Cannot send message: WebSocket not connected");
+    if (!channelId) {
+      console.error("❌ Cannot send message: channelId is missing");
+      return;
     }
+
+    if (!socket) {
+      console.error("❌ Cannot send message: WebSocket is null");
+      return;
+    }
+
+    if (socket.readyState !== WebSocket.OPEN) {
+      console.error("❌ Cannot send message: WebSocket not OPEN (state:", socket.readyState, ")");
+      return;
+    }
+
+    if (currentChannelId !== channelId) {
+      console.error("❌ Cannot send message: Not in the target channel. Current:", currentChannelId, "Target:", channelId);
+      return;
+    }
+    
+    const event = JSON.stringify({
+      type: "MessageSend",
+      payload: {
+        channel_id: channelId,
+        content,
+        ...(replyTo && { reply_to: replyTo }),
+        ...(attachmentUrl && { attachment_url: attachmentUrl }),
+      },
+    });
+    console.log("📤 [sendMessage] Sending event:", event);
+    socket.send(event);
+    console.log("✅ [sendMessage] Event sent successfully");
   },
 
   sendScheduledMessage: (
@@ -390,47 +454,6 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
     }
   },
 
-  // ── React to Error server events ────────────────────────────────────────────
-  wsManager.onMessage((event) => {
-    console.debug("[WS store] event received:", event.type);
-    if (event.type !== "Error") return;
-    const { code, message } = event.payload;
-
-    if (code === "BANNED" || code === "NOT_MEMBER") {
-      const channelId = get().currentChannelId;
-      if (channelId) {
-        useMessageStore.getState().clearChannel(channelId);
-        useTypingStore.getState().clearChannel(channelId);
-      }
-      const label =
-        code === "BANNED"
-          ? isEnglish()
-            ? "You have been banned from this server."
-            : "Vous avez été banni de ce serveur."
-          : isEnglish()
-            ? "You are not a member of this server."
-            : "Vous n'êtes pas membre de ce serveur.";
-      set({ error: `[${code}] ${label}`, currentChannelId: null });
-      return;
-    }
-
-    set({ error: `[${code}] ${message}` });
-  });
-
-  return {
-    socket: null,
-    isConnected: false,
-    connectionState: "idle",
-    reconnectAttempt: 0,
-    nextRetryDelayMs: null,
-    currentChannelId: null,
-    currentDmPeerId: null,
-    error: null,
-    messages: {},
-    dmMessages: {},
-    typingUsers: {},
-    presence: {},
-
   setCurrentDmPeer: (peerId: string | null) => {
     set({ currentDmPeerId: peerId });
   },
@@ -467,20 +490,114 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
       console.error("Failed to load DM messages for conversation:", conversationId, error);
     }
   },
-    }),
-    {
-      name: "websocket-store",
-      partialize: (state) => ({
-        messages: state.messages,
-        dmMessages: state.dmMessages,
-        currentChannelId: state.currentChannelId,
-        currentDmPeerId: state.currentDmPeerId,
-        presence: state.presence,
-      }),
-      version: 1,
-    },
-  ),
-);
+
+  // Additional methods
+  connect(token: string) {
+    wsManager.connect(token);
+  },
+
+  disconnect() {
+    wsManager.disconnect();
+  },
+
+  joinChannel(channelId: string) {
+    const { currentChannelId } = get();
+    if (currentChannelId && currentChannelId !== channelId) {
+      get().leaveChannel(currentChannelId);
+    }
+    set({ currentChannelId: channelId });
+    useMessageStore.getState().setCurrentChannel(channelId);
+    wsManager.send("JoinChannel", { channel_id: channelId });
+  },
+
+  leaveChannel(channelId: string) {
+    wsManager.send("LeaveChannel", { channel_id: channelId });
+  },
+
+  startTyping(channelId: string) {
+    wsManager.send("TypingStart", { channel_id: channelId });
+  },
+
+  stopTyping(channelId: string) {
+    wsManager.send("TypingStop", { channel_id: channelId });
+  },
+
+  sendGif(channelId: string, gif: any, caption?: string) {
+    wsManager.send("MessageSendGif", { channel_id: channelId, gif, caption });
+  },
+
+  sendDm(recipientId: string, content: string, replyTo?: string, attachmentUrl?: string) {
+    wsManager.send("DmSend", {
+      recipient_id: recipientId,
+      content,
+      reply_to: replyTo,
+      attachment_url: attachmentUrl,
+    });
+  },
+
+  editDm(conversationId: string, messageId: string, content: string) {
+    wsManager.send("DmEdit", {
+      conversation_id: conversationId,
+      message_id: messageId,
+      content,
+    });
+  },
+
+  deleteDm(conversationId: string, messageId: string) {
+    wsManager.send("DmDelete", {
+      conversation_id: conversationId,
+      message_id: messageId,
+    });
+  },
+
+  sendDmGif(recipientId: string, gif: any, caption?: string) {
+    wsManager.send("DmSendGif", { recipient_id: recipientId, gif, caption });
+  },
+
+  joinDm(peerId: string) {
+    const { currentDmPeerId } = get();
+    if (currentDmPeerId && currentDmPeerId !== peerId) get().leaveDm(currentDmPeerId);
+    set({ currentDmPeerId: peerId });
+    wsManager.send("JoinDm", { peer_id: peerId });
+  },
+
+  leaveDm(peerId: string) {
+    wsManager.send("LeaveDm", { peer_id: peerId });
+    if (get().currentDmPeerId === peerId) set({ currentDmPeerId: null });
+  },
+
+  getDmMessages(conversationId: string) {
+    return useDmStore.getState().getDmMessages(conversationId);
+  },
+
+  setMessages(channelId: string, msgs: WsMessage[]) {
+    useMessageStore.getState().setMessages(channelId, msgs);
+  },
+
+  getMessages(channelId: string) {
+    return useMessageStore.getState().getMessages(channelId);
+  },
+
+  clearMessages(channelId: string) {
+    useMessageStore.getState().clearChannel(channelId);
+  },
+
+  setCurrentChannel(channelId: string) {
+    set({ currentChannelId: channelId });
+    useMessageStore.getState().setCurrentChannel(channelId);
+  },
+
+  setPresence(status: PresenceStatus) {
+    if (status === "offline") return;
+    try {
+      localStorage.setItem("presence_status", status);
+    } catch {
+      // ignore
+    }
+    wsManager.send("PresenceSet", { status });
+  },
+  };
+});
 
 /**
  * Trigger a notification for a new message in a channel/server
@@ -566,259 +683,6 @@ async function triggerMessageNotification(
     console.error("🔔 [ServerNotif] ❌ ERROR:", error);
   }
 }
-
-    connect(token) {
-      wsManager.connect(token);
-    },
-
-    disconnect() {
-      wsManager.disconnect();
-    },
-
-    // ── Channel messages ──────────────────────────────────────────────────────
-
-    sendMessage(channelId, content, replyTo, attachmentUrl) {
-      if (get().currentChannelId !== channelId) get().joinChannel(channelId);
-      wsManager.send("MessageSend", {
-        channel_id: channelId,
-        content,
-        reply_to: replyTo,
-        attachment_url: attachmentUrl,
-      });
-
-      // Trigger notification for new server message
-      triggerMessageNotification(channel_id, username || author_id, content, author_id);
-
-      break;
-    }
-
-    case "ReactionAdded": {
-      const { message_id, emoji, user_id, username } = event.payload;
-      set((state) => {
-        const newMessages = { ...state.messages } as Record<
-          string,
-          WsMessage[]
-        >;
-
-    editMessage(channelId, messageId, content) {
-      wsManager.send("MessageEdit", {
-        channel_id: channelId,
-        message_id: messageId,
-        content,
-      });
-    },
-
-    deleteMessage(channelId, messageId) {
-      wsManager.send("MessageDelete", {
-        channel_id: channelId,
-        message_id: messageId,
-      });
-    },
-
-    sendGif(channelId, gif, caption) {
-      wsManager.send("MessageSendGif", { channel_id: channelId, gif, caption });
-    },
-
-    joinChannel(channelId) {
-      const { currentChannelId } = get();
-      if (currentChannelId && currentChannelId !== channelId) {
-        get().leaveChannel(currentChannelId);
-      }
-      set({ currentChannelId: channelId });
-      useMessageStore.getState().setCurrentChannel(channelId);
-      wsManager.send("JoinChannel", { channel_id: channelId });
-    },
-
-    leaveChannel(channelId) {
-      wsManager.send("LeaveChannel", { channel_id: channelId });
-    },
-
-    startTyping(channelId) {
-      wsManager.send("TypingStart", { channel_id: channelId });
-    },
-
-    stopTyping(channelId) {
-      wsManager.send("TypingStop", { channel_id: channelId });
-    },
-
-    // ── Message helpers ───────────────────────────────────────────────────────
-
-    setMessages(channelId, msgs) {
-      useMessageStore.getState().setMessages(channelId, msgs);
-    },
-
-    getMessages(channelId) {
-      return useMessageStore.getState().getMessages(channelId);
-    },
-
-    clearMessages(channelId) {
-      useMessageStore.getState().clearChannel(channelId);
-    },
-
-    setCurrentChannel(channelId) {
-      set({ currentChannelId: channelId });
-      useMessageStore.getState().setCurrentChannel(channelId);
-    },
-
-    // ── DM ────────────────────────────────────────────────────────────────────
-
-    sendDm(recipientId, content, replyTo, attachmentUrl) {
-      wsManager.send("DmSend", {
-        recipient_id: recipientId,
-        content,
-        reply_to: replyTo,
-        attachment_url: attachmentUrl,
-      });
-    },
-
-    editDm(conversationId, messageId, content) {
-      wsManager.send("DmEdit", {
-        conversation_id: conversationId,
-        message_id: messageId,
-        content,
-      });
-    },
-
-    deleteDm(conversationId, messageId) {
-      wsManager.send("DmDelete", {
-        conversation_id: conversationId,
-        message_id: messageId,
-      });
-    },
-
-    sendDmGif(recipientId, gif, caption) {
-      wsManager.send("DmSendGif", { recipient_id: recipientId, gif, caption });
-    },
-
-    joinDm(peerId) {
-      const { currentDmPeerId } = get();
-      if (currentDmPeerId && currentDmPeerId !== peerId) get().leaveDm(currentDmPeerId);
-      set({ currentDmPeerId: peerId });
-      wsManager.send("JoinDm", { peer_id: peerId });
-    },
-
-    leaveDm(peerId) {
-      wsManager.send("LeaveDm", { peer_id: peerId });
-      if (get().currentDmPeerId === peerId) set({ currentDmPeerId: null });
-    },
-
-    getDmMessages(conversationId) {
-      return useDmStore.getState().getDmMessages(conversationId);
-    },
-
-    setCurrentDmPeer(peerId) {
-      set({ currentDmPeerId: peerId });
-    },
-
-    // ── Presence ──────────────────────────────────────────────────────────────
-
-    setPresence(status) {
-      if (status === "offline") return; // offline is set automatically by the server
-      try {
-        localStorage.setItem("presence_status", status);
-      } catch {
-        // ignore
-      }
-
-      console.error(
-        "❌ Server error:",
-        event.payload.code,
-        event.payload.message,
-      );
-      set({ error: `[${event.payload.code}] ${event.payload.message}` });
-      break;
-    }
-
-    case "DmNew": {
-      const {
-        id,
-        conversation_id,
-        author_id,
-        username,
-        content,
-        created_at,
-        reply_to,
-      } = event.payload;
-      
-      // Check dedup cache for DM - skip if duplicate
-      let shouldShowNotification = true;
-      if (notificationCache.has(id)) {
-        const lastTime = notificationCache.get(id) || 0;
-        if (Date.now() - lastTime < NOTIFICATION_DEDUP_TIME) {
-          console.log("🔔 [DM Notification] Skipped - duplicate within", NOTIFICATION_DEDUP_TIME, "ms");
-          shouldShowNotification = false;
-        }
-      }
-      notificationCache.set(id, Date.now());
-      
-      const newMessage: WsMessage = {
-        id,
-        channel_id: conversation_id,
-        author_id,
-        username,
-        content,
-        created_at,
-        reply_to,
-      };
-
-      set((state) => {
-        const convMessages = state.dmMessages[conversation_id] || [];
-
-        // Avoid duplicates
-        if (convMessages.some((m) => m.id === id)) {
-          return state;
-        }
-
-        return {
-          dmMessages: {
-            ...state.dmMessages,
-            [conversation_id]: [...convMessages, newMessage],
-          },
-        };
-      });
-
-      const authUser = useAuthStore.getState().user;
-      if (authUser) {
-        const peerId = getPeerIdFromConversation(conversation_id, authUser.id);
-        if (peerId) {
-          const convs = useDmStore.getState().conversations;
-          const existing = convs.find((c) => c.peer_id === peerId);
-          const peerUsername =
-            author_id !== authUser.id
-              ? username
-              : existing?.peer_username || peerId.slice(0, 8);
-
-          useDmStore.getState().addOrUpdateConversation({
-            conversation_id,
-            peer_id: peerId,
-            peer_username: peerUsername,
-            last_message: formatLastMessage(content),
-            last_message_at: created_at,
-          });
-
-          // Show notification if message is from someone else and passed dedup check
-          if (author_id !== authUser.id && shouldShowNotification) {
-            // Check if message is historical (more than 5 seconds old)
-            const messageTime = new Date(created_at).getTime();
-            const now = Date.now();
-            const isHistorical = now - messageTime > 5000; // 5 seconds threshold
-            
-            console.log("🔔 [DM Notification] Showing notification for message:", id);
-            useNotificationStore.getState().showNotification({
-              type: "dm",
-              title: `Message de ${peerUsername}`,
-              message: formatLastMessage(content),
-              userId: author_id,
-              data: { conversation_id, peerId },
-              isHistorical,
-            });
-          }
-        }
-      }
-      wsManager.send("PresenceSet", { status });
-    },
-  };
-});
 
 // ─── Backward-compat bridge ───────────────────────────────────────────────────
 // Atomic stores are the source of truth. These subscriptions mirror their state

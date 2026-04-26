@@ -15,7 +15,7 @@
 
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use mongodb::bson::oid::ObjectId;
@@ -27,7 +27,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{ChannelResponse, CreateChannelRequest, UpdateChannelRequest};
 use crate::repositories::{ChannelRepository, MembershipRepository, UserRepository};
 use crate::state::AppState;
-use crate::ws::protocol::{validate_content, ServerEvent};
+use crate::ws::protocol::ServerEvent;
 use std::sync::Arc;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -287,6 +287,7 @@ pub struct MessageResponse {
     pub pinned_at: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 pub struct EditMessageRequest {
     pub content: String,
@@ -747,7 +748,7 @@ mod tests {
             State(state.clone()),
             auth.clone(),
             Path(ChannelPath { server_id: server.id, channel_id: created.id }),
-            Query(MessagesQuery { page: 1, per_page: 50 }),
+            Query(MessagesQuery { before: None, per_page: 50 }),
         )
         .await
         .expect("get messages")
