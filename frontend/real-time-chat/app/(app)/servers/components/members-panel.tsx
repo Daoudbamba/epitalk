@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useServerStore } from "@/store/server.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
@@ -21,6 +30,114 @@ const ROLE_LABELS: Record<string, string> = {
   Moderator: "🔧 Modérateur",
   Member: "👤 Membre",
 };
+
+const BAN_DURATION_OPTIONS = [
+  { value: "1h" as const, fr: "1 heure", en: "1 hour" },
+  { value: "24h" as const, fr: "24 heures", en: "24 hours" },
+  { value: "7j" as const, fr: "7 jours", en: "7 days" },
+  { value: "30j" as const, fr: "30 jours", en: "30 days" },
+];
+type BanDuration = "1h" | "24h" | "7j" | "30j";
+
+function getExpiresAt(duration: BanDuration): string {
+  const hoursMap: Record<BanDuration, number> = {
+    "1h": 1,
+    "24h": 24,
+    "7j": 24 * 7,
+    "30j": 24 * 30,
+  };
+  const d = new Date();
+  d.setHours(d.getHours() + hoursMap[duration]);
+  return d.toISOString();
+}
+
+function formatExpiry(expiresAt: string | null, isEnglish: boolean): string {
+  if (!expiresAt) return "Permanent";
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return isEnglish ? "Expired" : "Expiré";
+  const hours = Math.ceil(diff / (1000 * 60 * 60));
+  if (hours < 24) {
+    return isEnglish ? `Expires in ${hours}h` : `Expire dans ${hours}h`;
+  }
+  const days = Math.ceil(hours / 24);
+  return isEnglish ? `Expires in ${days}d` : `Expire dans ${days}j`;
+}
+
+function MemberMenu({
+  showKick,
+  showBan,
+  onKick,
+  onBanPermanent,
+  onBanTemporary,
+  isEnglish,
+}: {
+  showKick: boolean;
+  showBan: boolean;
+  onKick: () => void;
+  onBanPermanent: () => void;
+  onBanTemporary: () => void;
+  isEnglish: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => setOpen((v) => !v)}
+        className="h-6 w-6 p-0 text-base leading-none text-muted-foreground"
+        title={isEnglish ? "Actions" : "Actions"}
+      >
+        ···
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-7 z-50 min-w-37 rounded-lg border border-border bg-card shadow-lg py-1">
+          {showKick && (
+            <button
+              type="button"
+              className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted text-orange-600"
+              onClick={() => { setOpen(false); onKick(); }}
+            >
+              {isEnglish ? "Kick" : "Expulser"}
+            </button>
+          )}
+          {showBan && (
+            <>
+              {showKick && <div className="my-1 border-t border-border" />}
+              <button
+                type="button"
+                className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted text-red-600"
+                onClick={() => { setOpen(false); onBanPermanent(); }}
+              >
+                {isEnglish ? "Permanent ban" : "Ban définitif"}
+              </button>
+              <button
+                type="button"
+                className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted text-red-500"
+                onClick={() => { setOpen(false); onBanTemporary(); }}
+              >
+                {isEnglish ? "Temporary ban" : "Ban temporaire"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function MembersPanel({
   onRefresh,
@@ -64,6 +181,14 @@ export function MembersPanel({
   >([]);
   const [loadingBans, setLoadingBans] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Kick modal state
+  const [kickTarget, setKickTarget] = useState<{ id: string; username: string } | null>(null);
+
+  // Ban modal state
+  const [banTarget, setBanTarget] = useState<{ id: string; username: string; permanent: boolean } | null>(null);
+  const [banReason, setBanReason] = useState("");
+  const [banDuration, setBanDuration] = useState<BanDuration>("24h");
 
   useEffect(() => {
     if (!activeServerId || !isMemberOfActiveServer) {
@@ -114,20 +239,28 @@ export function MembersPanel({
     loadBans();
   }, [activeServerId, isMemberOfActiveServer, setMembers, setMembersLoading]);
 
-  const onKick = async (memberId: string) => {
-    if (!server) return;
-    const ok = confirm("Expulser ce membre ?");
-    if (!ok) return;
-    setLoadingKick(memberId);
+  const doKick = async () => {
+    if (!server || !kickTarget) return;
+    const { id: targetId } = kickTarget;
+    setKickTarget(null);
+    setLoadingKick(targetId);
     setActionError(null);
+    // Optimistic: remove from list immediately
+    setMembers(members.filter((m) => m.user_id !== targetId));
     try {
-      await serversApi.kickMember(server.id, memberId);
+      await serversApi.kickMember(server.id, targetId);
       const data = await serversApi.listMembers(server.id);
       setMembers(data);
       await onRefresh();
     } catch (err) {
       console.error("Kick error:", err);
       setActionError(getErrorMessage(err));
+      try {
+        const data = await serversApi.listMembers(server.id);
+        setMembers(data);
+      } catch {
+        // leave optimistic state
+      }
     } finally {
       setLoadingKick(null);
     }
@@ -149,43 +282,21 @@ export function MembersPanel({
     }
   };
 
-  const onBan = async (memberId: string, isTemporary: boolean) => {
-    if (!server) return;
-    const reason = prompt(
-      isEnglish
-        ? "Reason for ban (optional)"
-        : "Motif du ban (optionnel)",
-      "",
-    );
-
-    let expiresAt: string | null = null;
-    if (isTemporary) {
-      const hoursRaw = prompt(
-        isEnglish
-          ? "Temporary ban duration in hours"
-          : "Duree du ban temporaire en heures",
-        "24",
-      );
-      const hours = Number(hoursRaw);
-      if (!Number.isFinite(hours) || hours <= 0) {
-        setActionError(
-          isEnglish
-            ? "Invalid duration"
-            : "Duree invalide",
-        );
-        return;
-      }
-      const expires = new Date();
-      expires.setHours(expires.getHours() + hours);
-      expiresAt = expires.toISOString();
-    }
-
+  const doBan = async () => {
+    if (!server || !banTarget) return;
+    const { id: memberId, permanent } = banTarget;
+    const expiresAt = permanent ? null : getExpiresAt(banDuration);
+    const reason = banReason.trim() || null;
+    setBanTarget(null);
+    setBanReason("");
+    setBanDuration("24h");
     setLoadingBan(memberId);
     setActionError(null);
-
+    // Optimistic: remove from list immediately
+    setMembers(members.filter((m) => m.user_id !== memberId));
     try {
       await serversApi.banMember(server.id, memberId, {
-        reason: reason?.trim() ? reason.trim() : null,
+        reason,
         expires_at: expiresAt,
       });
       const [membersData, bansData] = await Promise.all([
@@ -194,7 +305,6 @@ export function MembersPanel({
       ]);
       setMembers(membersData);
       setBans(bansData);
-      // Best effort: ban succeeded even if global servers refresh is temporarily slow.
       try {
         await onRefresh();
       } catch (refreshError) {
@@ -203,6 +313,12 @@ export function MembersPanel({
     } catch (err) {
       console.error("Ban error:", err);
       setActionError(getErrorMessage(err));
+      try {
+        const data = await serversApi.listMembers(server.id);
+        setMembers(data);
+      } catch {
+        // leave optimistic state
+      }
     } finally {
       setLoadingBan(null);
     }
@@ -261,7 +377,113 @@ export function MembersPanel({
   ).length;
 
   return (
-    <aside className="h-[95%] rounded-2xl my-4 ml-2 border border-[var(--border)] w-full p-4 overflow-auto shadow-lg">
+    <aside className="h-[95%] rounded-2xl my-4 ml-2 border border-border w-full p-4 overflow-auto shadow-lg">
+      {/* Kick confirmation modal */}
+      <ConfirmActionDialog
+        open={!!kickTarget}
+        onOpenChange={(open) => { if (!open) setKickTarget(null); }}
+        title={
+          isEnglish
+            ? `Kick ${kickTarget?.username ?? ""}?`
+            : `Expulser ${kickTarget?.username ?? ""} ?`
+        }
+        description={
+          isEnglish
+            ? "This member will be removed from the server but can rejoin with an invite."
+            : "Ce membre sera retiré du serveur mais pourra rejoindre avec une invitation."
+        }
+        confirmLabel={isEnglish ? "Kick" : "Expulser"}
+        cancelLabel={isEnglish ? "Cancel" : "Annuler"}
+        confirmVariant="destructive"
+        loading={loadingKick !== null}
+        onConfirm={doKick}
+      />
+
+      {/* Ban modal */}
+      <Dialog
+        open={!!banTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBanTarget(null);
+            setBanReason("");
+            setBanDuration("24h");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {banTarget?.permanent
+                ? (isEnglish
+                    ? `Ban ${banTarget.username} permanently?`
+                    : `Bannir définitivement ${banTarget.username} ?`)
+                : (isEnglish
+                    ? `Temporarily ban ${banTarget?.username ?? ""}?`
+                    : `Bannir temporairement ${banTarget?.username ?? ""} ?`)}
+            </DialogTitle>
+            <DialogDescription>
+              {isEnglish
+                ? "The member will be removed and prevented from rejoining."
+                : "Le membre sera retiré et empêché de rejoindre le serveur."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-xs font-medium text-foreground">
+                {isEnglish ? "Reason (optional)" : "Motif (optionnel)"}
+              </label>
+              <input
+                type="text"
+                value={banReason}
+                onChange={(e) => setBanReason(e.target.value)}
+                placeholder={isEnglish ? "Enter a reason…" : "Entrez un motif…"}
+                className="mt-1 w-full rounded-md border border-border bg-card px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            {!banTarget?.permanent && (
+              <div>
+                <label className="text-xs font-medium text-foreground">
+                  {isEnglish ? "Duration" : "Durée"}
+                </label>
+                <select
+                  value={banDuration}
+                  onChange={(e) => setBanDuration(e.target.value as BanDuration)}
+                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {BAN_DURATION_OPTIONS.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {isEnglish ? d.en : d.fr}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setBanTarget(null);
+                setBanReason("");
+                setBanDuration("24h");
+              }}
+              disabled={loadingBan !== null}
+            >
+              {isEnglish ? "Cancel" : "Annuler"}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void doBan()}
+              disabled={loadingBan !== null}
+            >
+              {loadingBan !== null ? "..." : (isEnglish ? "Ban" : "Bannir")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <h3 className="text-sm font-semibold mb-1">
         {language === "en" ? "Members" : "Membres"} ({
           membersLoading ? "..." : members.length
@@ -272,7 +494,7 @@ export function MembersPanel({
         {onlineCount} {language === "en" ? "online" : "en ligne"}
       </p>
 
-      {/* Contrôle du statut personnel */}
+      {/* Personal status control */}
       {currentUser && (
         <div className="mb-3 flex items-center gap-2 text-sm">
           <label className="text-xs text-muted-foreground">Mon statut:</label>
@@ -313,13 +535,16 @@ export function MembersPanel({
         <ul className="space-y-3 text-sm">
           {sortedMembers.map((m) => {
             const memberIsOwner = m.role === "Owner";
+            const isSelf = currentUser?.id === m.user_id;
+            const showKick = isOwner && !memberIsOwner && !isSelf;
+            const showBan = canBan && !memberIsOwner && !isSelf;
 
             return (
               <li key={m.user_id} className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  {/* Avatar with online indicator */}
+                  {/* Avatar with presence indicator */}
                   <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-[var(--muted)] flex items-center justify-center text-xs font-semibold text-[var(--foreground)] overflow-hidden">
+                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-foreground overflow-hidden">
                       {m.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -358,45 +583,26 @@ export function MembersPanel({
                     </div>
                   </div>
 
-                  {isOwner && !memberIsOwner && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onKick(m.user_id)}
-                      disabled={loadingKick === m.user_id}
-                      title="Expulser"
-                      className="h-6 w-6 p-0 text-xs"
-                    >
-                      {loadingKick === m.user_id ? "..." : "×"}
-                    </Button>
+                  {/* "..." moderation menu (Admin+ only, not for self or owner) */}
+                  {(showKick || showBan) && (
+                    <MemberMenu
+                      showKick={showKick}
+                      showBan={showBan}
+                      onKick={() => setKickTarget({ id: m.user_id, username: m.username })}
+                      onBanPermanent={() => {
+                        setBanTarget({ id: m.user_id, username: m.username, permanent: true });
+                        setBanReason("");
+                      }}
+                      onBanTemporary={() => {
+                        setBanTarget({ id: m.user_id, username: m.username, permanent: false });
+                        setBanReason("");
+                        setBanDuration("24h");
+                      }}
+                      isEnglish={isEnglish}
+                    />
                   )}
 
-                  {canBan && !memberIsOwner && currentUser?.id !== m.user_id && (
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onBan(m.user_id, false)}
-                        disabled={loadingBan === m.user_id}
-                        title={isEnglish ? "Ban" : "Bannir"}
-                        className="h-6 px-2 text-[10px]"
-                      >
-                        {loadingBan === m.user_id ? "..." : isEnglish ? "Ban" : "Ban"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onBan(m.user_id, true)}
-                        disabled={loadingBan === m.user_id}
-                        title={isEnglish ? "Temporary ban" : "Ban temporaire"}
-                        className="h-6 px-2 text-[10px]"
-                      >
-                        {loadingBan === m.user_id ? "..." : isEnglish ? "Temp" : "Temp"}
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* DM button — don't show for yourself */}
+                  {/* DM button — not shown for self */}
                   {currentUser && m.user_id !== currentUser.id && (
                     <Button
                       size="sm"
@@ -406,7 +612,7 @@ export function MembersPanel({
                         router.push("/dm");
                       }}
                       title="Message privé"
-                      className="h-6 w-6 p-0 text-xs text-[var(--muted-foreground)] hover:text-[#023BFC]"
+                      className="h-6 w-6 p-0 text-xs text-muted-foreground hover:text-[#023BFC]"
                     >
                       💬
                     </Button>
@@ -419,7 +625,7 @@ export function MembersPanel({
                     value={m.role}
                     onChange={(e) => onChangeRole(m.user_id, e.target.value)}
                     disabled={loadingRole === m.user_id}
-                    className="text-xs border rounded px-1 py-0.5 bg-[var(--card)] text-[var(--muted-foreground)]"
+                    className="text-xs border rounded px-1 py-0.5 bg-card text-muted-foreground"
                   >
                     {ROLE_OPTIONS.map((role) => (
                       <option key={role} value={role}>
@@ -434,7 +640,8 @@ export function MembersPanel({
         </ul>
       )}
 
-      <div className="mt-6 border-t border-[var(--border)] pt-4">
+      {/* Active bans section */}
+      <div className="mt-6 border-t border-border pt-4">
         <h4 className="text-xs font-semibold mb-2">
           {isEnglish ? "Active bans" : "Bans actifs"}
         </h4>
@@ -451,7 +658,7 @@ export function MembersPanel({
             {bans.map((ban) => (
               <div
                 key={ban.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] p-2 text-xs"
+                className="flex items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs"
               >
                 <div className="min-w-0">
                   <div className="font-medium truncate">{ban.username}</div>
@@ -459,11 +666,7 @@ export function MembersPanel({
                     {ban.reason || (isEnglish ? "No reason" : "Sans motif")}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    {ban.expires_at
-                      ? `${isEnglish ? "Expires" : "Expire"}: ${new Date(ban.expires_at).toLocaleString()}`
-                      : isEnglish
-                        ? "Permanent"
-                        : "Permanent"}
+                    {formatExpiry(ban.expires_at, isEnglish)}
                   </div>
                 </div>
                 {canBan && (
@@ -478,7 +681,7 @@ export function MembersPanel({
                       ? "..."
                       : isEnglish
                         ? "Unban"
-                        : "Debannir"}
+                        : "Débannir"}
                   </Button>
                 )}
               </div>
