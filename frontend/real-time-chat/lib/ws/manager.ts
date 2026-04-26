@@ -13,7 +13,8 @@ const BASE_DELAY_MS = 500;
 const MAX_DELAY_MS = 30_000;
 const JITTER_FACTOR = 0.2;
 const PING_INTERVAL_MS = 30_000;
-const PONG_TIMEOUT_MS = 10_000;
+const PONG_TIMEOUT_MS = 30_000;
+const PONG_RECONNECT_DELAY_MS = 2_000;
 const DEGRADED_THRESHOLD = 5;
 
 // ─── Listener types ───────────────────────────────────────────────────────────
@@ -226,11 +227,31 @@ export class WebSocketManager {
     this._pingTimer = setInterval(() => {
       if (!this.isReady()) return;
       this.send("Ping");
-      this._pongTimer = setTimeout(() => {
-        console.warn("[WS] Pong timeout — closing socket for reconnect");
-        this._socket?.close(4000, "Pong timeout");
-      }, PONG_TIMEOUT_MS);
+      this._pongTimer = setTimeout(() => this._handlePongTimeout(), PONG_TIMEOUT_MS);
     }, PING_INTERVAL_MS);
+  }
+
+  private _handlePongTimeout(): void {
+    const token = useAuthStore.getState().token;
+    console.warn("[WS] Pong timeout — closing socket for reconnect");
+    console.debug("[WS] Reconnecting after pong timeout, token present:", token !== null);
+
+    // Detach onclose before closing so the normal onclose → _scheduleReconnect
+    // path does not fire; we own the reconnect timing here.
+    if (this._socket) {
+      this._socket.onclose = null;
+      this._socket.close(4000, "Pong timeout");
+      this._socket = null;
+    }
+    this._stopHeartbeat();
+    this._setState("backoff", { attempt: this._attempt, nextDelayMs: PONG_RECONNECT_DELAY_MS });
+
+    if (!token) {
+      console.debug("[WS] Pong timeout reconnect aborted — no token");
+      return;
+    }
+
+    this._reconnectTimer = setTimeout(() => this._openSocket(), PONG_RECONNECT_DELAY_MS);
   }
 
   private _stopHeartbeat(): void {
