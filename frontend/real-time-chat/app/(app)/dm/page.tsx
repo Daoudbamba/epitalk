@@ -48,7 +48,7 @@ export default function DmPage() {
       )}
 
       {(isDesktop || mobileView === "chat") && (
-        <div className="flex flex-1 min-w-0 h-full bg-[var(--card)] overflow-hidden">
+        <div className="flex-1 min-w-0 h-full overflow-hidden">
           <DmChatPanel />
         </div>
       )}
