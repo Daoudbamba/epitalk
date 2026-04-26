@@ -8,6 +8,7 @@ import { useWebSocketStore, type WsMessage } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useDmStore } from "@/store/dm.store";
 import { useAppearanceStore } from "@/store/appearance.store";
+import { useNotificationClick } from "@/hooks/use-notification-click";
 
 const FONT_SIZE_MAP = { sm: "14px", base: "16px", lg: "18px", xl: "20px" } as const;
 
@@ -72,6 +73,9 @@ export function DmChatPanel() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const prevPeerRef = useRef<string | null>(null);
+
+  // Handle notification clicks
+  useNotificationClick();
 
   // Connect WebSocket
   useEffect(() => {

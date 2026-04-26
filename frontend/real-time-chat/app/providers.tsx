@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Toaster } from "sonner";
 import { LanguageProvider } from "@/components/language-provider";
 
 export function Providers({
@@ -8,5 +9,10 @@ export function Providers({
 }: {
   children: React.ReactNode;
 }) {
-  return <LanguageProvider>{children}</LanguageProvider>;
+  return (
+    <LanguageProvider>
+      {children}
+      <Toaster position="top-right" richColors />
+    </LanguageProvider>
+  );
 }

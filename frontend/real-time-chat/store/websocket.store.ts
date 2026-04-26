@@ -1,8 +1,12 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { authApi } from "@/lib/api";
 import { ApiError } from "@/lib/api/errors";
 import { useAuthStore } from "@/store/auth.store";
 import { useDmStore } from "@/store/dm.store";
+import { useNotificationStore } from "@/store/notifications.store";
+import { useChannelStore } from "@/store/channel.store";
+import { useServerStore } from "@/store/server.store";
 
 // Types basés sur le protocole WebSocket du backend
 export interface WsMessage {
@@ -242,6 +246,9 @@ type WebSocketState = {
   setCurrentDmPeer: (peerId: string | null) => void;
   // Presence control for the local user
   setPresence: (status: "online" | "idle" | "dnd" | "offline") => void;
+  // Load historical messages
+  loadMessages: (channelId: string) => Promise<void>;
+  loadDmMessages: (conversationId: string) => Promise<void>;
 };
 
 // Default to backend port 3001 where the Rust server listens in dev
@@ -300,10 +307,12 @@ function isEnglishPreferred(): boolean {
   return window.localStorage.getItem("epitalk_language") === "en";
 }
 
-export const useWebSocketStore = create<WebSocketState>((set, get) => ({
-  socket: null,
-  isConnected: false,
-  connectionState: "idle",
+export const useWebSocketStore = create<WebSocketState>()(
+  persist(
+    (set, get) => ({
+      socket: null,
+      isConnected: false,
+      connectionState: "idle",
   reconnectAttempt: 0,
   nextRetryDelayMs: null,
   messages: {},
@@ -357,6 +366,12 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
       const currentChannel = get().currentChannelId;
       if (currentChannel) {
         get().joinChannel(currentChannel);
+      }
+
+      // Rejoin current DM if any
+      const currentDmPeer = get().currentDmPeerId;
+      if (currentDmPeer) {
+        get().joinDm(currentDmPeer);
       }
 
       // Restore persisted presence status (optimistic local update + notify server)
@@ -827,7 +842,102 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   setCurrentDmPeer: (peerId: string | null) => {
     set({ currentDmPeerId: peerId });
   },
-}));
+
+  loadMessages: async (channelId: string) => {
+    try {
+      const response = await fetch(`/api/channels/${channelId}/messages?limit=50`);
+      if (!response.ok) throw new Error("Failed to load messages");
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        get().setMessages(channelId, data);
+      }
+    } catch (error) {
+      console.error("Failed to load messages for channel:", channelId, error);
+    }
+  },
+
+  loadDmMessages: async (conversationId: string) => {
+    try {
+      const response = await fetch(
+        `/api/conversations/${conversationId}/messages?limit=50`
+      );
+      if (!response.ok) throw new Error("Failed to load DM messages");
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        set((state) => ({
+          dmMessages: {
+            ...state.dmMessages,
+            [conversationId]: data,
+          },
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to load DM messages for conversation:", conversationId, error);
+    }
+  },
+    }),
+    {
+      name: "websocket-store",
+      partialize: (state) => ({
+        messages: state.messages,
+        dmMessages: state.dmMessages,
+        currentChannelId: state.currentChannelId,
+        currentDmPeerId: state.currentDmPeerId,
+        presence: state.presence,
+      }),
+      version: 1,
+    },
+  ),
+);
+
+/**
+ * Trigger a notification for a new message in a channel/server
+ * Uses cached channel/server data from stores and fetches if needed
+ */
+async function triggerMessageNotification(
+  channelId: string,
+  username: string,
+  content: string
+) {
+  const notificationStore = useNotificationStore.getState();
+  const currentUser = useAuthStore.getState().user;
+  
+  // Don't notify if user is looking at this channel
+  const currentChannelId = useWebSocketStore.getState().currentChannelId;
+  if (currentChannelId === channelId) {
+    return;
+  }
+
+  // Try to get channel name from local store
+  const channelStore = useChannelStore.getState();
+  const localChannel = channelStore.channels.find((c) => c.id === channelId);
+  const channelName = localChannel?.name || "channel";
+  const serverId = localChannel?.server_id;
+
+  // Try to get server name from local store
+  const serverStore = useServerStore.getState();
+  const localServer = serverStore.servers.find((s) => s.id === serverId);
+  const serverName = localServer?.name || "Server";
+
+  // Format the notification message
+  const displayContent = content.length > 50 
+    ? content.substring(0, 47) + "..."
+    : content;
+
+  // Show the notification
+  notificationStore.showNotification({
+    type: "server_message",
+    title: `${username} in ${serverName}`,
+    message: `#${channelName}: ${displayContent}`,
+    userId: currentUser?.id,
+    data: {
+      channelId,
+      channelName,
+      serverId,
+      serverName,
+    },
+  });
+}
 
 // Handle incoming server events
 function handleServerEvent(
@@ -871,6 +981,10 @@ function handleServerEvent(
           },
         };
       });
+
+      // Trigger notification for new server message
+      triggerMessageNotification(channel_id, username || author_id, content);
+
       break;
     }
 
@@ -1246,6 +1360,23 @@ function handleServerEvent(
             last_message: formatLastMessage(content),
             last_message_at: created_at,
           });
+
+          // Show notification if message is from someone else and not historical
+          if (author_id !== authUser.id) {
+            // Check if message is historical (more than 5 seconds old)
+            const messageTime = new Date(created_at).getTime();
+            const now = Date.now();
+            const isHistorical = now - messageTime > 5000; // 5 seconds threshold
+            
+            useNotificationStore.getState().showNotification({
+              type: "dm",
+              title: `Message de ${peerUsername}`,
+              message: formatLastMessage(content),
+              userId: author_id,
+              data: { conversation_id, peerId },
+              isHistorical,
+            });
+          }
         }
       }
       break;
