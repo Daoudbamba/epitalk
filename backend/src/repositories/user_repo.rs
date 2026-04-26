@@ -167,6 +167,18 @@ impl UserRepository {
         Ok(user)
     }
 
+    /// Update only the status column — called on WS connect/disconnect.
+    pub async fn update_status(pool: &PgPool, id: Uuid, status: &UserStatus) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1",
+        )
+        .bind(id)
+        .bind(status)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// Update user password hash
     pub async fn update_password(
         pool: &PgPool,

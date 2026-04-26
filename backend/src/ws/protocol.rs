@@ -183,10 +183,17 @@ pub enum ServerEvent {
 
     UserOnline {
         user_id: String,
+        status: String,
     },
 
     UserOffline {
         user_id: String,
+        status: String,
+    },
+
+    /// Snapshot de présence envoyé au client qui rejoint un channel.
+    PresenceSync {
+        users: Vec<PresenceUser>,
     },
 
     /// Mise à jour structurée de la présence d'un utilisateur
@@ -236,6 +243,12 @@ pub enum ServerEvent {
         id: String,
         conversation_id: String,
     },
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct PresenceUser {
+    pub user_id: String,
+    pub status: String,
 }
 
 #[allow(dead_code)]

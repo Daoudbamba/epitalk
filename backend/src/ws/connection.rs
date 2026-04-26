@@ -140,21 +140,34 @@ pub async fn handle_connection(
     // broadcasts happen before the new socket is registered and thus the
     // event is not received by clients already connected.
     let conn_id_str = conn_id.to_string();
-    let changed = presence.add_connection(&user_id, &conn_id_str);
-    if changed {
-        // Broadcast both legacy UserOnline and structured PresenceUpdated
-        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
-            user_id: user_id.clone(),
-        };
-        hub.broadcast_all(online_event).await;
+    presence.add_connection(&user_id, &conn_id_str);
 
-        let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
-            user_id: user_id.clone(),
-            status: "online".to_string(),
-            last_activity: chrono::Utc::now().to_rfc3339(),
-        };
-        hub.broadcast_all(presence_event).await;
+    // Persist ONLINE status in PG immediately (fire-and-forget).
+    if let Ok(uid) = Uuid::parse_str(&user_id) {
+        let pool_pg = pg_pool.clone();
+        tokio::spawn(async move {
+            let _ = UserRepository::update_status(
+                &pool_pg,
+                uid,
+                &crate::models::user::UserStatus::Online,
+            )
+            .await;
+        });
     }
+
+    // Always broadcast so clients that connected after this user still see
+    // the correct online status (not gated on `changed`).
+    hub.broadcast_all(crate::ws::protocol::ServerEvent::UserOnline {
+        user_id: user_id.clone(),
+        status: "online".to_string(),
+    })
+    .await;
+    hub.broadcast_all(crate::ws::protocol::ServerEvent::PresenceUpdated {
+        user_id: user_id.clone(),
+        status: "online".to_string(),
+        last_activity: chrono::Utc::now().to_rfc3339(),
+    })
+    .await;
 
     // Send a presence snapshot to the newly connected client so existing users
     // appear online immediately without waiting for new events.
@@ -700,6 +713,31 @@ pub async fn handle_connection(
                                     let _ = tx.send(Message::Text(json));
                                 }
                             }
+                        }
+                    }
+
+                    // Send a presence snapshot so the joining client immediately
+                    // knows who is online without waiting for future events.
+                    let presence_users: Vec<crate::ws::protocol::PresenceUser> = presence_recv
+                        .snapshot()
+                        .into_iter()
+                        .map(|(uid, status, _)| {
+                            let status_str = match status {
+                                crate::services::presence_service::PresenceStatus::Online => "online",
+                                crate::services::presence_service::PresenceStatus::Idle => "idle",
+                                crate::services::presence_service::PresenceStatus::Dnd => "dnd",
+                                crate::services::presence_service::PresenceStatus::Offline => "offline",
+                            };
+                            crate::ws::protocol::PresenceUser {
+                                user_id: uid,
+                                status: status_str.to_string(),
+                            }
+                        })
+                        .collect();
+                    if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                        let sync_event = ServerEvent::PresenceSync { users: presence_users };
+                        if let Ok(json) = serde_json::to_string(&sync_event) {
+                            let _ = tx.send(Message::Text(json));
                         }
                     }
 
@@ -1374,19 +1412,32 @@ pub async fn handle_connection(
         tracing::info!(user = %user_id, new_status = ?new_status, "Presence changed after removing connection");
         match new_status {
             crate::services::presence_service::PresenceStatus::Offline => {
-                let offline_event = ServerEvent::UserOffline { user_id: user_id.clone() };
-                hub.broadcast_all(offline_event).await;
+                // Persist OFFLINE in PG (fire-and-forget).
+                if let Ok(uid) = Uuid::parse_str(&user_id) {
+                    let pool_pg = pg_pool.clone();
+                    tokio::spawn(async move {
+                        let _ = UserRepository::update_status(
+                            &pool_pg,
+                            uid,
+                            &crate::models::user::UserStatus::Offline,
+                        )
+                        .await;
+                    });
+                }
 
-                let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                hub.broadcast_all(ServerEvent::UserOffline {
+                    user_id: user_id.clone(),
+                    status: "offline".to_string(),
+                })
+                .await;
+                hub.broadcast_all(crate::ws::protocol::ServerEvent::PresenceUpdated {
                     user_id: user_id.clone(),
                     status: "offline".to_string(),
                     last_activity: chrono::Utc::now().to_rfc3339(),
-                };
-                hub.broadcast_all(presence_event).await;
+                })
+                .await;
             }
-            _ => {
-                // other statuses not expected here
-            }
+            _ => {}
         }
     } else {
         tracing::info!(user = %user_id, "Connection removed but user still has other connections");

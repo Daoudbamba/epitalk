@@ -112,6 +112,7 @@ impl AppState {
                                 let offline_event =
                                     crate::ws::protocol::ServerEvent::UserOffline {
                                         user_id: user_id.clone(),
+                                        status: "offline".to_string(),
                                     };
                                 hub_for_cleanup.broadcast_all(offline_event).await;
 
