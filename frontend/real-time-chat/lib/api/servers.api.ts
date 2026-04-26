@@ -1,10 +1,28 @@
 import type { FetchClient } from "./fetchClient";
 import type { Server, Channel, Member, Invite, Ban, BanMemberRequest } from "./schemas/servers.schema";
 
+type PaginatedResponse<T> = {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+function toList<T>(payload: T[] | PaginatedResponse<T> | null | undefined): T[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray((payload as PaginatedResponse<T>).data)) {
+    return (payload as PaginatedResponse<T>).data;
+  }
+  return [];
+}
+
 export function createServersApi(client: FetchClient) {
   return {
     // Servers
-    list: () => client.get<Server[]>("/servers"),
+    list: async () => {
+      const payload = await client.get<Server[] | PaginatedResponse<Server>>("/servers");
+      return toList(payload);
+    },
     get: (serverId: string) => client.get<Server>(`/servers/${serverId}`),
     create: (name: string) => client.post<Server>("/servers", { name }),
     update: (serverId: string, name: string) =>
@@ -16,8 +34,12 @@ export function createServersApi(client: FetchClient) {
 
     // Channels (nested under servers)
     // Backend expects { name, kind } where kind is "Text" (PascalCase)
-    listChannels: (serverId: string) =>
-      client.get<Channel[]>(`/servers/${serverId}/channels`),
+    listChannels: async (serverId: string) => {
+      const payload = await client.get<Channel[] | PaginatedResponse<Channel>>(
+        `/servers/${serverId}/channels`,
+      );
+      return toList(payload);
+    },
     getChannel: (serverId: string, channelId: string) =>
       client.get<Channel>(`/servers/${serverId}/channels/${channelId}`),
     createChannel: (serverId: string, name: string, kind: "Text" = "Text") =>
@@ -28,8 +50,12 @@ export function createServersApi(client: FetchClient) {
       client.delete<void>(`/servers/${serverId}/channels/${channelId}`),
 
     // Members (nested under servers)
-    listMembers: (serverId: string) =>
-      client.get<Member[]>(`/servers/${serverId}/members`),
+    listMembers: async (serverId: string) => {
+      const payload = await client.get<Member[] | PaginatedResponse<Member>>(
+        `/servers/${serverId}/members`,
+      );
+      return toList(payload);
+    },
     getMember: (serverId: string, memberId: string) =>
       client.get<Member>(`/servers/${serverId}/members/${memberId}`),
     updateMemberRole: (serverId: string, memberId: string, role: string) =>

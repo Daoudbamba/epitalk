@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { terminateSession } from "@/lib/auth/session";
+import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
+import { NotificationManager } from "@/components/notification-manager";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -56,6 +58,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-screen w-screen flex">
+      <NotificationPermissionBanner />
+      <NotificationManager />
       <main className="flex-1">{children}</main>
     </div>
   );

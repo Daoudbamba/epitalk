@@ -11,6 +11,7 @@ use crate::repositories::MembershipRepository;
 use crate::repositories::UserRepository;
 use crate::services::message_service::MessageService;
 use crate::services::presence_service::PresenceService;
+use crate::services::scheduled_message_service::next_weekly_occurrence;
 use crate::services::typing_service::TypingService;
 use crate::ws::hub::{ConnId, Hub};
 use mongodb::bson::oid::ObjectId;
@@ -495,6 +496,164 @@ pub async fn handle_connection(
                             }
                         }
                     }
+                },
+                ClientEvent::MessageSchedule {
+                    channel_id,
+                    content,
+                    day_of_week,
+                    hour,
+                    minute,
+                    reply_to,
+                } => {
+                    if let Err(reason) = validate_channel_id(&channel_id) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
+                        continue;
+                    }
+                    if let Err(reason) = validate_content(&content) {
+                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                        continue;
+                    }
+                    if let Err(reason) = validate_schedule(day_of_week, hour, minute) {
+                        send_error(&hub_recv, &conn_id, "INVALID_SCHEDULE", reason);
+                        continue;
+                    }
+
+                    let reply_to_oid = if let Some(ref reply_id) = reply_to {
+                        match ObjectId::parse_str(reply_id) {
+                            Ok(oid) => Some(oid),
+                            Err(_) => {
+                                send_error(
+                                    &hub_recv,
+                                    &conn_id,
+                                    "INVALID_REPLY_TO",
+                                    "reply_to must be a valid message id",
+                                );
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                    let server_id = match resolve_server_id(
+                        &channel_id,
+                        &pg_pool_recv,
+                        &mut channel_server_cache,
+                        &hub_recv,
+                        &conn_id,
+                    )
+                    .await
+                    {
+                        Some(sid) => sid,
+                        None => continue,
+                    };
+
+                    let server_uuid = match Uuid::parse_str(&server_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            send_error(&hub_recv, &conn_id, "INTERNAL_ERROR", "invalid server mapping");
+                            continue;
+                        }
+                    };
+
+                    if MembershipRepository::is_banned(&pg_pool_recv, server_uuid, current_user_uuid)
+                        .await
+                        .unwrap_or(true)
+                    {
+                        send_error(&hub_recv, &conn_id, "BANNED", "You are banned from this server");
+                        continue;
+                    }
+
+                    if !MembershipRepository::is_member(&pg_pool_recv, current_user_uuid, server_uuid)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        send_error(&hub_recv, &conn_id, "NOT_MEMBER", "You are not a member of this server");
+                        continue;
+                    }
+
+                    let now = chrono::Utc::now();
+                    let scheduled_for = match next_weekly_occurrence(now, day_of_week, hour, minute) {
+                        Some(at) => at,
+                        None => {
+                            send_error(&hub_recv, &conn_id, "INVALID_SCHEDULE", "invalid schedule values");
+                            continue;
+                        }
+                    };
+
+                    let ack = ServerEvent::MessageScheduled {
+                        channel_id: channel_id.clone(),
+                        day_of_week,
+                        hour,
+                        minute,
+                        scheduled_for: scheduled_for.to_rfc3339(),
+                    };
+                    if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                        if let Ok(json) = serde_json::to_string(&ack) {
+                            let _ = tx.send(Message::Text(json));
+                        }
+                    }
+
+                    let hub_scheduled = hub_recv.clone();
+                    let message_service_scheduled = message_service_recv.clone();
+                    let pg_pool_scheduled = pg_pool_recv.clone();
+                    let channel_id_scheduled = channel_id.clone();
+                    let user_id_scheduled = user_id_recv.clone();
+                    let content_scheduled = content.clone();
+                    let reply_to_hex = reply_to.clone();
+                    let reply_to_oid_scheduled = reply_to_oid;
+
+                    tokio::spawn(async move {
+                        let wait = scheduled_for
+                            .signed_duration_since(chrono::Utc::now())
+                            .to_std()
+                            .unwrap_or_else(|_| std::time::Duration::from_secs(0));
+                        tokio::time::sleep(wait).await;
+
+                        let created_at = chrono::Utc::now().to_rfc3339();
+                        let id = match message_service_scheduled
+                            .create_message(
+                                channel_id_scheduled.clone(),
+                                user_id_scheduled.clone(),
+                                content_scheduled.clone(),
+                                created_at.clone(),
+                                reply_to_oid_scheduled,
+                            )
+                            .await
+                        {
+                            Ok(id) => id,
+                            Err(e) => {
+                                tracing::error!(
+                                    channel = %channel_id_scheduled,
+                                    user = %user_id_scheduled,
+                                    "Failed to persist scheduled message in MongoDB: {e}"
+                                );
+                                return;
+                            }
+                        };
+
+                        let username = match Uuid::parse_str(&user_id_scheduled) {
+                            Ok(uid) => UserRepository::find_by_id(&pg_pool_scheduled, uid)
+                                .await
+                                .ok()
+                                .flatten()
+                                .map(|u| u.username)
+                                .unwrap_or_else(|| user_id_scheduled.chars().take(8).collect()),
+                            Err(_) => user_id_scheduled.chars().take(8).collect(),
+                        };
+
+                        let event = ServerEvent::MessageNew {
+                            id: id.to_hex(),
+                            channel_id: channel_id_scheduled.clone(),
+                            author_id: user_id_scheduled.clone(),
+                            username,
+                            content: content_scheduled.clone(),
+                            created_at,
+                            reply_to: reply_to_hex,
+                        };
+
+                        hub_scheduled.broadcast_room(&channel_id_scheduled, event).await;
+                    });
                 },
                 ClientEvent::MessageEdit {
                     channel_id,

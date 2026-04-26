@@ -38,7 +38,9 @@ function extractInviteCode(value: string): string | null {
 type Status = { type: "success" | "error" | "info"; text: string } | null;
 
 export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRefresh: () => Promise<void>; openSettings: boolean; setOpenSettings: (v: boolean) => void }) {
-  const servers = useServerStore((s) => s.servers);
+  const servers = useServerStore((s) =>
+    Array.isArray(s.servers) ? s.servers : [],
+  );
   const activeServerId = useServerStore((s) => s.activeServerId);
   const setActiveServer = useServerStore((s) => s.setActiveServer);
   const resetChannels = useChannelStore((s) => s.reset);

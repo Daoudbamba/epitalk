@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { DmConversation } from "@/lib/api/dm.api";
 import { dmApi } from "@/lib/api";
 import type { WsMessage } from "@/lib/ws/types";
