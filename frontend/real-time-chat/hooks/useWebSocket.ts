@@ -16,13 +16,31 @@ export function useWebSocket() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const connect = useWebSocketStore((s) => s.connect);
 
+  // Forward "connected" state transitions to console so all four debug
+  // checkpoints appear in the same place.
+  useEffect(() => {
+    return wsManager.onStateChange((state) => {
+      if (state === "connected") console.debug("WS: connected");
+    });
+  }, []);
+
   useEffect(() => {
     if (!hasHydrated || !token) return;
-    // Only connect if the manager is fully idle (not reconnecting)
-    if (!wsManager.isReady() && wsManager.getState() === "idle") {
-      console.debug("[useWebSocket] token available, triggering connect | state:", wsManager.getState());
-      connect(token);
+
+    // Force a clean reconnect on every mount so a stale post-refresh
+    // socket (wrong auth context) cannot silently cause 403s on WS actions.
+    if (wsManager.isReady() || wsManager.getState() !== "idle") {
+      console.debug("WS: disconnecting previous");
+      wsManager.disconnect();
+      const timer = setTimeout(() => {
+        console.debug("WS: connecting");
+        connect(token);
+      }, 100);
+      return () => clearTimeout(timer);
     }
+
+    console.debug("WS: connecting");
+    connect(token);
   }, [token, hasHydrated, connect]);
 
   return {

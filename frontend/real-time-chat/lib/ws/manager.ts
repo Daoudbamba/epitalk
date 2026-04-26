@@ -52,6 +52,7 @@ export class WebSocketManager {
 
   connect(token: string): void {
     console.debug("[WS] connect() — state:", this._state, "| readyState:", this._socket?.readyState ?? "none");
+    console.debug("WS: token used =", token.slice(0, 10));
     if (
       this._socket &&
       (this._socket.readyState === WebSocket.OPEN ||
