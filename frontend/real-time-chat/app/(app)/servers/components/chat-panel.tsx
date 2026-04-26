@@ -891,7 +891,7 @@ export function ChatPanel() {
                       }
 
                       return (
-                        <p className="text-[var(--muted-foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
+                        <p className="text-[var(--foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
                           {msg.content}
                         </p>
                       );
