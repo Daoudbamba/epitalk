@@ -21,6 +21,8 @@ use crate::ws::protocol::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+const HEARTBEAT_TIMEOUT_SECS: i64 = 120;
+
 // ─────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────
@@ -202,6 +204,41 @@ pub async fn handle_connection(
     let pg_pool_recv = pg_pool.clone();
 
     // ---------------------------------------------------------
+    // TASK CLEANUP : kill stale connections (no message > 120 s)
+    // ---------------------------------------------------------
+    let hub_cleanup = hub.clone();
+    let cleanup_conn_id = conn_id;
+    let cleanup_handle = tokio::spawn(async move {
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs(30));
+        ticker.tick().await; // skip the immediate first tick
+        loop {
+            ticker.tick().await;
+            match hub_cleanup.heartbeats.get(&cleanup_conn_id) {
+                None => break, // connection already unregistered
+                Some(last_beat) => {
+                    let elapsed =
+                        (chrono::Utc::now() - *last_beat).num_seconds();
+                    if elapsed > HEARTBEAT_TIMEOUT_SECS {
+                        tracing::warn!(
+                            conn = %cleanup_conn_id,
+                            elapsed_secs = elapsed,
+                            "Cleaning up: last_ping > {}s ago",
+                            HEARTBEAT_TIMEOUT_SECS
+                        );
+                        if let Some(tx) =
+                            hub_cleanup.sockets.get(&cleanup_conn_id)
+                        {
+                            let _ = tx.send(Message::Close(None));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    // ---------------------------------------------------------
     // TASK RECEIVE : client → hub / services
     // ---------------------------------------------------------
     let recv_task = tokio::spawn(async move {
@@ -264,6 +301,10 @@ pub async fn handle_connection(
                     continue;
                 },
             };
+
+            // Any valid client event (MessageSend, JoinChannel, TypingStart, …)
+            // resets the heartbeat timer, not just Ping.
+            hub_recv.heartbeat(&conn_id);
 
             match event {
                 ClientEvent::MessageSend {
@@ -653,6 +694,7 @@ pub async fn handle_connection(
                                     content: msg.content.clone(),
                                     created_at: msg.created_at.clone(),
                                     reply_to: msg.reply_to.map(|oid| oid.to_hex()),
+                                    attachment_url: msg.attachment_url.clone(),
                                 };
                                 if let Ok(json) = serde_json::to_string(&event) {
                                     let _ = tx.send(Message::Text(json));
@@ -903,6 +945,7 @@ pub async fn handle_connection(
                             content.clone(),
                             created_at.clone(),
                             None,
+                            None,
                         )
                         .await
                     {
@@ -940,6 +983,7 @@ pub async fn handle_connection(
                         content: content.clone(),
                         created_at: created_at.clone(),
                         reply_to: None,
+                        attachment_url: None,
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
                     let in_room = hub_recv
@@ -957,6 +1001,7 @@ pub async fn handle_connection(
                                 content: content.clone(),
                                 created_at: created_at.clone(),
                                 reply_to: None,
+                                attachment_url: None,
                             }) {
                                 let _ = tx.send(Message::Text(json));
                             }
@@ -1109,6 +1154,7 @@ pub async fn handle_connection(
                                     content: msg.content.clone(),
                                     created_at: msg.created_at.clone(),
                                     reply_to: msg.reply_to.map(|oid| oid.to_hex()),
+                                    attachment_url: msg.attachment_url.clone(),
                                 };
                                 if let Ok(json) = serde_json::to_string(&event) {
                                     let _ = tx.send(Message::Text(json));
@@ -1244,6 +1290,7 @@ pub async fn handle_connection(
                             content.clone(),
                             created_at.clone(),
                             None,
+                            None,
                         )
                         .await
                     {
@@ -1274,6 +1321,7 @@ pub async fn handle_connection(
                         content,
                         created_at,
                         reply_to: None,
+                        attachment_url: None,
                     };
                     hub_recv.broadcast_room(&conversation_id, event.clone()).await;
                     // Notify recipient connections not in the room
@@ -1298,6 +1346,7 @@ pub async fn handle_connection(
 
     // Attendre la fin de la task
     let _ = recv_task.await;
+    cleanup_handle.abort(); // connexion fermée normalement, plus besoin du watcher
 
     // Nettoyage connexion
     // Log connection cleanup for debugging resets and presence transitions
