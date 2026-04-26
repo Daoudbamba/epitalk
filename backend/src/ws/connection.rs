@@ -140,31 +140,56 @@ pub async fn handle_connection(
     // broadcasts happen before the new socket is registered and thus the
     // event is not received by clients already connected.
     let conn_id_str = conn_id.to_string();
+
+    // Read the persisted status before overwriting it so we can preserve
+    // IDLE / DND across a page refresh (only force ONLINE for OFFLINE users).
+    let effective_status_str = if let Ok(uid) = Uuid::parse_str(&user_id) {
+        match UserRepository::find_by_id(&pg_pool, uid).await {
+            Ok(Some(user)) => match user.status {
+                crate::models::user::UserStatus::Idle => "idle",
+                crate::models::user::UserStatus::Dnd  => "dnd",
+                _                                     => "online",
+            },
+            _ => "online",
+        }
+    } else {
+        "online"
+    };
+
     presence.add_connection(&user_id, &conn_id_str);
 
-    // Persist ONLINE status in PG immediately (fire-and-forget).
-    if let Ok(uid) = Uuid::parse_str(&user_id) {
-        let pool_pg = pg_pool.clone();
-        tokio::spawn(async move {
-            let _ = UserRepository::update_status(
-                &pool_pg,
-                uid,
-                &crate::models::user::UserStatus::Online,
-            )
-            .await;
-        });
+    // add_connection always sets Online in memory; restore IDLE/DND if needed.
+    match effective_status_str {
+        "idle" => { presence.set_status(&user_id, crate::services::presence_service::PresenceStatus::Idle); }
+        "dnd"  => { presence.set_status(&user_id, crate::services::presence_service::PresenceStatus::Dnd); }
+        _      => {}
     }
 
-    // Always broadcast so clients that connected after this user still see
-    // the correct online status (not gated on `changed`).
+    // Only write ONLINE to PG when the user was previously OFFLINE.
+    // IDLE / DND are left untouched so they survive the reconnect.
+    if effective_status_str == "online" {
+        if let Ok(uid) = Uuid::parse_str(&user_id) {
+            let pool_pg = pg_pool.clone();
+            tokio::spawn(async move {
+                let _ = UserRepository::update_status(
+                    &pool_pg,
+                    uid,
+                    &crate::models::user::UserStatus::Online,
+                )
+                .await;
+            });
+        }
+    }
+
+    // Always broadcast the effective status so late-joining clients stay in sync.
     hub.broadcast_all(crate::ws::protocol::ServerEvent::UserOnline {
         user_id: user_id.clone(),
-        status: "online".to_string(),
+        status: effective_status_str.to_string(),
     })
     .await;
     hub.broadcast_all(crate::ws::protocol::ServerEvent::PresenceUpdated {
         user_id: user_id.clone(),
-        status: "online".to_string(),
+        status: effective_status_str.to_string(),
         last_activity: chrono::Utc::now().to_rfc3339(),
     })
     .await;
