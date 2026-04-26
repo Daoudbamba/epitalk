@@ -24,7 +24,6 @@ function createMainWindow() {
 
   const url = getWebAppUrl();
   win.loadURL(url);
-  
   return win;
 }
 

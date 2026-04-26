@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useDmStore } from "@/store/dm.store";
-import { useWebSocketStore } from "@/store/websocket.store";
+import { usePresenceStore } from "@/store/presence.store";
 import { MessageSquare } from "lucide-react";
 
 export function DmSidebar() {
@@ -12,7 +12,7 @@ export function DmSidebar() {
   const fetchConversations = useDmStore((s) => s.fetchConversations);
   const loading = useDmStore((s) => s.loading);
 
-  const presence = useWebSocketStore((s) => s.presence);
+  const presence = usePresenceStore((s) => s.presence);
 
   useEffect(() => {
     fetchConversations();
@@ -102,9 +102,15 @@ export function DmSidebar() {
                   {conv.peer_username}
                 </div>
                 <div className="text-xs text-[var(--muted-foreground)] truncate max-w-[160px]">
-                  {conv.last_message.length > 40
-                    ? conv.last_message.slice(0, 40) + "..."
-                    : conv.last_message}
+                  {(() => {
+                    try {
+                      const p = JSON.parse(conv.last_message);
+                      if (p?.type === "gif") return "🖼 GIF";
+                    } catch { /* not JSON */ }
+                    return conv.last_message.length > 40
+                      ? conv.last_message.slice(0, 40) + "..."
+                      : conv.last_message;
+                  })()}
                 </div>
               </div>
 

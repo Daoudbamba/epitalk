@@ -8,18 +8,10 @@ const API_BASE =
     ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
     : "http://localhost:3001";
 
-const STATUS_DOTS: Record<string, string> = {
-  ONLINE: "bg-green-500",
-  IDLE: "bg-amber-500",
-  DND: "bg-gray-500",
-  OFFLINE: "bg-red-500",
-};
-
 export function UserSettings() {
   const user = useAuthStore((s) => s.user);
 
   const avatarUrl = user?.avatar_url ? `${API_BASE}${user.avatar_url}` : null;
-  const statusDot = STATUS_DOTS[user?.status || "ONLINE"] || "bg-green-500";
 
   return (
     <Link
@@ -53,11 +45,6 @@ export function UserSettings() {
             d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
           />
         </svg>
-      )}
-      {user && (
-        <span
-          className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-[var(--card)] ${statusDot}`}
-        />
       )}
     </Link>
   );

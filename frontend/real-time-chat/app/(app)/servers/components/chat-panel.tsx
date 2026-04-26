@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-  Plus,
   Smile,
   Gift,
   Sticker,
@@ -15,13 +14,17 @@ import {
   Trash2,
   X,
   Search,
-  Clock3,
+  Pin,
+  PinOff,
+  Paperclip,
+  FileText,
 } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useMemberStore } from "@/store/member.store";
+import { useMessageStore } from "@/store/message.store";
 import { messagesApi } from "@/lib/api";
 import type { Message } from "@/lib/api/schemas/messages.schema";
 import {
@@ -29,6 +32,7 @@ import {
   getNextWeeklyOccurrenceLocal,
   toBackendUtcSchedule,
 } from "@/lib/schedule";
+import type { WsMessage } from "@/lib/ws/types";
 import { useLanguage } from "@/components/language-provider";
 import { useAppearanceStore } from "@/store/appearance.store";
 
@@ -66,12 +70,17 @@ export function ChatPanel() {
   const editMessage = useWebSocketStore((s) => s.editMessage);
   const deleteMessage = useWebSocketStore((s) => s.deleteMessage);
   const joinChannel = useWebSocketStore((s) => s.joinChannel);
-  const setMessages = useWebSocketStore((s) => s.setMessages);
-  const wsMessages = useWebSocketStore((s) => s.messages);
   const socket = useWebSocketStore((s) => s.socket);
   const startTyping = useWebSocketStore((s) => s.startTyping);
   const stopTyping = useWebSocketStore((s) => s.stopTyping);
   const typingUsers = useWebSocketStore((s) => s.typingUsers);
+
+  // Message store (source of truth)
+  const messagesByChannel = useMessageStore((s) => s.messages);
+  const setMsgs = useMessageStore((s) => s.setMessages);
+  const prependMessages = useMessageStore((s) => s.prependMessages);
+  const setCursor = useMessageStore((s) => s.setCursor);
+  const clearChannel = useMessageStore((s) => s.clearChannel);
 
   const activeChannelName = useMemo(() => {
     return channels.find((c) => c.id === activeChannelId)?.name ?? null;
@@ -80,6 +89,8 @@ export function ChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState("");
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Search UI state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -100,6 +111,42 @@ export function ChatPanel() {
   const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Pinned messages panel state
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [pinnedLoading, setPinnedLoading] = useState(false);
+
+  const loadPinnedMessages = async () => {
+    if (!activeServerId || !activeChannelId) return;
+    setPinnedLoading(true);
+    try {
+      const data = await messagesApi.listPinned(activeServerId, activeChannelId);
+      setPinnedMessages(data);
+    } catch (err) {
+      console.error("Failed to load pinned messages:", err);
+    } finally {
+      setPinnedLoading(false);
+    }
+  };
+
+  const handlePin = async (messageId: string) => {
+    if (!activeServerId || !activeChannelId) return;
+    try {
+      await messagesApi.pin(activeServerId, activeChannelId, messageId);
+    } catch (err) {
+      console.error("Failed to pin message:", err);
+    }
+  };
+
+  const handleUnpin = async (messageId: string) => {
+    if (!activeServerId || !activeChannelId) return;
+    try {
+      await messagesApi.unpin(activeServerId, activeChannelId, messageId);
+    } catch (err) {
+      console.error("Failed to unpin message:", err);
+    }
+  };
 
   // GIF picker state
   const [openGifPicker, setOpenGifPicker] = useState<"input" | null>(null);
@@ -122,6 +169,13 @@ export function ChatPanel() {
   const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👀"];
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // distance from bottom saved before prepend, restored via useLayoutEffect
+  const scrollAnchorRef = useRef<number | null>(null);
+  const prevChannelRef = useRef<string | null>(null);
+
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Jump to a message by id (switch server/channel if needed)
   const jumpToMessage = async (
@@ -168,8 +222,8 @@ export function ChatPanel() {
   // Get messages for current channel
   const messages = useMemo(() => {
     if (!activeChannelId) return [];
-    return wsMessages[activeChannelId] || [];
-  }, [activeChannelId, wsMessages]);
+    return messagesByChannel[activeChannelId] ?? [];
+  }, [activeChannelId, messagesByChannel]);
 
   const dayOptions = useMemo(
     () => [
@@ -218,61 +272,94 @@ export function ChatPanel() {
     }
   }, [token, isConnected, connect]);
 
-  // Join channel & (re)load history when ready and we have no messages yet
+  // Re-join channel whenever the WebSocket (re)connects — backend requires
+  // an explicit JoinChannel even after a page refresh.
   useEffect(() => {
-    if (activeChannelId && isConnected && activeServerId) {
-      // Load initial history via REST so the UI shows messages immediately on reload
-      (async () => {
+    if (!isConnected || !activeChannelId) return;
+    joinChannel(activeChannelId);
+  }, [isConnected, activeChannelId, joinChannel]);
+
+  // On channel change: purge old cache, fetch if empty, join WS
+  useEffect(() => {
+    if (!activeChannelId || !isConnected || !activeServerId) return;
+
+    const prevChannel = prevChannelRef.current;
+    if (prevChannel && prevChannel !== activeChannelId) {
+      clearChannel(prevChannel);
+    }
+    prevChannelRef.current = activeChannelId;
+
+    setHasMore(true);
+    setLoadingMore(false);
+
+    const cached = useMessageStore.getState().getMessages(activeChannelId);
+    if (cached.length === 0) {
+      void (async () => {
         try {
           const data = await messagesApi.list(activeServerId, activeChannelId);
-          // messagesApi returns Message[] compatible with WsMessage shape
-          setMessages(activeChannelId, data as Message[]);
+          setMsgs(activeChannelId, data as WsMessage[]);
+          if (data.length > 0) setCursor(activeChannelId, data[0].id);
+          setHasMore(data.length >= 50);
         } catch (err) {
-          console.warn("Failed to load initial messages via REST:", err);
+          console.warn("Failed to load initial messages:", err);
         } finally {
-          // Then join the WS channel to receive live updates
           joinChannel(activeChannelId);
         }
       })();
+    } else {
+      joinChannel(activeChannelId);
     }
-  }, [activeChannelId, isConnected, joinChannel, activeServerId, setMessages]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChannelId, isConnected, activeServerId]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom only for new WS messages (not prepend)
   useEffect(() => {
-    const el = bottomRef.current as HTMLElement | null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (el && typeof (el as any).scrollIntoView === "function") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (el as any).scrollIntoView({ behavior: "smooth" });
-    }
+    if (scrollAnchorRef.current !== null) return; // restoring after prepend
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Remove local scheduled previews once their corresponding real message arrives.
-  useEffect(() => {
-    if (!activeChannelId || !user?.id) return;
+  // Restore scroll position after prepend (useLayoutEffect fires before paint)
+  useLayoutEffect(() => {
+    if (scrollAnchorRef.current === null) return;
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight - scrollAnchorRef.current;
+    scrollAnchorRef.current = null;
+  }, [messages]);
 
-    setScheduledByChannel((prev) => {
-      const channelItems = prev[activeChannelId] || [];
-      if (channelItems.length === 0) return prev;
+  // Load older messages (infinite scroll up)
+  const loadOlderMessages = useCallback(async () => {
+    if (!activeServerId || !activeChannelId || !hasMore || loadingMore) return;
+    const msgs = useMessageStore.getState().getMessages(activeChannelId);
+    if (!msgs.length) return;
 
-      const remaining = channelItems.filter((scheduled) => {
-        const scheduledAtMs = new Date(scheduled.scheduled_for).getTime();
-        return !messages.some((message) => {
-          if (message.author_id !== user.id) return false;
-          if (message.content !== scheduled.content) return false;
-          const createdAtMs = new Date(message.created_at).getTime();
-          return createdAtMs >= scheduledAtMs - 60_000;
-        });
+    const el = scrollContainerRef.current;
+    if (el) scrollAnchorRef.current = el.scrollHeight - el.scrollTop;
+
+    setLoadingMore(true);
+    try {
+      const data = await messagesApi.list(activeServerId, activeChannelId, {
+        before: msgs[0].id,
       });
+      if (data.length > 0) {
+        prependMessages(activeChannelId, data as WsMessage[]);
+        setCursor(activeChannelId, data[0].id);
+      }
+      if (data.length < 50) setHasMore(false);
+    } catch (err) {
+      console.warn("Failed to load older messages:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [activeServerId, activeChannelId, hasMore, loadingMore, prependMessages, setCursor]);
 
-      if (remaining.length === channelItems.length) return prev;
-
-      return {
-        ...prev,
-        [activeChannelId]: remaining,
-      };
-    });
-  }, [activeChannelId, messages, user?.id]);
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      if (e.currentTarget.scrollTop < 150 && hasMore && !loadingMore) {
+        void loadOlderMessages();
+      }
+    },
+    [hasMore, loadingMore, loadOlderMessages],
+  );
 
   // Get username from message, members or fallback to author_id
   const getUsernameById = useCallback(
@@ -325,7 +412,7 @@ export function ChatPanel() {
     if (!activeChannelId || !canLoad) return;
 
     const content = value.trim();
-    if (!content) return;
+    if (!content && !attachmentFile) return;
 
     if (!isConnected) {
       setError(isEnglish ? "Not connected to the server" : "Non connecté au serveur");
@@ -336,6 +423,12 @@ export function ChatPanel() {
     setError(null);
 
     try {
+      let attachmentUrl: string | undefined;
+      if (attachmentFile && activeServerId) {
+        const result = await messagesApi.uploadAttachment(activeServerId, activeChannelId, attachmentFile);
+        attachmentUrl = result.url;
+      }
+
       if (isEditing && editingMessageId) {
         editMessage(activeChannelId, editingMessageId, content);
         setEditingMessageId(null);
@@ -393,9 +486,10 @@ export function ChatPanel() {
         setReplyToUsername(null);
         setScheduleOpen(false);
       } else {
-        sendMessage(activeChannelId, content, replyTo || undefined);
+        sendMessage(activeChannelId, content, replyTo || undefined, attachmentUrl);
         setReplyTo(null);
         setReplyToUsername(null);
+        setAttachmentFile(null);
       }
       setValue("");
       if (activeChannelId) stopTyping(activeChannelId);
@@ -411,6 +505,7 @@ export function ChatPanel() {
     setEditingMessageId(null);
     setReplyTo(null);
     setValue("");
+    setAttachmentFile(null);
   };
 
   // Typing indicator: track when user is typing
@@ -541,18 +636,71 @@ export function ChatPanel() {
   }, [gifQuery, openGifPicker]);
 
   return (
-    <div className="h-[95%] rounded-2xl my-4 mx-2 border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden">
+    <div className="h-full border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden">
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm shrink-0">
         <span className="text-[var(--muted-foreground)] mr-2 text-2xl">#</span>
         <h2 className="font-bold text-md text-[var(--foreground)]">
           {activeChannelName ?? (isEnglish ? "no-channel" : "aucun-channel")}
         </h2>
-        <div className="ml-auto relative">
+        <div className="ml-auto flex items-center gap-1 relative">
+          <button
+            title={isEnglish ? "Pinned messages" : "Messages épinglés"}
+            onClick={() => {
+              setPinnedOpen((s) => !s);
+              if (!pinnedOpen) loadPinnedMessages();
+            }}
+            className={`h-8 w-8 rounded-md flex items-center justify-center transition ${pinnedOpen ? "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+          >
+            <Pin className="h-4 w-4" />
+          </button>
+
+          {pinnedOpen && (
+            <div className="absolute right-0 top-10 z-40 bg-white dark:bg-zinc-900 border rounded-md shadow-lg p-3 w-[min(90vw,28rem)]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-semibold text-sm">
+                  {isEnglish ? "Pinned messages" : "Messages épinglés"}
+                </span>
+                <button onClick={() => setPinnedOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {pinnedLoading ? (
+                <div className="flex items-center gap-2 text-sm text-zinc-500 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Chargement...
+                </div>
+              ) : pinnedMessages.length === 0 ? (
+                <div className="text-sm text-zinc-500">
+                  {isEnglish ? "No pinned messages." : "Aucun message épinglé."}
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-2 max-h-72 overflow-auto">
+                  {pinnedMessages.map((m) => (
+                    <li
+                      key={m.id}
+                      className="p-2 border rounded hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                      onClick={async () => {
+                        setPinnedOpen(false);
+                        await jumpToMessage(m.id, activeServerId ?? "", m.channel_id);
+                      }}
+                    >
+                      <div className="text-xs text-zinc-500 mb-0.5">
+                        {new Date(m.created_at).toLocaleString()}
+                      </div>
+                      <div className="text-sm text-zinc-700 dark:text-zinc-200 truncate">
+                        {m.content}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <button
             title="Rechercher"
             onClick={() => setSearchOpen((s) => !s)}
-            className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition ml-3"
+            className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
           >
             <Search className="h-4 w-4" />
           </button>
@@ -680,33 +828,16 @@ export function ChatPanel() {
       </div>
 
       {/* --- MESSAGES --- */}
-      <div className="flex-1 overflow-y-auto flex flex-col py-4">
-        {canLoad && scheduledMessages.length > 0 && (
-          <div className="px-4 pb-3">
-            <div className="rounded-xl border border-amber-200 bg-amber-50/80 dark:border-amber-900/60 dark:bg-amber-950/30 p-3">
-              <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-medium text-sm mb-2">
-                <Clock3 className="h-4 w-4" />
-                {isEnglish ? "Scheduled (visible only to you)" : "Programmes (visibles seulement pour vous)"}
-              </div>
-              <div className="space-y-2">
-                {scheduledMessages.map((scheduled) => (
-                  <div
-                    key={scheduled.local_id}
-                    className="rounded-lg border border-amber-200/80 dark:border-amber-900/70 bg-white/80 dark:bg-zinc-900/50 px-3 py-2"
-                  >
-                    <div className="text-xs text-amber-700 dark:text-amber-300 mb-1">
-                      {isEnglish ? "Will be sent:" : "Envoi prevu :"} {formatScheduledAt(new Date(scheduled.scheduled_for), isEnglish ? "en" : "fr")}
-                    </div>
-                    <div className="text-sm text-[var(--foreground)] whitespace-pre-wrap">
-                      {scheduled.content}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto flex flex-col py-4"
+        onScroll={handleScroll}
+      >
+        {loadingMore && (
+          <div className="flex justify-center py-2">
+            <Loader2 className="h-4 w-4 animate-spin text-[var(--muted-foreground)]" />
           </div>
         )}
-
         {!canLoad ? (
           <div className="px-4 text-sm text-muted-foreground">
             {isEnglish
@@ -776,6 +907,17 @@ export function ChatPanel() {
                         <Trash2 className="h-4 w-4" />
                       </button>
                     )}
+                    {canModerate && (
+                      <button
+                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                        onClick={() =>
+                          msg.pinned_at ? handleUnpin(msg.id) : handlePin(msg.id)
+                        }
+                        title={msg.pinned_at ? (isEnglish ? "Unpin" : "Désépingler") : (isEnglish ? "Pin" : "Épingler")}
+                      >
+                        {msg.pinned_at ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                      </button>
+                    )}
                     <button
                       className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-amber-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
                       onClick={() =>
@@ -840,6 +982,12 @@ export function ChatPanel() {
                       {msg.edited_at && (
                         <span className="text-xs text-indigo-500">(édité)</span>
                       )}
+                      {msg.pinned_at && (
+                        <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                          <Pin className="h-3 w-3" />
+                          {isEnglish ? "pinned" : "épinglé"}
+                        </span>
+                      )}
                     </div>
 
                     {msg.reply_to &&
@@ -848,7 +996,7 @@ export function ChatPanel() {
                           (m) => m.id === msg.reply_to,
                         );
                         return (
-                          <div className="text-xs text-zinc-500 italic mb-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-md">
+                          <div className="text-xs text-zinc-500 italic mb-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-md max-h-16 overflow-hidden">
                             Réponse à{" "}
                             {original
                               ? getUsernameById(
@@ -859,7 +1007,9 @@ export function ChatPanel() {
                             :
                             <div className="truncate max-w-full">
                               {original
-                                ? original.content
+                                ? original.content.startsWith('{"type":"gif"')
+                                  ? "🖼 GIF"
+                                  : original.content
                                 : "message introuvable"}
                             </div>
                           </div>
@@ -891,9 +1041,44 @@ export function ChatPanel() {
                       }
 
                       return (
-                        <p className="text-[var(--foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
-                          {msg.content}
-                        </p>
+                        <>
+                          {msg.content && (
+                            <p className="text-[var(--muted-foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
+                              {msg.content}
+                            </p>
+                          )}
+                          {msg.attachment_url && (() => {
+                            const raw = msg.attachment_url!;
+                            const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+                            const url = raw.startsWith("http") ? raw : `${base}${raw}`;
+                            const isImage = /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(raw);
+                            if (isImage) {
+                              return (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={url}
+                                  alt="attachment"
+                                  className="mt-2 max-w-xs max-h-64 rounded-md object-contain cursor-pointer"
+                                  onClick={() => setOpenGifLightbox(url)}
+                                />
+                              );
+                            }
+                            const filename = raw.split("/").pop() ?? raw;
+                            const displayName = filename.length > 30 ? `${filename.slice(0, 30)}...` : filename;
+                            return (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download
+                                className="mt-2 inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 underline"
+                              >
+                                <FileText className="h-4 w-4 shrink-0" />
+                                {displayName}
+                              </a>
+                            );
+                          })()}
+                        </>
                       );
                     })()}
 
@@ -1012,35 +1197,81 @@ export function ChatPanel() {
             </button>
           </div>
         )}
+
+        {/* Attachment preview */}
+        {attachmentFile && (
+          <div className="mb-2 flex items-center gap-3 px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-sm">
+            {attachmentFile.type.startsWith("image/") ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={URL.createObjectURL(attachmentFile)}
+                alt="preview"
+                className="h-16 w-16 rounded object-cover shrink-0"
+              />
+            ) : (
+              <FileText className="h-8 w-8 text-indigo-500 shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="truncate font-medium text-[var(--foreground)]">{attachmentFile.name}</p>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {attachmentFile.size < 1024 * 1024
+                  ? `${(attachmentFile.size / 1024).toFixed(1)} KB`
+                  : `${(attachmentFile.size / (1024 * 1024)).toFixed(1)} MB`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAttachmentFile(null)}
+              className="text-[var(--muted-foreground)] hover:text-red-500 transition shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              if (file.size > 10 * 1024 * 1024) {
+                setError(isEnglish ? "File must be under 10 MB" : "Le fichier doit faire moins de 10 Mo");
+                return;
+              }
+              setAttachmentFile(file);
+            }
+            e.target.value = "";
+          }}
+        />
+
         <div className="relative flex items-center gap-2">
           <div className="relative flex-1">
             <button
               type="button"
               className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 bg-[var(--muted-foreground)] hover:bg-[var(--muted-foreground)] transition rounded-full p-1 flex items-center justify-center text-white"
-              disabled
-              title="Fonction à venir"
+              onClick={() => fileInputRef.current?.click()}
+              title={isEnglish ? "Attach a file" : "Joindre un fichier"}
             >
-              <Plus className="text-white" />
+              <Paperclip className="text-white h-3.5 w-3.5" />
             </button>
 
             <Input
               value={value}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              disabled={!canLoad || sending || !isConnected}
+              disabled={!canLoad || sending}
               className="px-14 pr-32 py-6 bg-[var(--muted)] border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]"
               placeholder={
                 !canLoad
                   ? isEnglish
                     ? "Select a channel..."
                     : "Sélectionne un channel..."
-                  : !isConnected
-                    ? isEnglish
-                      ? "Connecting..."
-                      : "Connexion en cours..."
-                    : isEnglish
-                      ? `Send a message in #${activeChannelName ?? ""}`
-                      : `Envoyer un message dans #${activeChannelName ?? ""}`
+                  : isEnglish
+                    ? `Send a message in #${activeChannelName ?? ""}`
+                    : `Envoyer un message dans #${activeChannelName ?? ""}`
               }
             />
 
@@ -1104,7 +1335,7 @@ export function ChatPanel() {
           {/* Bouton Envoyer */}
           <Button
             onClick={onSend}
-            disabled={!canLoad || sending || !isConnected || !value.trim()}
+            disabled={!canLoad || sending || !isConnected || (!value.trim() && !attachmentFile)}
             className="h-12 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title={
               scheduleOpen

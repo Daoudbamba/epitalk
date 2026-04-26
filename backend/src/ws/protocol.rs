@@ -20,6 +20,7 @@ pub enum ClientEvent {
         channel_id: String,
         content: String,
         reply_to: Option<String>,
+        attachment_url: Option<String>,
     },
     MessageSchedule {
         channel_id: String,
@@ -72,6 +73,7 @@ pub enum ClientEvent {
         recipient_id: String,
         content: String,
         reply_to: Option<String>,
+        attachment_url: Option<String>,
     },
     /// Edit a direct message
     DmEdit {
@@ -119,6 +121,7 @@ pub enum ServerEvent {
         content: String,
         created_at: String,
         reply_to: Option<String>,
+        attachment_url: Option<String>,
     },
     MessageScheduled {
         channel_id: String,
@@ -195,10 +198,17 @@ pub enum ServerEvent {
 
     UserOnline {
         user_id: String,
+        status: String,
     },
 
     UserOffline {
         user_id: String,
+        status: String,
+    },
+
+    /// Snapshot de présence envoyé au client qui rejoint un channel.
+    PresenceSync {
+        users: Vec<PresenceUser>,
     },
 
     /// Mise à jour structurée de la présence d'un utilisateur
@@ -230,6 +240,7 @@ pub enum ServerEvent {
         content: String,
         created_at: String,
         reply_to: Option<String>,
+        attachment_url: Option<String>,
     },
 
     /// A direct message was edited
@@ -247,6 +258,12 @@ pub enum ServerEvent {
         id: String,
         conversation_id: String,
     },
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct PresenceUser {
+    pub user_id: String,
+    pub status: String,
 }
 
 #[allow(dead_code)]
@@ -369,6 +386,7 @@ mod tests {
             content: "hello".into(),
             created_at: "2024-01-01T00:00:00Z".into(),
             reply_to: None,
+            attachment_url: None,
         };
 
         let json = serde_json::to_string(&event).unwrap();

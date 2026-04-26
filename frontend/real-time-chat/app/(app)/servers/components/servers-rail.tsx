@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -197,7 +197,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
       >
         <MessageSquare className="w-6 h-6 text-white" />
       </Link>
-      
+
       <div className="w-10 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent" />
 
       {/* Add server */}
@@ -245,7 +245,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
         <UserSettings />
       </div>
 
-      {/* Modal settings - Premium glassmorphism */}
+      {/* Modal settings */}
       {openSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <div
@@ -343,12 +343,8 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                     disabled={loadingInvite || !activeServerId}
                     title={
                       isOwner
-                        ? isEnglish
-                          ? "Generate"
-                          : "Generer"
-                        : isEnglish
-                          ? "Owner only"
-                          : "Reserve au createur"
+                        ? isEnglish ? "Generate" : "Generer"
+                        : isEnglish ? "Owner only" : "Reserve au createur"
                     }
                     className="h-11 px-5 rounded-xl border-[var(--border)] hover:border-[#023BFC] hover:bg-[#023BFC]/5 transition-all duration-300"
                   >
@@ -382,12 +378,8 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                   </div>
                   <div className="text-sm font-bold text-red-700">
                     {isOwner
-                      ? isEnglish
-                        ? "Danger zone"
-                        : "Zone dangereuse"
-                      : isEnglish
-                      ? "Leave server"
-                      : "Quitter le serveur"}
+                      ? isEnglish ? "Danger zone" : "Zone dangereuse"
+                      : isEnglish ? "Leave server" : "Quitter le serveur"}
                   </div>
                 </div>
                 <div className="text-xs text-red-600/80 mb-4">
@@ -409,12 +401,8 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
                   {loadingDanger
                     ? "..."
                     : isOwner
-                    ? isEnglish
-                      ? "Delete permanently"
-                      : "Supprimer definitivement"
-                    : isEnglish
-                    ? "Leave"
-                    : "Quitter"}
+                    ? isEnglish ? "Delete permanently" : "Supprimer definitivement"
+                    : isEnglish ? "Leave" : "Quitter"}
                 </Button>
               </div>
 
@@ -428,7 +416,7 @@ export function ServersRail({ onRefresh, openSettings, setOpenSettings }: { onRe
         </div>
       )}
 
-      {/* Modal creation serveur */}
+      {/* Modal création serveur */}
       <CreateServerModal
         open={openCreateServer}
         onOpenChange={setOpenCreateServer}

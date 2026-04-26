@@ -16,11 +16,13 @@ use crate::services::typing_service::TypingService;
 use crate::ws::hub::{ConnId, Hub};
 use mongodb::bson::oid::ObjectId;
 use crate::ws::protocol::{
-    validate_channel_id, validate_content, validate_schedule, ClientEvent, ServerEvent, MAX_FRAME_BYTES,
-    TYPING_THROTTLE_MS,
+    validate_channel_id, validate_content, ClientEvent, ServerEvent, MAX_CONTENT_LEN,
+    MAX_FRAME_BYTES, TYPING_THROTTLE_MS,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
+
+const HEARTBEAT_TIMEOUT_SECS: i64 = 120;
 
 // ─────────────────────────────────────────────────────────────────
 // Helpers
@@ -139,21 +141,59 @@ pub async fn handle_connection(
     // broadcasts happen before the new socket is registered and thus the
     // event is not received by clients already connected.
     let conn_id_str = conn_id.to_string();
-    let changed = presence.add_connection(&user_id, &conn_id_str);
-    if changed {
-        // Broadcast both legacy UserOnline and structured PresenceUpdated
-        let online_event = crate::ws::protocol::ServerEvent::UserOnline {
-            user_id: user_id.clone(),
-        };
-        hub.broadcast_all(online_event).await;
 
-        let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
-            user_id: user_id.clone(),
-            status: "online".to_string(),
-            last_activity: chrono::Utc::now().to_rfc3339(),
-        };
-        hub.broadcast_all(presence_event).await;
+    // Read the persisted status before overwriting it so we can preserve
+    // IDLE / DND across a page refresh (only force ONLINE for OFFLINE users).
+    let effective_status_str = if let Ok(uid) = Uuid::parse_str(&user_id) {
+        match UserRepository::find_by_id(&pg_pool, uid).await {
+            Ok(Some(user)) => match user.status {
+                crate::models::user::UserStatus::Idle => "idle",
+                crate::models::user::UserStatus::Dnd  => "dnd",
+                _                                     => "online",
+            },
+            _ => "online",
+        }
+    } else {
+        "online"
+    };
+
+    presence.add_connection(&user_id, &conn_id_str);
+
+    // add_connection always sets Online in memory; restore IDLE/DND if needed.
+    match effective_status_str {
+        "idle" => { presence.set_status(&user_id, crate::services::presence_service::PresenceStatus::Idle); }
+        "dnd"  => { presence.set_status(&user_id, crate::services::presence_service::PresenceStatus::Dnd); }
+        _      => {}
     }
+
+    // Only write ONLINE to PG when the user was previously OFFLINE.
+    // IDLE / DND are left untouched so they survive the reconnect.
+    if effective_status_str == "online" {
+        if let Ok(uid) = Uuid::parse_str(&user_id) {
+            let pool_pg = pg_pool.clone();
+            tokio::spawn(async move {
+                let _ = UserRepository::update_status(
+                    &pool_pg,
+                    uid,
+                    &crate::models::user::UserStatus::Online,
+                )
+                .await;
+            });
+        }
+    }
+
+    // Always broadcast the effective status so late-joining clients stay in sync.
+    hub.broadcast_all(crate::ws::protocol::ServerEvent::UserOnline {
+        user_id: user_id.clone(),
+        status: effective_status_str.to_string(),
+    })
+    .await;
+    hub.broadcast_all(crate::ws::protocol::ServerEvent::PresenceUpdated {
+        user_id: user_id.clone(),
+        status: effective_status_str.to_string(),
+        last_activity: chrono::Utc::now().to_rfc3339(),
+    })
+    .await;
 
     // Send a presence snapshot to the newly connected client so existing users
     // appear online immediately without waiting for new events.
@@ -201,6 +241,41 @@ pub async fn handle_connection(
     let typing_recv = typing_service.clone();
     let user_id_recv = user_id.clone();
     let pg_pool_recv = pg_pool.clone();
+
+    // ---------------------------------------------------------
+    // TASK CLEANUP : kill stale connections (no message > 120 s)
+    // ---------------------------------------------------------
+    let hub_cleanup = hub.clone();
+    let cleanup_conn_id = conn_id;
+    let cleanup_handle = tokio::spawn(async move {
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs(30));
+        ticker.tick().await; // skip the immediate first tick
+        loop {
+            ticker.tick().await;
+            match hub_cleanup.heartbeats.get(&cleanup_conn_id) {
+                None => break, // connection already unregistered
+                Some(last_beat) => {
+                    let elapsed =
+                        (chrono::Utc::now() - *last_beat).num_seconds();
+                    if elapsed > HEARTBEAT_TIMEOUT_SECS {
+                        tracing::warn!(
+                            conn = %cleanup_conn_id,
+                            elapsed_secs = elapsed,
+                            "Cleaning up: last_ping > {}s ago",
+                            HEARTBEAT_TIMEOUT_SECS
+                        );
+                        if let Some(tx) =
+                            hub_cleanup.sockets.get(&cleanup_conn_id)
+                        {
+                            let _ = tx.send(Message::Close(None));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    });
 
     // ---------------------------------------------------------
     // TASK RECEIVE : client → hub / services
@@ -266,18 +341,28 @@ pub async fn handle_connection(
                 },
             };
 
+            // Any valid client event (MessageSend, JoinChannel, TypingStart, …)
+            // resets the heartbeat timer, not just Ping.
+            hub_recv.heartbeat(&conn_id);
+
             match event {
                 ClientEvent::MessageSend {
                     channel_id,
                     content,
                     reply_to,
+                    attachment_url,
                 } => {
                     if let Err(reason) = validate_channel_id(&channel_id) {
                         send_error(&hub_recv, &conn_id, "INVALID_CHANNEL_ID", reason);
                         continue;
                     }
-                    if let Err(reason) = validate_content(&content) {
-                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                    if attachment_url.is_none() {
+                        if let Err(reason) = validate_content(&content) {
+                            send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                            continue;
+                        }
+                    } else if content.len() > MAX_CONTENT_LEN {
+                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", "message content exceeds maximum length");
                         continue;
                     }
 
@@ -347,6 +432,7 @@ pub async fn handle_connection(
                             content.clone(),
                             created_at.clone(),
                             reply_to_oid,
+                            attachment_url.clone(),
                         )
                         .await
                     {
@@ -384,6 +470,7 @@ pub async fn handle_connection(
                         content: content.clone(),
                         created_at: created_at.clone(),
                         reply_to: reply_to.clone(),
+                        attachment_url: attachment_url.clone(),
                     };
 
                     hub_recv.broadcast_room(&channel_id, event).await;
@@ -403,6 +490,7 @@ pub async fn handle_connection(
                                 content: content.clone(),
                                 created_at: created_at.clone(),
                                 reply_to: reply_to.clone(),
+                                attachment_url: attachment_url.clone(),
                             }) {
                                 let _ = tx.send(Message::Text(json));
                             }
@@ -803,11 +891,37 @@ pub async fn handle_connection(
                                     content: msg.content.clone(),
                                     created_at: msg.created_at.clone(),
                                     reply_to: msg.reply_to.map(|oid| oid.to_hex()),
+                                    attachment_url: msg.attachment_url.clone(),
                                 };
                                 if let Ok(json) = serde_json::to_string(&event) {
                                     let _ = tx.send(Message::Text(json));
                                 }
                             }
+                        }
+                    }
+
+                    // Send a presence snapshot so the joining client immediately
+                    // knows who is online without waiting for future events.
+                    let presence_users: Vec<crate::ws::protocol::PresenceUser> = presence_recv
+                        .snapshot()
+                        .into_iter()
+                        .map(|(uid, status, _)| {
+                            let status_str = match status {
+                                crate::services::presence_service::PresenceStatus::Online => "online",
+                                crate::services::presence_service::PresenceStatus::Idle => "idle",
+                                crate::services::presence_service::PresenceStatus::Dnd => "dnd",
+                                crate::services::presence_service::PresenceStatus::Offline => "offline",
+                            };
+                            crate::ws::protocol::PresenceUser {
+                                user_id: uid,
+                                status: status_str.to_string(),
+                            }
+                        })
+                        .collect();
+                    if let Some(tx) = hub_recv.sockets.get(&conn_id) {
+                        let sync_event = ServerEvent::PresenceSync { users: presence_users };
+                        if let Ok(json) = serde_json::to_string(&sync_event) {
+                            let _ = tx.send(Message::Text(json));
                         }
                     }
 
@@ -1053,6 +1167,7 @@ pub async fn handle_connection(
                             content.clone(),
                             created_at.clone(),
                             None,
+                            None,
                         )
                         .await
                     {
@@ -1090,6 +1205,7 @@ pub async fn handle_connection(
                         content: content.clone(),
                         created_at: created_at.clone(),
                         reply_to: None,
+                        attachment_url: None,
                     };
                     hub_recv.broadcast_room(&channel_id, event).await;
                     let in_room = hub_recv
@@ -1107,6 +1223,7 @@ pub async fn handle_connection(
                                 content: content.clone(),
                                 created_at: created_at.clone(),
                                 reply_to: None,
+                                attachment_url: None,
                             }) {
                                 let _ = tx.send(Message::Text(json));
                             }
@@ -1116,7 +1233,7 @@ pub async fn handle_connection(
                 // ─────────────────────────────────────────────
                 // DIRECT MESSAGES
                 // ─────────────────────────────────────────────
-                ClientEvent::DmSend { recipient_id, content, reply_to } => {
+                ClientEvent::DmSend { recipient_id, content, reply_to, attachment_url } => {
                     // Validate recipient UUID
                     let recipient_uuid = match Uuid::parse_str(&recipient_id) {
                         Ok(u) => u,
@@ -1125,8 +1242,13 @@ pub async fn handle_connection(
                             continue;
                         }
                     };
-                    if let Err(reason) = validate_content(&content) {
-                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                    if attachment_url.is_none() {
+                        if let Err(reason) = validate_content(&content) {
+                            send_error(&hub_recv, &conn_id, "INVALID_CONTENT", reason);
+                            continue;
+                        }
+                    } else if content.len() > MAX_CONTENT_LEN {
+                        send_error(&hub_recv, &conn_id, "INVALID_CONTENT", "message content exceeds maximum length");
                         continue;
                     }
                     // Prevent sending DM to self
@@ -1162,6 +1284,7 @@ pub async fn handle_connection(
                             content.clone(),
                             created_at.clone(),
                             reply_to_oid,
+                            attachment_url.clone(),
                         )
                         .await
                     {
@@ -1195,6 +1318,7 @@ pub async fn handle_connection(
                         content,
                         created_at,
                         reply_to,
+                        attachment_url,
                     };
 
                     // Broadcast to the DM room (users currently viewing)
@@ -1252,6 +1376,7 @@ pub async fn handle_connection(
                                     content: msg.content.clone(),
                                     created_at: msg.created_at.clone(),
                                     reply_to: msg.reply_to.map(|oid| oid.to_hex()),
+                                    attachment_url: msg.attachment_url.clone(),
                                 };
                                 if let Ok(json) = serde_json::to_string(&event) {
                                     let _ = tx.send(Message::Text(json));
@@ -1387,6 +1512,7 @@ pub async fn handle_connection(
                             content.clone(),
                             created_at.clone(),
                             None,
+                            None,
                         )
                         .await
                     {
@@ -1417,6 +1543,7 @@ pub async fn handle_connection(
                         content,
                         created_at,
                         reply_to: None,
+                        attachment_url: None,
                     };
                     hub_recv.broadcast_room(&conversation_id, event.clone()).await;
                     // Notify recipient connections not in the room
@@ -1441,6 +1568,7 @@ pub async fn handle_connection(
 
     // Attendre la fin de la task
     let _ = recv_task.await;
+    cleanup_handle.abort(); // connexion fermée normalement, plus besoin du watcher
 
     // Nettoyage connexion
     // Log connection cleanup for debugging resets and presence transitions
@@ -1468,19 +1596,32 @@ pub async fn handle_connection(
         tracing::info!(user = %user_id, new_status = ?new_status, "Presence changed after removing connection");
         match new_status {
             crate::services::presence_service::PresenceStatus::Offline => {
-                let offline_event = ServerEvent::UserOffline { user_id: user_id.clone() };
-                hub.broadcast_all(offline_event).await;
+                // Persist OFFLINE in PG (fire-and-forget).
+                if let Ok(uid) = Uuid::parse_str(&user_id) {
+                    let pool_pg = pg_pool.clone();
+                    tokio::spawn(async move {
+                        let _ = UserRepository::update_status(
+                            &pool_pg,
+                            uid,
+                            &crate::models::user::UserStatus::Offline,
+                        )
+                        .await;
+                    });
+                }
 
-                let presence_event = crate::ws::protocol::ServerEvent::PresenceUpdated {
+                hub.broadcast_all(ServerEvent::UserOffline {
+                    user_id: user_id.clone(),
+                    status: "offline".to_string(),
+                })
+                .await;
+                hub.broadcast_all(crate::ws::protocol::ServerEvent::PresenceUpdated {
                     user_id: user_id.clone(),
                     status: "offline".to_string(),
                     last_activity: chrono::Utc::now().to_rfc3339(),
-                };
-                hub.broadcast_all(presence_event).await;
+                })
+                .await;
             }
-            _ => {
-                // other statuses not expected here
-            }
+            _ => {}
         }
     } else {
         tracing::info!(user = %user_id, "Connection removed but user still has other connections");

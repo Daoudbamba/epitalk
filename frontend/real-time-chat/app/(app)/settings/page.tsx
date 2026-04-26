@@ -17,14 +17,6 @@ import {
   LogOut,
   Smile,
   ImageIcon,
-  Play,
-  Loader2,
-  Search,
-  X,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Mail,
   Palette,
   Sun,
   Moon,
@@ -33,7 +25,7 @@ import {
 } from "lucide-react";
 import { useAppearanceStore, type Theme, type FontSize } from "@/store/appearance.store";
 import { useLanguage } from "@/components/language-provider";
-import { getSettingsNavLabel, getSettingsStatusLabel } from "@/lib/settings-i18n";
+import { getSettingsNavLabel } from "@/lib/settings-i18n";
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import type { UpdateProfileInput } from "@/lib/api/auth.api";
@@ -42,13 +34,6 @@ const API_BASE =
   typeof window !== "undefined"
     ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
     : "http://localhost:3001";
-
-const STATUS_OPTIONS = [
-  { value: "ONLINE" as const, color: "#22C55E", dot: "bg-green-500" },
-  { value: "IDLE" as const, color: "#F59E0B", dot: "bg-amber-500" },
-  { value: "DND" as const, color: "#6B7280", dot: "bg-gray-500" },
-  { value: "OFFLINE" as const, color: "#EF4444", dot: "bg-red-500" },
-];
 
 type Section = "profile" | "appearance" | "privacy" | "notifications";
 
@@ -103,32 +88,10 @@ export default function SettingsPage() {
   const [editBio, setEditBio] = useState("");
   const [editColor1, setEditColor1] = useState("#023BFC");
   const [editColor2, setEditColor2] = useState("#3D6AFF");
-  const [editStatus, setEditStatus] = useState<"ONLINE" | "IDLE" | "DND" | "OFFLINE">("ONLINE");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-
-  // Account data edit modals
-  const [editingEmail, setEditingEmail] = useState(false);
-  const [editingPassword, setEditingPassword] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [emailPassword, setEmailPassword] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showEmailPassword, setShowEmailPassword] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [accountSaving, setAccountSaving] = useState(false);
-  const [emailRevealed, setEmailRevealed] = useState(false);
-
-  // GIF picker state
-  const [showGifPicker, setShowGifPicker] = useState(false);
-  const [gifQuery, setGifQuery] = useState("");
-  const [gifResults, setGifResults] = useState<{ id: string; url: string; preview?: string }[]>([]);
-  const [gifLoading, setGifLoading] = useState(false);
-  const gifPickerRef = useRef<HTMLDivElement>(null);
 
   const photoInputRef = useRef<HTMLInputElement>(null);
   const bioRef = useRef<HTMLTextAreaElement>(null);
@@ -141,7 +104,6 @@ export default function SettingsPage() {
     setEditBio(user.bio || "");
     setEditColor1(user.banner_color_1 || "#023BFC");
     setEditColor2(user.banner_color_2 || "#3D6AFF");
-    setEditStatus(user.status || "ONLINE");
     setError(null);
   }, [user]);
 
@@ -162,90 +124,12 @@ export default function SettingsPage() {
     }
   }, [showEmojiPicker]);
 
-  // Close GIF picker on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (gifPickerRef.current && !gifPickerRef.current.contains(e.target as Node)) {
-        setShowGifPicker(false);
-      }
-    }
-    if (showGifPicker) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [showGifPicker]);
-
-  // GIF search with debounce
-  useEffect(() => {
-    if (!showGifPicker) return;
-    const query = gifQuery.trim() || "avatar";
-    const controller = new AbortController();
-    setGifLoading(true);
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `/api/gifs/search?q=${encodeURIComponent(query)}&limit=20`,
-          { signal: controller.signal },
-        );
-        if (!res.ok) { setGifResults([]); setGifLoading(false); return; }
-        const json = await res.json();
-        const results: { id: string; url: string; preview?: string }[] = [];
-        if (json.results) {
-          for (const it of json.results) {
-            const url = it.url || "";
-            const preview = it.preview || undefined;
-            if (url) results.push({ id: (it.id || "").toString(), url, preview });
-          }
-        }
-        setGifResults(results);
-      } catch (err: unknown) {
-        if (!(err instanceof DOMException) || err.name !== "AbortError") {
-          setGifResults([]);
-        }
-      } finally {
-        setGifLoading(false);
-      }
-    }, 300);
-
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [gifQuery, showGifPicker]);
-
-  const statusLabelByValue: Record<"ONLINE" | "IDLE" | "DND" | "OFFLINE", string> = {
-    ONLINE: getSettingsStatusLabel(language, "ONLINE"),
-    IDLE: getSettingsStatusLabel(language, "IDLE"),
-    DND: getSettingsStatusLabel(language, "DND"),
-    OFFLINE: getSettingsStatusLabel(language, "OFFLINE"),
-  };
 
   const navLabelBySection: Record<Section, string> = {
     profile: getSettingsNavLabel(language, "profile"),
     appearance: getSettingsNavLabel(language, "appearance"),
     privacy: getSettingsNavLabel(language, "privacy"),
     notifications: getSettingsNavLabel(language, "notifications"),
-  };
-
-  // Select a GIF from the picker as avatar
-  const handleGifSelect = async (gifUrl: string) => {
-    setUploading(true);
-    setError(null);
-    try {
-      const updated = await authApi.setAvatarFromUrl(gifUrl);
-      setUser(updated);
-      setShowGifPicker(false);
-      setGifQuery("");
-      setGifResults([]);
-    } catch (e: unknown) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : isEnglish
-            ? "Error while applying GIF"
-            : "Erreur lors de l'application du GIF",
-      );
-    } finally {
-      setUploading(false);
-    }
   };
 
   const handleLogout = () => {
@@ -274,7 +158,6 @@ export default function SettingsPage() {
       if (editBio !== (user.bio || "")) payload.bio = editBio;
       if (editColor1 !== (user.banner_color_1 || "#023BFC")) payload.banner_color_1 = editColor1;
       if (editColor2 !== (user.banner_color_2 || "#3D6AFF")) payload.banner_color_2 = editColor2;
-      if (editStatus !== (user.status || "ONLINE")) payload.status = editStatus;
 
       if (Object.keys(payload).length === 0) return;
 
@@ -349,8 +232,6 @@ export default function SettingsPage() {
   }
 
   const avatarUrl = user.avatar_url ? `${API_BASE}${user.avatar_url}` : null;
-  const isGifAvatar = !!user.avatar_url && user.avatar_url.toLowerCase().endsWith(".gif");
-  const currentStatus = STATUS_OPTIONS.find((s) => s.value === (user.status || "ONLINE"));
 
   return (
     <div className="h-full flex bg-[var(--surface)]">
@@ -378,15 +259,9 @@ export default function SettingsPage() {
                   {user.username.slice(0, 2)}
                 </span>
               )}
-              {currentStatus && (
-                <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
-              )}
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
-              <div className="text-xs text-[var(--muted-foreground)]">
-                {currentStatus ? statusLabelByValue[currentStatus.value] : ""}
-              </div>
             </div>
           </div>
         </div>
@@ -467,27 +342,11 @@ export default function SettingsPage() {
                     >
                       <ImageIcon className="w-5 h-5 text-white" />
                     </button>
-                    <button
-                      onClick={() => { setShowGifPicker((v) => !v); setGifQuery(""); }}
-                      disabled={uploading}
-                      className="p-1.5 rounded-lg bg-white/20 hover:bg-white/40 transition-colors cursor-pointer"
-                      title={isEnglish ? "Choose animated GIF" : "Choisir un GIF anime"}
-                    >
-                      <Play className="w-5 h-5 text-white" />
-                    </button>
                   </div>
-                  {isGifAvatar && (
-                    <span className="absolute top-1 left-1 bg-[#7C3AED] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md leading-none shadow">
-                      GIF
-                    </span>
-                  )}
                   {uploading && (
                     <div className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center">
                       <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     </div>
-                  )}
-                  {currentStatus && (
-                    <span className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-3 border-[var(--card)] ${currentStatus.dot}`} />
                   )}
                 </div>
               </div>
@@ -518,9 +377,6 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </div>
-                      {currentStatus && (
-                        <span className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
-                      )}
                     </div>
                     <div className="mt-2">
                       <div className="font-bold text-[var(--foreground)]">{user.username}</div>
@@ -557,15 +413,9 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </div>
-                      {currentStatus && (
-                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--card)] ${currentStatus.dot}`} />
-                      )}
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
-                      <div className="text-xs text-[var(--muted-foreground)] truncate">
-                        {currentStatus ? statusLabelByValue[currentStatus.value] : ""}
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -591,50 +441,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Email row */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-                <div>
-                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">E-mail</div>
-                  <div className="mt-0.5 flex items-center gap-2">
-                    <span className="text-sm font-semibold text-[var(--foreground)]">
-                      {emailRevealed
-                        ? user.email
-                        : user.email.replace(/^(.{2})(.*)(@.*)$/, (_, a, b, c) => a + "*".repeat(b.length) + c)}
-                    </span>
-                    <button
-                      onClick={() => setEmailRevealed((v) => !v)}
-                      className="text-[#023BFC] text-xs font-medium hover:underline"
-                    >
-                      {emailRevealed ? (isEnglish ? "Hide" : "Masquer") : isEnglish ? "Show" : "Afficher"}
-                    </button>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setEditingEmail(true); setNewEmail(user.email); setEmailPassword(""); setError(null); }}
-                  className="rounded-lg border-[var(--border)] text-[var(--foreground)] text-xs h-8 px-3"
-                >
-                  {isEnglish ? "Edit" : "Modifier"}
-                </Button>
-              </div>
-
-              {/* Password row */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-                <div>
-                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Mot de passe</div>
-                  <div className="mt-0.5 text-sm text-[var(--foreground)]">••••••••••</div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setEditingPassword(true); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setError(null); }}
-                  className="rounded-lg border-[var(--border)] text-[var(--foreground)] text-xs h-8 px-3"
-                >
-                  {isEnglish ? "Edit" : "Modifier"}
-                </Button>
-              </div>
-
               {/* Member since row */}
               {user.created_at && (
                 <div className="px-5 py-4">
@@ -652,172 +458,6 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {/* Email edit modal */}
-            {editingEmail && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                <div className="bg-[var(--card)] rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#023BFC]/10 flex items-center justify-center">
-                      <Mail className="w-5 h-5 text-[#023BFC]" />
-                    </div>
-                    <h3 className="text-lg font-bold text-[var(--foreground)]">Modifier l&apos;adresse e-mail</h3>
-                  </div>
-                  {error && (
-                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
-                  )}
-                  <div>
-                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Nouvelle adresse e-mail</label>
-                    <input
-                      type="email"
-                      value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Mot de passe actuel</label>
-                    <div className="relative mt-1">
-                      <input
-                        type={showEmailPassword ? "text" : "password"}
-                        value={emailPassword}
-                        onChange={(e) => setEmailPassword(e.target.value)}
-                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowEmailPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                      >
-                        {showEmailPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 justify-end pt-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => { setEditingEmail(false); setError(null); }}
-                      className="rounded-xl border-[var(--border)] text-[var(--muted-foreground)]"
-                    >
-                      Annuler
-                    </Button>
-                    <Button
-                      disabled={accountSaving || !newEmail || !emailPassword}
-                      onClick={async () => {
-                        setAccountSaving(true);
-                        setError(null);
-                        try {
-                          const updated = await authApi.changeEmail(newEmail, emailPassword);
-                          setUser(updated);
-                          setEditingEmail(false);
-                        } catch (e: unknown) {
-                          setError(e instanceof Error ? e.message : "Erreur lors du changement d'email");
-                        } finally {
-                          setAccountSaving(false);
-                        }
-                      }}
-                      className="rounded-xl bg-[#023BFC] hover:bg-[#023BFC]/90 text-white"
-                    >
-                      {accountSaving ? "Enregistrement..." : "Enregistrer"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Password edit modal */}
-            {editingPassword && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                <div className="bg-[var(--card)] rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#023BFC]/10 flex items-center justify-center">
-                      <KeyRound className="w-5 h-5 text-[#023BFC]" />
-                    </div>
-                    <h3 className="text-lg font-bold text-[var(--foreground)]">Modifier le mot de passe</h3>
-                  </div>
-                  {error && (
-                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>
-                  )}
-                  <div>
-                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Mot de passe actuel</label>
-                    <div className="relative mt-1">
-                      <input
-                        type={showCurrentPassword ? "text" : "password"}
-                        value={currentPassword}
-                        onChange={(e) => setCurrentPassword(e.target.value)}
-                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowCurrentPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                      >
-                        {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Nouveau mot de passe</label>
-                    <div className="relative mt-1">
-                      <input
-                        type={showNewPassword ? "text" : "password"}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
-                        placeholder="Min. 8 caractères"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                      >
-                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">Confirmer le nouveau mot de passe</label>
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20"
-                    />
-                  </div>
-                  <div className="flex gap-2 justify-end pt-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => { setEditingPassword(false); setError(null); }}
-                      className="rounded-xl border-[var(--border)] text-[var(--muted-foreground)]"
-                    >
-                      Annuler
-                    </Button>
-                    <Button
-                      disabled={accountSaving || !currentPassword || !newPassword || newPassword !== confirmPassword}
-                      onClick={async () => {
-                        if (newPassword !== confirmPassword) {
-                          setError("Les mots de passe ne correspondent pas");
-                          return;
-                        }
-                        setAccountSaving(true);
-                        setError(null);
-                        try {
-                          const updated = await authApi.changePassword(currentPassword, newPassword);
-                          setUser(updated);
-                          setEditingPassword(false);
-                        } catch (e: unknown) {
-                          setError(e instanceof Error ? e.message : "Erreur lors du changement de mot de passe");
-                        } finally {
-                          setAccountSaving(false);
-                        }
-                      }}
-                      className="rounded-xl bg-[#023BFC] hover:bg-[#023BFC]/90 text-white"
-                    >
-                      {accountSaving ? "Enregistrement..." : "Enregistrer"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Divider */}
             <div className="h-px bg-[var(--border)]" />
@@ -879,29 +519,6 @@ export default function SettingsPage() {
                   )}
                 </div>
                 <div className="text-xs text-[var(--muted-foreground)] mt-1 text-right">{editBio.length}/500</div>
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  {isEnglish ? "Status" : "Statut"}
-                </label>
-                <div className="mt-1.5 grid grid-cols-2 gap-2">
-                  {STATUS_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setEditStatus(opt.value)}
-                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                        editStatus === opt.value
-                          ? "border-[#023BFC] bg-[#023BFC]/5 text-[#023BFC]"
-                          : "border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:border-[#023BFC]/30"
-                      }`}
-                    >
-                      <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`} />
-                      {statusLabelByValue[opt.value]}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Banner Colors */}
@@ -974,100 +591,24 @@ export default function SettingsPage() {
                         {user.username.slice(0, 2)}
                       </span>
                     )}
-                    {isGifAvatar && (
-                      <span className="absolute top-0.5 left-0.5 bg-[#7C3AED] text-white text-[8px] font-bold px-1 py-0.5 rounded leading-none">
-                        GIF
-                      </span>
-                    )}
                   </div>
 
-                  {/* Two buttons: Photo (file) + GIF (picker) */}
+                  {/* Upload button */}
                   <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        onClick={() => photoInputRef.current?.click()}
-                        disabled={uploading}
-                        variant="outline"
-                        className="rounded-xl border-[var(--border)] hover:border-[#023BFC] hover:bg-[#023BFC]/5 text-[var(--foreground)] text-sm px-3 h-9 gap-2"
-                      >
-                        <ImageIcon className="w-4 h-4" />
-                        {uploading ? (isEnglish ? "Upload..." : "Upload...") : isEnglish ? "Photo" : "Photo"}
-                      </Button>
-                      <Button
-                        onClick={() => { setShowGifPicker((v) => !v); setGifQuery(""); }}
-                        disabled={uploading}
-                        variant="outline"
-                        className={`rounded-xl text-sm px-3 h-9 gap-2 ${
-                          showGifPicker
-                            ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#7C3AED]"
-                            : "border-[var(--border)] hover:border-[#7C3AED] hover:bg-[#7C3AED]/5 text-[var(--foreground)]"
-                        }`}
-                      >
-                        <Play className="w-4 h-4" />
-                        {isEnglish ? "Animated GIF" : "GIF anime"}
-                      </Button>
-                    </div>
+                    <Button
+                      onClick={() => photoInputRef.current?.click()}
+                      disabled={uploading}
+                      variant="outline"
+                      className="rounded-xl border-[var(--border)] hover:border-[#023BFC] hover:bg-[#023BFC]/5 text-[var(--foreground)] text-sm px-3 h-9 gap-2"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      {uploading ? (isEnglish ? "Upload..." : "Upload...") : isEnglish ? "Photo" : "Photo"}
+                    </Button>
                     <span className="text-xs text-[var(--muted-foreground)]">
-                      {isEnglish
-                        ? "Photo: JPG, PNG, WebP file - GIF: Tenor / Giphy search"
-                        : "Photo : fichier JPG, PNG, WebP - GIF : recherche Tenor / Giphy"}
+                      {isEnglish ? "JPG, PNG or WebP · max 10 MB" : "JPG, PNG ou WebP · max 10 Mo"}
                     </span>
                   </div>
                 </div>
-
-                {/* GIF Picker Panel */}
-                {showGifPicker && (
-                  <div ref={gifPickerRef} className="mt-3 rounded-2xl border border-[#7C3AED]/30 bg-[var(--card)] shadow-lg overflow-hidden">
-                    {/* Search bar */}
-                    <div className="flex items-center gap-2 p-3 border-b border-[var(--border)]">
-                      <Search className="w-4 h-4 text-[var(--muted-foreground)] flex-shrink-0" />
-                      <input
-                        value={gifQuery}
-                        onChange={(e) => setGifQuery(e.target.value)}
-                        placeholder={isEnglish ? "Search GIF (ex: cat, hello, dance...)" : "Rechercher un GIF (ex: cat, hello, dance...)"}
-                        autoFocus
-                        className="flex-1 text-sm text-[var(--foreground)] placeholder-[var(--muted-foreground)] outline-none bg-transparent"
-                      />
-                      {gifLoading && <Loader2 className="w-4 h-4 text-[#7C3AED] animate-spin flex-shrink-0" />}
-                      <button
-                        onClick={() => { setShowGifPicker(false); setGifQuery(""); setGifResults([]); }}
-                        className="p-1 rounded-lg hover:bg-[var(--surface)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    {/* Results grid */}
-                    <div className="p-2 grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto">
-                      {gifResults.length === 0 && !gifLoading && (
-                        <div className="col-span-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
-                          {gifQuery
-                            ? isEnglish
-                              ? "No GIF found"
-                              : "Aucun GIF trouve"
-                            : isEnglish
-                              ? "Type to search GIFs"
-                              : "Tapez pour rechercher des GIFs"}
-                        </div>
-                      )}
-                      {gifResults.map((g) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={g.id}
-                          src={g.preview || g.url}
-                          alt="gif"
-                          className="h-20 w-full object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-[#7C3AED] transition-all"
-                          onClick={() => handleGifSelect(g.url)}
-                        />
-                      ))}
-                    </div>
-                    {uploading && (
-                      <div className="p-3 border-t border-[var(--border)] flex items-center justify-center gap-2 text-sm text-[#7C3AED]">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        {isEnglish ? "Applying GIF..." : "Application du GIF..."}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Hidden file input for photos */}

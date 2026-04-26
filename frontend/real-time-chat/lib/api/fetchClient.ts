@@ -214,4 +214,27 @@ export class FetchClient {
   delete<T>(path: string) {
     return this.request<T>("DELETE", path);
   }
+
+  async postFile<T>(path: string, formData: FormData): Promise<T> {
+    const headers: Record<string, string> = {};
+    const token = this.getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      let payload: unknown = null;
+      try { payload = await res.json(); } catch {
+        const text = await res.text().catch(() => "");
+        payload = text || null;
+      }
+      throw parseApiError(res.status, payload);
+    }
+
+    return (await res.json()) as T;
+  }
 }
