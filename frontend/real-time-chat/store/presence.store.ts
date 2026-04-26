@@ -19,6 +19,7 @@ export const usePresenceStore = create<PresenceState>((set) => ({
   presence: {},
 
   setUserPresence(userId, status, last_activity) {
+    console.debug(`[PresenceStore] setUserPresence: ${userId} → ${status}`);
     set((s) => ({
       presence: {
         ...s.presence,

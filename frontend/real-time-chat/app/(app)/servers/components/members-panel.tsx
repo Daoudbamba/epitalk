@@ -203,9 +203,10 @@ export function MembersPanel({
         setMembers(data);
         const { setUserPresence } = usePresenceStore.getState();
         for (const member of data) {
-          if (member.status) {
-            setUserPresence(member.user_id, member.status.toLowerCase() as PresenceStatus);
-          }
+          setUserPresence(
+            member.user_id,
+            (member.status?.toLowerCase() ?? "offline") as PresenceStatus,
+          );
         }
       } catch (err) {
         if (err instanceof ApiError && err.status === 403) {
@@ -359,9 +360,9 @@ export function MembersPanel({
   // Sort: online first, then by role priority
   const sortedMembers = [...members].sort((a, b) => {
     const aOnline =
-      presence && presence[a.user_id]?.status === "online" ? 0 : 1;
+      presence[a.user_id]?.status?.toLowerCase() === "online" ? 0 : 1;
     const bOnline =
-      presence && presence[b.user_id]?.status === "online" ? 0 : 1;
+      presence[b.user_id]?.status?.toLowerCase() === "online" ? 0 : 1;
     if (aOnline !== bOnline) return aOnline - bOnline;
     const rolePriority: Record<string, number> = {
       Owner: 0,
@@ -373,7 +374,7 @@ export function MembersPanel({
   });
 
   const onlineCount = members.filter(
-    (m) => presence && presence[m.user_id]?.status === "online",
+    (m) => presence[m.user_id]?.status?.toLowerCase() === "online",
   ).length;
 
   return (
@@ -558,23 +559,21 @@ export function MembersPanel({
                     </div>
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                        presence && presence[m.user_id]
-                          ? presence[m.user_id].status === "online"
-                            ? "bg-green-500"
-                            : presence[m.user_id].status === "idle"
-                              ? "bg-red-500"
-                              : presence[m.user_id].status === "dnd"
-                                ? "bg-amber-500"
-                                : "bg-gray-400"
-                          : "bg-gray-400"
+                        (() => {
+                          const s = presence[m.user_id]?.status?.toLowerCase();
+                          if (s === "online") return "bg-green-500";
+                          if (s === "idle") return "bg-red-500";
+                          if (s === "dnd") return "bg-amber-500";
+                          return "bg-gray-400";
+                        })()
                       }`}
-                      title={presence?.[m.user_id]?.status ?? "offline"}
+                      title={presence[m.user_id]?.status ?? "offline"}
                     />
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div
-                      className={`font-medium truncate ${presence && presence[m.user_id]?.status === "online" ? "text-zinc-800" : "text-zinc-400"}`}
+                      className={`font-medium truncate ${presence[m.user_id]?.status?.toLowerCase() === "online" ? "text-zinc-800" : "text-zinc-400"}`}
                     >
                       {m.username || "Utilisateur"}
                     </div>
