@@ -148,10 +148,12 @@ pub struct BanResponse {
 
 /// Request body for banning a member.
 /// `expires_at = None` = permanent ban.
+/// `expires_at` is received as an ISO 8601 string and parsed in the handler;
+/// this avoids a serde panic if the format is invalid.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BanMemberRequest {
     pub reason: Option<String>,
-    pub expires_at: Option<DateTime<Utc>>,
+    pub expires_at: Option<String>,
 }
 
 #[cfg(test)]
@@ -237,9 +239,24 @@ mod tests {
         let future = chrono::Utc::now() + chrono::Duration::days(7);
         let req = BanMemberRequest {
             reason: Some("flood".to_string()),
-            expires_at: Some(future),
+            expires_at: Some(future.to_rfc3339()),
         };
-        assert!(req.expires_at.unwrap() > chrono::Utc::now());
+        let parsed = chrono::DateTime::parse_from_rfc3339(req.expires_at.as_ref().unwrap())
+            .expect("rfc3339 round-trip must succeed")
+            .with_timezone(&chrono::Utc);
+        assert!(parsed > chrono::Utc::now());
+    }
+
+    #[test]
+    fn ban_request_malformed_expiry_fails_parse() {
+        // After changing expires_at to Option<String>, any string deserializes fine.
+        // The handler is responsible for parsing and must return 400 — not panic.
+        let json = r#"{"reason":null,"expires_at":"not-a-date"}"#;
+        let req: BanMemberRequest = serde_json::from_str(json).expect("deserialization must not panic");
+        assert_eq!(req.expires_at.as_deref(), Some("not-a-date"));
+        // Simulating handler parse: this must return Err, not panic.
+        let parse_result = chrono::DateTime::parse_from_rfc3339("not-a-date");
+        assert!(parse_result.is_err(), "malformed date must fail parse_from_rfc3339");
     }
 
     #[test]

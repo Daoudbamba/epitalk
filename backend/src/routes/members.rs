@@ -245,6 +245,22 @@ async fn ban_member(
 ) -> AppResult<Json<BanResponse>> {
     let current_user_id = auth.user_id;
 
+    // Parse expires_at before any DB call — return 400 immediately on malformed input.
+    let expires_at: Option<DateTime<Utc>> = match payload.expires_at {
+        None => None,
+        Some(ref s) => {
+            tracing::info!("[ban] Parsing expires_at: {:?}", s);
+            let dt = DateTime::parse_from_rfc3339(s)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| {
+                    tracing::warn!("[ban] expires_at parse failed: {e}");
+                    AppError::BadRequest(format!("expires_at invalide (attendu ISO 8601): {e}"))
+                })?;
+            tracing::info!("[ban] expires_at parsed OK: {:?}", dt);
+            Some(dt)
+        }
+    };
+
     // Caller must be ADMIN or OWNER
     let caller_role = MembershipRepository::get_role(&state.db, current_user_id, params.server_id)
         .await?
@@ -257,6 +273,22 @@ async fn ban_member(
 
     validate_ban_permissions(current_user_id, params.user_id, caller_role, target_role)?;
 
+    // expires_at must be strictly in the future
+    if let Some(exp) = expires_at {
+        if exp <= chrono::Utc::now() {
+            return Err(AppError::BadRequest(
+                "expires_at must be a future timestamp for a temporary ban".to_string(),
+            ));
+        }
+    }
+
+    // Reject if already actively banned — prevent silent overwrite
+    if MembershipRepository::is_banned(&state.db, params.server_id, params.user_id).await? {
+        return Err(AppError::Conflict(
+            "User is already actively banned. Unban first to change the ban.".to_string(),
+        ));
+    }
+
     // Create the ban record
     let ban = MembershipRepository::ban_user(
         &state.db,
@@ -264,7 +296,7 @@ async fn ban_member(
         params.user_id,
         current_user_id,
         payload.reason,
-        payload.expires_at,
+        expires_at,
     )
     .await?;
 
@@ -435,6 +467,83 @@ mod tests {
         )
         .await
         .expect("unban member");
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+        delete_user(&pool, member.id).await;
+    }
+
+    #[tokio::test]
+    async fn ban_member_malformed_expires_at_returns_bad_request() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        // Parsing happens before any DB call, so fake IDs are sufficient here.
+        let result = ban_member(
+            State(state.clone()),
+            test_require_auth(Uuid::new_v4(), "fake@test.test", "fake_user"),
+            Path(MemberPath { server_id: Uuid::new_v4(), user_id: Uuid::new_v4() }),
+            Json(BanMemberRequest { reason: None, expires_at: Some("not-a-date".to_string()) }),
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(AppError::BadRequest(_))),
+            "malformed expires_at must return BadRequest, got: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn ban_member_temporary_with_valid_expires_at() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("ban-tmp-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("ban_tmp_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let member = UserRepository::create(
+            &pool,
+            &format!("ban-tmp-user-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("ban_tmp_user_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create member");
+
+        let server = ServerRepository::create(&pool, "BanTempValid", owner.id)
+            .await
+            .expect("create server");
+
+        MembershipRepository::create(&pool, member.id, server.id, MemberRole::Member)
+            .await
+            .expect("add member");
+
+        let owner_auth = test_require_auth(owner.id, &owner.email, &owner.username);
+
+        let result = ban_member(
+            State(state.clone()),
+            owner_auth,
+            Path(MemberPath { server_id: server.id, user_id: member.id }),
+            Json(BanMemberRequest {
+                reason: Some("test temporary ban".to_string()),
+                expires_at: Some("2030-01-01T00:00:00Z".to_string()),
+            }),
+        )
+        .await
+        .expect("temporary ban with valid ISO 8601 string must succeed");
+
+        assert!(result.0.expires_at.is_some(), "ban response must carry expires_at");
 
         delete_server(&pool, server.id).await;
         delete_user(&pool, owner.id).await;
