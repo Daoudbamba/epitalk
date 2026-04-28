@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Hash, ChevronDown, Settings, Plus, Trash2 } from "lucide-react";
 import { channelsApi } from "@/lib/api";
 import { ApiError } from "@/lib/api/errors";
 import { useServerStore } from "@/store/server.store";
@@ -36,7 +37,8 @@ export function ChannelsSidebar({
     [servers, activeServerId],
   );
 
-  const isOwner = !!activeServer && !!currentUser && activeServer.owner_id === currentUser.id;
+  const isOwner =
+    !!activeServer && !!currentUser && activeServer.owner_id === currentUser.id;
 
   const setOk = (text: string) => setStatus({ type: "success", text });
   const setErr = (text: string) => setStatus({ type: "error", text });
@@ -64,7 +66,10 @@ export function ChannelsSidebar({
       if (data.length === 0) setActiveChannel(null);
     } catch (e) {
       if (e instanceof ApiError && e.status === 403 && e.code === "banned") {
-        const details = e.details as { reason?: string | null; expires_at?: string | null } | null;
+        const details = e.details as {
+          reason?: string | null;
+          expires_at?: string | null;
+        } | null;
         const store = useServerStore.getState();
         store.removeServer(activeServerId!);
         store.showBanModal({
@@ -131,86 +136,66 @@ export function ChannelsSidebar({
 
   const statusClasses =
     status?.type === "success"
-      ? "border-emerald-200 text-emerald-700 bg-emerald-50/80"
+      ? "border-emerald-200 text-emerald-700 bg-emerald-50"
       : status?.type === "error"
-        ? "border-red-200 text-red-700 bg-red-50/80"
-        : "border-et-purple/20 text-et-purple bg-purple-50/60";
+        ? "border-red-200 text-red-700 bg-red-50"
+        : "border-blue-200 text-blue-700 bg-blue-50";
 
   return (
-    <div className="h-full flex flex-col bg-et-card overflow-hidden">
+    <div className="h-full flex flex-col bg-[#F5F5F5] border-r border-[#D5DAE0] overflow-hidden">
       {/* Header */}
-      <div className="border-b border-et-border px-3 py-3 flex items-center justify-between group shrink-0">
-        <span className="text-[13px] font-medium uppercase tracking-[0.05em] text-et-title truncate">
-          {activeServer?.name ?? (language === "en" ? "No server" : "Aucun serveur")}
+      <div className="h-14 flex items-center justify-between px-4 border-b border-[#D5DAE0] shrink-0">
+        <span className="text-[#003D82] text-[15px] font-semibold truncate">
+          {activeServer?.name ??
+            (language === "en" ? "No server" : "Aucun serveur")}
         </span>
-        <div className="flex items-center gap-1">
-          {onOpenSettings && (
-            <button
-              onClick={onOpenSettings}
-              disabled={!activeServerId}
-              className="w-6 h-6 flex items-center justify-center text-et-muted hover:text-et-title transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={language === "en" ? "Server settings" : "Paramètres serveur"}
-            >
-              <i className="bi bi-gear text-[13px]" />
-            </button>
-          )}
-          <button
-            onClick={onCreate}
-            disabled={!activeServerId || loading}
-            className="w-6 h-6 flex items-center justify-center text-et-muted hover:text-et-title transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            title={language === "en" ? "Create a channel" : "Créer un channel"}
-          >
-            <i className="bi bi-plus text-[15px]" />
-          </button>
-        </div>
+        <ChevronDown size={16} className="text-[#8A929C] shrink-0 ml-1" />
       </div>
 
       {/* Channels list */}
-      <div className="flex-1 overflow-auto p-2 space-y-1">
+      <div className="flex-1 overflow-auto py-3 px-2">
         {!activeServerId ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <p className="text-xs text-et-muted">
+            <p className="text-xs text-[#8A929C]">
               {language === "en" ? "Select a server" : "Sélectionne un serveur"}
             </p>
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-16">
-            <div className="w-5 h-5 rounded-full border-2 border-et-orange border-t-transparent animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-[#0066CC] border-t-transparent animate-spin" />
           </div>
         ) : channels.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <p className="text-xs text-et-muted">
+            <p className="text-xs text-[#8A929C]">
               {language === "en" ? "No channels yet." : "Aucun channel."}
             </p>
           </div>
         ) : (
           channels.map((c) => {
             const active = c.id === activeChannelId;
-
             return (
               <div key={c.id} className="flex items-center gap-1 group/item">
                 <button
                   onClick={() => setActiveChannel(c.id)}
                   className={[
-                    "flex-1 text-left px-2.5 py-1.5 text-[12px] font-medium uppercase transition-all duration-150 truncate",
+                    "flex-1 h-9 flex items-center gap-2 px-2 rounded text-[14px] cursor-pointer select-none transition-colors duration-120 truncate",
                     active
-                      ? "channel-et-active"
-                      : "rounded-[6px] border border-et-border text-et-secondary hover:border-et-border hover:text-et-text",
+                      ? "bg-[#E6F0FB] text-[#0066CC] font-medium hover:bg-[#DCE9F8]"
+                      : "text-[#6B737D] hover:bg-[#ECEEF1] hover:text-[#333333]",
                   ].join(" ")}
                 >
-                  {active
-                    ? <span className="text-et-gradient"># {c.name}</span>
-                    : `# ${c.name}`}
+                  <Hash size={14} className="shrink-0" />
+                  <span className="flex-1 truncate text-left">{c.name}</span>
                 </button>
 
                 {/* Delete button — visible on hover, owner only */}
                 <button
                   onClick={() => onDelete(c.id)}
                   disabled={!activeServerId || loading || !isOwner}
-                  className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover/item:opacity-100 transition-opacity text-et-muted hover:text-et-red-soft disabled:cursor-not-allowed disabled:opacity-30"
+                  className="w-5.5 h-5.5 rounded flex items-center justify-center opacity-0 group-hover/item:opacity-100 transition-all duration-120 text-[#8A929C] hover:text-[#FF6B35] hover:bg-[#ECEEF1] disabled:cursor-not-allowed disabled:opacity-30"
                   title={isOwner ? "Supprimer" : "Réservé au créateur"}
                 >
-                  <i className="bi bi-trash text-[11px]" />
+                  <Trash2 size={14} />
                 </button>
               </div>
             );
@@ -220,10 +205,36 @@ export function ChannelsSidebar({
 
       {/* Status message */}
       {status && (
-        <div className={`border-t border-et-border px-3 py-2 text-[11px] ${statusClasses}`}>
+        <div
+          className={`border-t border-[#D5DAE0] px-3 py-2 text-[11px] ${statusClasses}`}
+        >
           {status.text}
         </div>
       )}
+
+      {/* Footer */}
+      <div className="flex items-center gap-2 p-3 border-t border-[#D5DAE0] shrink-0">
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            disabled={!activeServerId}
+            className="flex-1 flex items-center gap-2 h-9 px-3 rounded border border-[#D5DAE0] bg-transparent text-[#6B737D] text-[13px] hover:bg-[#F5F7FA] hover:text-[#333333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title={language === "en" ? "Server settings" : "Paramètres serveur"}
+          >
+            <Settings size={14} />
+            {language === "en" ? "Settings" : "Paramètres"}
+          </button>
+        )}
+        <button
+          onClick={onCreate}
+          disabled={!activeServerId || loading}
+          className="flex items-center gap-1.5 h-9 px-3 rounded bg-[#0066CC] text-white text-[13px] font-medium hover:bg-[#0055AA] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          title={language === "en" ? "Create a channel" : "Créer un channel"}
+        >
+          <Plus size={14} />
+          {language === "en" ? "Channel" : "Channel"}
+        </button>
+      </div>
 
       {/* Create channel modal */}
       <CreateChannelModal
