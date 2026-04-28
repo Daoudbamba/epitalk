@@ -18,6 +18,9 @@ import {
   Paperclip,
   FileText,
   Clock3,
+  Hash,
+  MoreHorizontal,
+  Send,
 } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
@@ -657,11 +660,11 @@ export function ChatPanel() {
   }, [gifQuery, openGifPicker]);
 
   return (
-    <div className="h-full min-w-0 flex flex-col bg-et-card overflow-hidden">
+    <div className="h-full min-w-0 flex flex-col bg-white overflow-hidden">
       {/* --- HEADER --- */}
-      <div className="h-12 px-4 flex items-center border-b shadow-sm shrink-0">
-        <span className="text-[var(--muted-foreground)] mr-2 text-2xl">#</span>
-        <h2 className="font-bold text-md text-[var(--foreground)]">
+      <div className="h-14 px-6 flex items-center gap-3 border-b border-[#D5DAE0] shrink-0">
+        <Hash size={18} className="text-[#8A929C] shrink-0" />
+        <h2 className="text-[#003D82] text-[15px] font-semibold">
           {activeChannelName ?? (isEnglish ? "no-channel" : "aucun-channel")}
         </h2>
         <div className="ml-auto flex items-center gap-1 relative">
@@ -671,7 +674,7 @@ export function ChatPanel() {
               setPinnedOpen((s) => !s);
               if (!pinnedOpen) loadPinnedMessages();
             }}
-            className={`h-8 w-8 rounded-md flex items-center justify-center transition ${pinnedOpen ? "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+            className={`h-8 w-8 rounded-md flex items-center justify-center transition ${pinnedOpen ? "text-[#0066CC] bg-[#E6F0FB]" : "text-[#8A929C] hover:text-[#333333] hover:bg-[#ECEEF1]"}`}
           >
             <Pin className="h-4 w-4" />
           </button>
@@ -721,9 +724,14 @@ export function ChatPanel() {
           <button
             title="Rechercher"
             onClick={() => setSearchOpen((s) => !s)}
-            className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+            className="h-8 w-8 rounded-md flex items-center justify-center text-[#8A929C] hover:text-[#333333] hover:bg-[#ECEEF1] transition"
           >
             <Search className="h-4 w-4" />
+          </button>
+          <button
+            className="h-8 w-8 rounded-md flex items-center justify-center text-[#8A929C] hover:text-[#333333] hover:bg-[#ECEEF1] transition"
+          >
+            <MoreHorizontal size={16} />
           </button>
 
           {searchOpen && (
@@ -889,12 +897,12 @@ export function ChatPanel() {
                 <div
                   key={msg.id}
                   id={`msg-${msg.id}`}
-                  className="group relative flex items-start px-4 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition w-full"
+                  className="group relative flex gap-3 px-6 py-2.5 hover:bg-[#FAFBFC] transition-colors w-full"
                 >
                   {/* Action buttons — top-right, visible on hover */}
-                  <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-0.5 bg-[var(--card)] border border-[var(--border)] rounded-md shadow-sm px-1 py-0.5 z-10">
+                  <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-0.5 bg-white border border-[#D5DAE0] rounded shadow-[0_2px_8px_rgba(15,24,40,0.06)] p-0.5 z-10">
                     <button
-                      className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-indigo-600 hover:bg-[var(--surface)] rounded transition"
+                      className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#333333]"
                       onClick={() => {
                         setReplyTo(msg.id);
                         setReplyToUsername(messageUsername);
@@ -906,7 +914,7 @@ export function ChatPanel() {
                     </button>
                     {isAuthor && (
                       <button
-                        className="h-7 w-7 flex items-center justify-center text-[var(--muted-foreground)] hover:text-emerald-600 hover:bg-[var(--surface)] rounded transition"
+                        className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#333333]"
                         onClick={() => {
                           setIsEditing(true);
                           setEditingMessageId(msg.id);
@@ -919,7 +927,7 @@ export function ChatPanel() {
                     )}
                     {canDelete && (
                       <button
-                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-red-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                        className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#333333]"
                         onClick={() =>
                           deleteMessage(activeChannelId || "", msg.id)
                         }
@@ -930,7 +938,7 @@ export function ChatPanel() {
                     )}
                     {canModerate && (
                       <button
-                        className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                        className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#333333]"
                         onClick={() =>
                           msg.pinned_at ? handleUnpin(msg.id) : handlePin(msg.id)
                         }
@@ -940,7 +948,7 @@ export function ChatPanel() {
                       </button>
                     )}
                     <button
-                      className="h-7 w-7 flex items-center justify-center text-zinc-500 hover:text-amber-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition"
+                      className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#333333]"
                       onClick={() =>
                         setEmojiPickerMsgId(
                           emojiPickerMsgId === msg.id ? null : msg.id,
@@ -986,18 +994,16 @@ export function ChatPanel() {
                     </div>
                   )}
 
-                  <div className="mr-4">
-                    <div className="w-10 h-10 rounded-full bg-[var(--muted)] flex items-center justify-center text-xs font-semibold text-[var(--foreground)]">
-                      {messageUsername.slice(0, 2).toUpperCase()}
-                    </div>
+                  <div className="w-9 h-9 rounded-full bg-[#E6F0FB] flex items-center justify-center text-[13px] font-semibold font-mono text-[#003D82] shrink-0">
+                    {messageUsername.slice(0, 2).toUpperCase()}
                   </div>
 
-                  <div className="flex flex-col w-full">
-                    <div className="flex items-center gap-x-2">
-                      <span className="font-semibold text-sm text-[var(--foreground)]">
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="flex items-center gap-x-2 mb-0.5">
+                      <span className="text-[#003D82] text-[14px] font-semibold">
                         {messageUsername}
                       </span>
-                      <span className="text-xs text-[var(--muted-foreground)]">
+                      <span className="text-[#8A929C] text-[12px] font-mono">
                         {new Date(msg.created_at).toLocaleString()}
                       </span>
                       {msg.edited_at && (
@@ -1064,7 +1070,7 @@ export function ChatPanel() {
                       return (
                         <>
                           {msg.content && (
-                            <p className="text-[var(--muted-foreground)] whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
+                            <p className="text-[#333333] leading-5.5 whitespace-pre-wrap" style={{ fontSize: chatFontSize }}>
                               {msg.content}
                             </p>
                           )}
@@ -1199,9 +1205,9 @@ export function ChatPanel() {
       </div>
 
       {/* --- INPUT --- */}
-      <div className="p-4 mb-2 shrink-0">
+      <div className="px-6 pb-5 pt-3 shrink-0">
         {((replyTo && !isEditing) || isEditing) && (
-          <div className="mb-2 rounded-md border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200 flex items-center justify-between">
+          <div className="mb-2 rounded-md border border-[#D5DAE0] bg-[#F5F7FA] p-2 text-xs text-[#6B737D] flex items-center justify-between">
             <div>
               {isEditing
                 ? "Modification du message en cours"
@@ -1211,7 +1217,7 @@ export function ChatPanel() {
                 : ""}
             </div>
             <button
-              className="text-indigo-700 underline text-xs flex items-center gap-1"
+              className="text-[#8A929C] hover:text-[#333333] text-xs flex items-center gap-1"
               onClick={cancelPendingAction}
             >
               <X className="h-3 w-3" /> Annuler
@@ -1268,112 +1274,111 @@ export function ChatPanel() {
           }}
         />
 
-        <div className="relative flex items-center gap-2">
-          <div className="relative flex-1">
-            <button
-              type="button"
-              className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 bg-[var(--muted-foreground)] hover:bg-[var(--muted-foreground)] transition rounded-full p-1 flex items-center justify-center text-white"
-              onClick={() => fileInputRef.current?.click()}
-              title={isEnglish ? "Attach a file" : "Joindre un fichier"}
-            >
-              <Paperclip className="text-white h-3.5 w-3.5" />
-            </button>
+        <div className="border border-[#D5DAE0] rounded-lg bg-white focus-within:shadow-[0_0_0_3px_#ECEEF1] focus-within:border-[#B8BFC7] overflow-hidden transition-shadow">
+          <Input
+            value={value}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            disabled={!canLoad || sending}
+            className="w-full px-4 pt-3 pb-2 text-[15px] text-[#333333] bg-transparent border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#8A929C]"
+            placeholder={
+              !canLoad
+                ? isEnglish
+                  ? "Select a channel..."
+                  : "Sélectionne un channel..."
+                : isEnglish
+                  ? `Send a message in #${activeChannelName ?? ""}`
+                  : `Envoyer un message dans #${activeChannelName ?? ""}`
+            }
+          />
 
-            <Input
-              value={value}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              disabled={!canLoad || sending}
-              className="px-14 pr-32 py-6 bg-et-bg border border-et-border rounded-lg focus-visible:ring-0 focus-visible:ring-offset-0 text-et-text placeholder:text-et-muted"
-              placeholder={
-                !canLoad
-                  ? isEnglish
-                    ? "Select a channel..."
-                    : "Sélectionne un channel..."
-                  : isEnglish
-                    ? `Send a message in #${activeChannelName ?? ""}`
-                    : `Envoyer un message dans #${activeChannelName ?? ""}`
-              }
-            />
-
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-x-3">
+          <div className="flex items-center gap-1 px-3 pb-2 border-t border-[#ECEEF1]">
+            <div className="flex items-center gap-0.5">
               <button
                 type="button"
-                onClick={() => setScheduleOpen((v) => !v)}
-                title={isEnglish ? "Schedule weekly message" : "Programmer un message hebdomadaire"}
-                className={`h-7 px-2 rounded-full border text-[11px] font-semibold transition flex items-center gap-1 ${
-                  scheduleOpen
-                    ? "border-amber-300 text-amber-700 bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:bg-amber-950/40"
-                    : "border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                }`}
+                onClick={() => fileInputRef.current?.click()}
+                title={isEnglish ? "Attach a file" : "Joindre un fichier"}
+                className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:text-[#333333] hover:bg-[#ECEEF1] transition-colors"
               >
-                <Clock3 className="h-3.5 w-3.5" />
-                {isEnglish ? "Later" : "Plus tard"}
+                <Paperclip size={16} />
               </button>
 
-              <span title="Fonction à venir">
-                <Gift className="h-5 w-5 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] transition cursor-not-allowed" />
-              </span>
-
               <button
                 type="button"
-                onClick={() =>
-                  setOpenGifPicker(openGifPicker === "input" ? null : "input")
-                }
+                onClick={() => setOpenGifPicker(openGifPicker === "input" ? null : "input")}
                 title="GIF"
-                className="h-6 w-6 flex items-center justify-center"
+                className="w-7 h-7 rounded flex items-center justify-center text-[11px] font-semibold font-mono text-[#8A929C] hover:text-[#333333] hover:bg-[#ECEEF1] transition-colors"
               >
-                <Sticker className="h-5 w-5 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] transition cursor-pointer" />
+                GIF
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowInputEmojis(!showInputEmojis)}
                 title="Emojis"
-                className="h-6 w-6 flex items-center justify-center"
+                className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:text-[#333333] hover:bg-[#ECEEF1] transition-colors"
               >
-                <Smile className="h-5 w-5 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] transition cursor-pointer" />
+                <Smile size={16} />
               </button>
-              {showInputEmojis && (
-                <div className="absolute bottom-10 right-0 z-50 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg px-2 py-2 flex flex-wrap gap-1 w-48">
-                  {QUICK_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-[var(--surface)]"
-                      onClick={() => {
-                        setValue((prev) => prev + emoji);
-                        setShowInputEmojis(false);
-                      }}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              )}
+
+              <button
+                type="button"
+                onClick={() => setScheduleOpen((v) => !v)}
+                title={isEnglish ? "Schedule weekly message" : "Programmer un message hebdomadaire"}
+                className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                  scheduleOpen
+                    ? "text-amber-600 bg-amber-50"
+                    : "text-[#8A929C] hover:text-[#333333] hover:bg-[#ECEEF1]"
+                }`}
+              >
+                <Clock3 size={16} />
+              </button>
+
+              <span title="Fonction à venir">
+                <Gift className="h-4 w-4 text-[#B8BFC7] cursor-not-allowed mx-1" />
+              </span>
             </div>
+
+            {/* Bouton Envoyer */}
+            <Button
+              onClick={onSend}
+              disabled={!canLoad || sending || !isConnected || (!value.trim() && !attachmentFile)}
+              className="ml-auto flex items-center gap-1.5 h-7 px-3 rounded bg-[#FF6B35] text-white text-[13px] font-medium hover:bg-[#E55A26] disabled:opacity-40 disabled:cursor-not-allowed"
+              title={
+                scheduleOpen
+                  ? isEnglish ? "Schedule the message" : "Programmer le message"
+                  : isEnglish ? "Send message" : "Envoyer le message"
+              }
+            >
+              {sending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <><Send size={14} /> {isEnglish ? "Send" : "Envoyer"}</>
+              )}
+            </Button>
           </div>
 
-          {/* Bouton Envoyer */}
-          <Button
-            onClick={onSend}
-            disabled={!canLoad || sending || !isConnected || (!value.trim() && !attachmentFile)}
-            className="w-9 h-9 p-0 bg-et-gradient hover:opacity-90 text-white rounded-lg transition-opacity disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-            title={
-              scheduleOpen
-                ? isEnglish
-                  ? "Schedule the message"
-                  : "Programmer le message"
-                : isEnglish
-                  ? "Send message"
-                  : "Envoyer le message"
-            }
-          >
-            {sending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <i className="bi bi-send-fill text-[13px]" />
-            )}
-          </Button>
+          {showInputEmojis && (
+            <div className="border-t border-[#ECEEF1] bg-white px-2 py-2 flex flex-wrap gap-1">
+              {QUICK_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-[#ECEEF1]"
+                  onClick={() => {
+                    setValue((prev) => prev + emoji);
+                    setShowInputEmojis(false);
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-1.5 flex gap-4 text-[11px] text-[#8A929C]">
+          <span><kbd className="font-mono bg-[#ECEEF1] px-1 rounded text-[10px]">↵</kbd> {isEnglish ? "Send" : "Envoyer"}</span>
+          <span><kbd className="font-mono bg-[#ECEEF1] px-1 rounded text-[10px]">⇧↵</kbd> {isEnglish ? "New line" : "Nouvelle ligne"}</span>
         </div>
 
         {scheduleOpen && (
