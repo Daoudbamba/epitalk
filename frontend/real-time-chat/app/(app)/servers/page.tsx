@@ -27,47 +27,77 @@ export default function ServersPage() {
   return (
     <ServersLoader>
       {({ refresh }) => (
-        <div className="h-full w-full flex gap-2 p-2 bg-et-bg overflow-hidden relative">
+        <div className="h-screen w-screen overflow-hidden bg-[#FAFBFC] flex items-center justify-center p-5">
+          {/* Mobile top bar */}
           {!isDesktop && (
-            <div className="fixed top-0 left-0 right-0 z-30 h-12 bg-[var(--card)] border-b flex items-center justify-between px-3">
+            <div className="fixed top-0 left-0 right-0 z-30 h-12 bg-white border-b border-[#D5DAE0] flex items-center justify-between px-3">
               <button
                 onClick={() => setMobileView(mobileView === "sidebar" ? "chat" : "sidebar")}
-                className="p-2 rounded-lg hover:bg-[var(--surface)]"
+                className="p-2 rounded-lg hover:bg-[#ECEEF1]"
               >
                 {mobileView === "sidebar" ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
-              <span className="text-sm font-semibold">EpiTalk</span>
+              <span className="text-sm font-semibold text-[#003D82]">EpiTalk</span>
               <button
                 onClick={() => setMobileView(mobileView === "members" ? "chat" : "members")}
-                className="p-2 rounded-lg hover:bg-[var(--surface)]"
+                className="p-2 rounded-lg hover:bg-[#ECEEF1]"
               >
                 {mobileView === "members" ? <X className="h-5 w-5" /> : <Users className="h-5 w-5" />}
               </button>
             </div>
           )}
 
-          {isDesktop && (
-            <div className="h-full rounded-xl border border-et-border bg-et-card overflow-hidden shrink-0">
-              <ServersRail onRefresh={refresh} />
-            </div>
-          )}
-
-          {(isDesktop || mobileView === "sidebar") && (
+          {/* Desktop layout */}
+          {isDesktop ? (
             <div
-              className={
-                isDesktop
-                  ? "h-full w-50 shrink-0 rounded-xl border border-et-border bg-et-card overflow-hidden"
-                  : "fixed inset-0 z-20 pt-12 bg-white overflow-hidden"
-              }
+              className="flex h-full w-full max-h-190 rounded-xl overflow-hidden border border-[#D5DAE0] bg-white"
+              style={{ boxShadow: "0 1px 2px rgba(15,24,40,0.04), 0 1px 3px rgba(15,24,40,0.03)" }}
             >
-              {!isDesktop && (
-                <div className="border-b p-2">
-                  <ServersRail onRefresh={refresh} />
+              {/* Rail */}
+              <div className="h-full shrink-0">
+                <ServersRail onRefresh={refresh} />
+              </div>
+
+              {/* Channels */}
+              <div className="h-full w-60 shrink-0">
+                <ChannelsSidebar onOpenSettings={() => setOpenServerSettings(true)} />
+              </div>
+
+              {/* Chat */}
+              <div className="flex-1 min-w-0 h-full">
+                <ChatPanel />
+              </div>
+
+              {/* Members */}
+              <div className="h-full w-60 shrink-0">
+                <MembersPanel onRefresh={refresh} />
+              </div>
+            </div>
+          ) : (
+            /* Mobile layout */
+            <div className="h-full w-full relative pt-12">
+              {mobileView === "sidebar" && (
+                <div className="fixed inset-0 z-20 pt-12 bg-white overflow-hidden flex">
+                  <div className="border-r border-[#D5DAE0]">
+                    <ServersRail onRefresh={refresh} />
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <ChannelsSidebar onOpenSettings={() => setOpenServerSettings(true)} />
+                  </div>
                 </div>
               )}
-              <ChannelsSidebar
-                onOpenSettings={() => setOpenServerSettings(true)}
-              />
+
+              {mobileView === "chat" && (
+                <div className="h-full overflow-hidden">
+                  <ChatPanel />
+                </div>
+              )}
+
+              {mobileView === "members" && (
+                <div className="fixed inset-0 z-20 pt-12 bg-white overflow-hidden">
+                  <MembersPanel onRefresh={refresh} />
+                </div>
+              )}
             </div>
           )}
 
@@ -76,28 +106,6 @@ export default function ServersPage() {
             onOpenChange={setOpenServerSettings}
             onSuccess={refresh}
           />
-
-          {(isDesktop || mobileView === "chat") && (
-            <div
-              className={`flex-1 min-w-0 h-full rounded-xl border border-et-border bg-et-card overflow-hidden${
-                !isDesktop ? " pt-12" : ""
-              }`}
-            >
-              <ChatPanel />
-            </div>
-          )}
-
-          {(isDesktop || mobileView === "members") && (
-            <div
-              className={
-                isDesktop
-                  ? "h-full w-55 shrink-0 rounded-xl border border-et-border bg-et-card overflow-hidden"
-                  : "fixed inset-0 z-20 pt-12 bg-white overflow-hidden"
-              }
-            >
-              <MembersPanel onRefresh={refresh} />
-            </div>
-          )}
         </div>
       )}
     </ServersLoader>
