@@ -25,6 +25,11 @@ type WebSocketSlice = {
   typingUsers: Record<string, string[]>;
 };
 
+// Mock language provider (required by ChatPanel since it calls useLanguage)
+vi.mock("@/components/language-provider", () => ({
+  useLanguage: () => ({ language: "fr" }),
+}));
+
 // Mock Zustand hooks used by ChatPanel: implement as selector functions
 vi.mock("@/store/auth.store", () => ({
   useAuthStore: (sel: (s: AuthSlice) => unknown) =>
@@ -85,18 +90,18 @@ vi.mock("@/components/ui/input", () => ({
 vi.mock("@/components/ui/button", () => ({
   Button: (props: React.ComponentProps<"button">) => <button {...props} />,
 }));
-vi.mock("lucide-react", () => ({
-  Plus: (p: React.ComponentProps<"span">) => <span {...p} />,
-  Smile: (p: React.ComponentProps<"span">) => <span {...p} />,
-  Gift: (p: React.ComponentProps<"span">) => <span {...p} />,
-  Sticker: (p: React.ComponentProps<"span">) => <span {...p} />,
-  Send: (p: React.ComponentProps<"span">) => <span {...p} />,
-  Loader2: (p: React.ComponentProps<"span">) => <span {...p} />,
-  CornerUpLeft: (p: React.ComponentProps<"span">) => <span {...p} />,
-  Edit3: (p: React.ComponentProps<"span">) => <span {...p} />,
-  Trash2: (p: React.ComponentProps<"span">) => <span {...p} />,
-  X: (p: React.ComponentProps<"span">) => <span {...p} />,
-}));
+// Universal icon stub: import the real module so Vitest validates exports correctly,
+// then replace every capitalized export (icon component) with a lightweight <span>.
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const Stub = (p: Record<string, unknown>) => React.createElement("span", p);
+  const stubs = Object.fromEntries(
+    Object.keys(actual)
+      .filter((k) => /^[A-Z]/.test(k))
+      .map((k) => [k, Stub]),
+  );
+  return { ...actual, ...stubs };
+});
 
 // Import the component (relative path)
 import { ChatPanel } from "../app/(app)/servers/components/chat-panel";

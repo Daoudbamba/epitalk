@@ -195,6 +195,25 @@ export const ServerErrorSchema = z.object({
   message: z.string(),
 });
 
+export const BannedSchema = z.object({
+  server_id: z.string(),
+  expires_at: z.string().nullable().optional(),
+  reason: z.string().nullable().optional(),
+});
+
+export const MessageNotificationSchema = z.object({
+  server_id: z.string(),
+  server_name: z.string(),
+  channel_id: z.string(),
+  channel_name: z.string(),
+  message_id: z.string(),
+  author_id: z.string(),
+  author_username: z.string(),
+  content: z.string(),
+  created_at: z.string(),
+  attachment_url: z.string().nullable().optional(),
+});
+
 // ─── Discriminated union for all server → client events ──────────────────────
 
 export const ServerEventSchema = z.discriminatedUnion("type", [
@@ -217,7 +236,9 @@ export const ServerEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("DmEdited"), payload: DmEditedSchema }),
   z.object({ type: z.literal("DmDeleted"), payload: DmDeletedSchema }),
   z.object({ type: z.literal("Error"), payload: ServerErrorSchema }),
+  z.object({ type: z.literal("Banned"), payload: BannedSchema }),
   z.object({ type: z.literal("Pong") }),
+  z.object({ type: z.literal("MessageNotification"), payload: MessageNotificationSchema }),
 ]);
 
 export type ServerEvent = z.infer<typeof ServerEventSchema>;

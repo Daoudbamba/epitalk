@@ -8,6 +8,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::repositories::ChannelRepository;
 use crate::repositories::MembershipRepository;
+use crate::repositories::ServerRepository;
 use crate::repositories::UserRepository;
 use crate::services::message_service::MessageService;
 use crate::services::presence_service::PresenceService;
@@ -119,6 +120,44 @@ async fn resolve_username(
     user_id.chars().take(8).collect()
 }
 
+/// Resolve channel name for a given channel_id (UUID string) by querying Postgres.
+/// Results are cached in `cache` to avoid repeated queries.
+async fn resolve_channel_name(
+    channel_id: &str,
+    pool: &PgPool,
+    cache: &mut HashMap<String, String>,
+) -> String {
+    if let Some(name) = cache.get(channel_id) {
+        return name.clone();
+    }
+    if let Ok(cid) = Uuid::parse_str(channel_id) {
+        if let Ok(Some(ch)) = ChannelRepository::find_by_id(pool, cid).await {
+            cache.insert(channel_id.to_owned(), ch.name.clone());
+            return ch.name;
+        }
+    }
+    channel_id.chars().take(8).collect()
+}
+
+/// Resolve server name for a given server_id (UUID string) by querying Postgres.
+/// Results are cached in `cache` to avoid repeated queries.
+async fn resolve_server_name(
+    server_id: &str,
+    pool: &PgPool,
+    cache: &mut HashMap<String, String>,
+) -> String {
+    if let Some(name) = cache.get(server_id) {
+        return name.clone();
+    }
+    if let Ok(sid) = Uuid::parse_str(server_id) {
+        if let Ok(Some(srv)) = ServerRepository::find_by_id(pool, sid).await {
+            cache.insert(server_id.to_owned(), srv.name.clone());
+            return srv.name;
+        }
+    }
+    "Server".to_string()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_connection(
     socket: WebSocket,
@@ -129,6 +168,7 @@ pub async fn handle_connection(
     pg_pool: PgPool,
     user_id: String,
     conn_id: ConnId,
+    banned_server_ids: Vec<String>,
 ) {
     // Canal interne pour envoyer des messages au client
     let (tx, rx) = mpsc::unbounded_channel();
@@ -142,55 +182,75 @@ pub async fn handle_connection(
     // event is not received by clients already connected.
     let conn_id_str = conn_id.to_string();
 
-    // Read the persisted status before overwriting it so we can preserve
-    // IDLE / DND across a page refresh (only force ONLINE for OFFLINE users).
-    let effective_status_str = if let Ok(uid) = Uuid::parse_str(&user_id) {
-        match UserRepository::find_by_id(&pg_pool, uid).await {
-            Ok(Some(user)) => match user.status {
-                crate::models::user::UserStatus::Idle => "idle",
-                crate::models::user::UserStatus::Dnd  => "dnd",
-                _                                     => "online",
-            },
-            _ => "online",
-        }
-    } else {
-        "online"
-    };
-
+    // Always force ONLINE on WS connect regardless of previous status (IDLE/DND/OFFLINE).
     presence.add_connection(&user_id, &conn_id_str);
 
-    // add_connection always sets Online in memory; restore IDLE/DND if needed.
-    match effective_status_str {
-        "idle" => { presence.set_status(&user_id, crate::services::presence_service::PresenceStatus::Idle); }
-        "dnd"  => { presence.set_status(&user_id, crate::services::presence_service::PresenceStatus::Dnd); }
-        _      => {}
+    // Always write ONLINE to PostgreSQL unconditionally.
+    if let Ok(uid) = Uuid::parse_str(&user_id) {
+        let pool_pg = pg_pool.clone();
+        tokio::spawn(async move {
+            let _ = UserRepository::update_status(
+                &pool_pg,
+                uid,
+                &crate::models::user::UserStatus::Online,
+            )
+            .await;
+        });
     }
 
-    // Only write ONLINE to PG when the user was previously OFFLINE.
-    // IDLE / DND are left untouched so they survive the reconnect.
-    if effective_status_str == "online" {
-        if let Ok(uid) = Uuid::parse_str(&user_id) {
-            let pool_pg = pg_pool.clone();
-            tokio::spawn(async move {
-                let _ = UserRepository::update_status(
-                    &pool_pg,
-                    uid,
-                    &crate::models::user::UserStatus::Online,
-                )
-                .await;
-            });
+    // Broadcast UserOnline to all connected clients.
+    // If the user is banned from some servers, skip broadcasting to connections
+    // that belong exclusively to those banned servers.  When banned_server_ids is
+    // empty (common path) we broadcast to everyone as usual.
+    if banned_server_ids.is_empty() {
+        hub.broadcast_all(crate::ws::protocol::ServerEvent::UserOnline {
+            user_id: user_id.clone(),
+            status: "online".to_string(),
+        })
+        .await;
+    } else {
+        // Query the member IDs of all NON-banned servers of this user so we can
+        // restrict UserOnline to people who actually share an active server with them.
+        // Full per-server filtering at the room level would require a server→rooms
+        // mapping in Hub (architectural addition deferred).
+        let user_uuid_opt = Uuid::parse_str(&user_id).ok();
+        let skip_banned_broadcast = if let Some(uid) = user_uuid_opt {
+            // Check how many non-banned memberships the user still has.
+            let active: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM memberships m \
+                 WHERE m.user_id = $1 \
+                 AND NOT EXISTS ( \
+                   SELECT 1 FROM bans b \
+                   WHERE b.server_id = m.server_id \
+                     AND b.user_id = m.user_id \
+                     AND (b.expires_at IS NULL OR b.expires_at > NOW()) \
+                 )",
+            )
+            .bind(uid)
+            .fetch_one(&pg_pool)
+            .await
+            .unwrap_or(1); // on error, default to broadcasting (safe)
+            active == 0
+        } else {
+            false
+        };
+
+        if skip_banned_broadcast {
+            tracing::info!(
+                user = %user_id,
+                "Skipping UserOnline broadcast: user is banned from all their servers"
+            );
+        } else {
+            hub.broadcast_all(crate::ws::protocol::ServerEvent::UserOnline {
+                user_id: user_id.clone(),
+                status: "online".to_string(),
+            })
+            .await;
         }
     }
-
-    // Always broadcast the effective status so late-joining clients stay in sync.
-    hub.broadcast_all(crate::ws::protocol::ServerEvent::UserOnline {
-        user_id: user_id.clone(),
-        status: effective_status_str.to_string(),
-    })
-    .await;
     hub.broadcast_all(crate::ws::protocol::ServerEvent::PresenceUpdated {
         user_id: user_id.clone(),
-        status: effective_status_str.to_string(),
+        status: "online".to_string(),
         last_activity: chrono::Utc::now().to_rfc3339(),
     })
     .await;
@@ -247,6 +307,7 @@ pub async fn handle_connection(
     // ---------------------------------------------------------
     let hub_cleanup = hub.clone();
     let cleanup_conn_id = conn_id;
+    let cleanup_user_id = user_id.clone();
     let cleanup_handle = tokio::spawn(async move {
         let mut ticker =
             tokio::time::interval(std::time::Duration::from_secs(30));
@@ -254,16 +315,19 @@ pub async fn handle_connection(
         loop {
             ticker.tick().await;
             match hub_cleanup.heartbeats.get(&cleanup_conn_id) {
-                None => break, // connection already unregistered
+                // heartbeat entry gone → connection already unregistered (e.g. replaced
+                // by a new connection in register_connection). Exit silently.
+                None => break,
                 Some(last_beat) => {
                     let elapsed =
                         (chrono::Utc::now() - *last_beat).num_seconds();
                     if elapsed > HEARTBEAT_TIMEOUT_SECS {
                         tracing::warn!(
                             conn = %cleanup_conn_id,
+                            user = %cleanup_user_id,
                             elapsed_secs = elapsed,
-                            "Cleaning up: last_ping > {}s ago",
-                            HEARTBEAT_TIMEOUT_SECS
+                            "Removing connection: conn_id={} user_id={} reason=heartbeat_timeout",
+                            cleanup_conn_id, cleanup_user_id
                         );
                         if let Some(tx) =
                             hub_cleanup.sockets.get(&cleanup_conn_id)
@@ -290,6 +354,10 @@ pub async fn handle_connection(
 
         // Cache: user_id (string) → username to avoid repeated PG lookups
         let mut username_cache: HashMap<String, String> = HashMap::new();
+
+        // Cache: channel_id → channel name, server_id → server name (for MessageNotification)
+        let mut channel_name_cache: HashMap<String, String> = HashMap::new();
+        let mut server_name_cache: HashMap<String, String> = HashMap::new();
 
         let current_user_uuid = match Uuid::parse_str(&user_id_recv) {
             Ok(uid) => uid,
@@ -496,6 +564,33 @@ pub async fn handle_connection(
                             }
                         }
                     }
+
+                    // Notify all server members (for non-active channels)
+                    let channel_name = resolve_channel_name(
+                        &channel_id,
+                        &pg_pool_recv,
+                        &mut channel_name_cache,
+                    )
+                    .await;
+                    let server_name = resolve_server_name(
+                        &server_id,
+                        &pg_pool_recv,
+                        &mut server_name_cache,
+                    )
+                    .await;
+                    let notif = ServerEvent::MessageNotification {
+                        server_id: server_id.clone(),
+                        server_name,
+                        channel_id: channel_id.clone(),
+                        channel_name,
+                        message_id: id.to_hex(),
+                        author_id: user_id_recv.clone(),
+                        author_username: username.clone(),
+                        content: content.clone(),
+                        created_at: created_at.clone(),
+                        attachment_url: attachment_url.clone(),
+                    };
+                    hub_recv.broadcast_to_server_members(server_uuid, notif, &pg_pool_recv).await;
                 },
                 ClientEvent::MessageSchedule {
                     channel_id,
@@ -867,6 +962,18 @@ pub async fn handle_connection(
                     );
                     hub_recv.join_room(&channel_id, conn_id);
 
+                    let room_conn_count = hub_recv
+                        .rooms
+                        .get(&channel_id)
+                        .map(|r| r.len())
+                        .unwrap_or(0);
+                    tracing::info!(
+                        "User {} joined channel {}, connections in room: {}",
+                        user_id_recv,
+                        channel_id,
+                        room_conn_count
+                    );
+
                     if let Ok(history) = message_service_recv
                         .get_history(&channel_id, 1, 50)
                         .await
@@ -1134,7 +1241,7 @@ pub async fn handle_connection(
                         continue;
                     }
 
-                    let _server_id = match resolve_server_id(
+                    let server_id_gif = match resolve_server_id(
                         &channel_id,
                         &pg_pool_recv,
                         &mut channel_server_cache,
@@ -1230,6 +1337,37 @@ pub async fn handle_connection(
                                 let _ = tx.send(Message::Text(json));
                             }
                         }
+                    }
+
+                    // Notify all server members (for non-active channels)
+                    if let Ok(server_uuid_gif) = Uuid::parse_str(&server_id_gif) {
+                        let channel_name = resolve_channel_name(
+                            &channel_id,
+                            &pg_pool_recv,
+                            &mut channel_name_cache,
+                        )
+                        .await;
+                        let server_name = resolve_server_name(
+                            &server_id_gif,
+                            &pg_pool_recv,
+                            &mut server_name_cache,
+                        )
+                        .await;
+                        let notif = ServerEvent::MessageNotification {
+                            server_id: server_id_gif.clone(),
+                            server_name,
+                            channel_id: channel_id.clone(),
+                            channel_name,
+                            message_id: id.to_hex(),
+                            author_id: user_id_recv.clone(),
+                            author_username: username.clone(),
+                            content: content.clone(),
+                            created_at: created_at.clone(),
+                            attachment_url: None,
+                        };
+                        hub_recv
+                            .broadcast_to_server_members(server_uuid_gif, notif, &pg_pool_recv)
+                            .await;
                     }
                 },
                 // ─────────────────────────────────────────────
@@ -1572,61 +1710,71 @@ pub async fn handle_connection(
     let _ = recv_task.await;
     cleanup_handle.abort(); // connexion fermée normalement, plus besoin du watcher
 
-    // Nettoyage connexion
-    // Log connection cleanup for debugging resets and presence transitions
-    let conn_count_before = hub
-        .connections
-        .get(&user_id)
-        .map(|s| s.len())
-        .unwrap_or(0);
-    tracing::info!(user = %user_id, conn = %conn_id, before = conn_count_before, "Cleaning up connection");
+    // ── Final connection cleanup ────────────────────────────────────────────────
+    //
+    // unregister_connection returns true only if this conn_id was still present in
+    // the hub (i.e. it was not already evicted by register_connection when the user
+    // reconnected from a fresh browser tab).  We use this boolean to decide whether
+    // to broadcast UserOffline — emitting it on an already-replaced connection would
+    // incorrectly mark an active user as offline.
 
-    hub.unregister_connection(&user_id, &conn_id);
-
-    let conn_count_after = hub
-        .connections
-        .get(&user_id)
-        .map(|s| s.len())
-        .unwrap_or(0);
-    tracing::info!(user = %user_id, conn = %conn_id, after = conn_count_after, "Connection unregistered");
+    let was_registered = hub.unregister_connection(&user_id, &conn_id);
+    tracing::info!(
+        user = %user_id,
+        conn = %conn_id,
+        was_registered,
+        "Removing connection: conn_id={} user_id={} reason=client_disconnect",
+        conn_id, user_id
+    );
 
     // Clean up typing state for this user
     typing_service.cleanup();
 
-    // Retirer la connexion de la présence. Si plus aucune connexion => offline.
-    if let Some(new_status) = presence.remove_connection(&user_id, &conn_id.to_string()) {
-        tracing::info!(user = %user_id, new_status = ?new_status, "Presence changed after removing connection");
-        match new_status {
-            crate::services::presence_service::PresenceStatus::Offline => {
-                // Persist OFFLINE in PG (fire-and-forget).
-                if let Ok(uid) = Uuid::parse_str(&user_id) {
-                    let pool_pg = pg_pool.clone();
-                    tokio::spawn(async move {
-                        let _ = UserRepository::update_status(
-                            &pool_pg,
-                            uid,
-                            &crate::models::user::UserStatus::Offline,
-                        )
-                        .await;
-                    });
-                }
+    if was_registered {
+        // Retirer la connexion de la présence. Si plus aucune connexion => offline.
+        if let Some(new_status) = presence.remove_connection(&user_id, &conn_id.to_string()) {
+            tracing::info!(user = %user_id, new_status = ?new_status, "Presence changed after removing connection");
+            match new_status {
+                crate::services::presence_service::PresenceStatus::Offline => {
+                    // Persist OFFLINE in PG (fire-and-forget).
+                    if let Ok(uid) = Uuid::parse_str(&user_id) {
+                        let pool_pg = pg_pool.clone();
+                        tokio::spawn(async move {
+                            let _ = UserRepository::update_status(
+                                &pool_pg,
+                                uid,
+                                &crate::models::user::UserStatus::Offline,
+                            )
+                            .await;
+                        });
+                    }
 
-                hub.broadcast_all(ServerEvent::UserOffline {
-                    user_id: user_id.clone(),
-                    status: "offline".to_string(),
-                })
-                .await;
-                hub.broadcast_all(crate::ws::protocol::ServerEvent::PresenceUpdated {
-                    user_id: user_id.clone(),
-                    status: "offline".to_string(),
-                    last_activity: chrono::Utc::now().to_rfc3339(),
-                })
-                .await;
+                    hub.broadcast_all(ServerEvent::UserOffline {
+                        user_id: user_id.clone(),
+                        status: "offline".to_string(),
+                    })
+                    .await;
+                    hub.broadcast_all(crate::ws::protocol::ServerEvent::PresenceUpdated {
+                        user_id: user_id.clone(),
+                        status: "offline".to_string(),
+                        last_activity: chrono::Utc::now().to_rfc3339(),
+                    })
+                    .await;
+                }
+                _ => {}
             }
-            _ => {}
+        } else {
+            tracing::info!(user = %user_id, "Connection removed but user still has other connections");
         }
     } else {
-        tracing::info!(user = %user_id, "Connection removed but user still has other connections");
+        // Connection was already evicted from the hub (register_connection replaced it
+        // when the user opened a new tab / refreshed).  Skip presence update and
+        // UserOffline to avoid falsely marking an active user as offline.
+        tracing::info!(
+            user = %user_id,
+            conn = %conn_id,
+            "Connection already removed before final cleanup — skipping UserOffline"
+        );
     }
 }
 

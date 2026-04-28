@@ -1,13 +1,13 @@
 import type { z } from "zod";
-import type { UserJoinedSchema, UserLeftSchema } from "@/lib/ws/types";
+import type { UserJoinedSchema, UserLeftSchema, BannedSchema } from "@/lib/ws/types";
+import { useServerStore } from "@/store/server.store";
 
 type UserJoined = z.infer<typeof UserJoinedSchema>;
 type UserLeft = z.infer<typeof UserLeftSchema>;
+type Banned = z.infer<typeof BannedSchema>;
 
 /**
- * Handles channel membership presence events.
- * Member list is fetched via REST on channel join, so these events
- * are currently informational only.
+ * Handles channel membership presence events and moderation events (ban).
  */
 export const memberHandler = {
   onUserJoined(payload: UserJoined): void {
@@ -16,5 +16,18 @@ export const memberHandler = {
 
   onUserLeft(payload: UserLeft): void {
     console.debug("[MemberHandler] left", payload.user_id, payload.channel_id);
+  },
+
+  onBanned(payload: Banned): void {
+    console.debug("[MemberHandler] banned from server", payload.server_id);
+    const store = useServerStore.getState();
+    // Remove the banned server from the local store and show the ban modal.
+    store.removeServer(payload.server_id);
+    store.showBanModal({
+      serverId: payload.server_id,
+      serverName: store.servers.find((s) => s.id === payload.server_id)?.name ?? "ce serveur",
+      expiresAt: payload.expires_at ?? null,
+      reason: payload.reason ?? null,
+    });
   },
 };

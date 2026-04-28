@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "bootstrap-icons/font/bootstrap-icons.css";
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,600;1,700&display=swap');
 
 @custom-variant dark (&:is(.dark *), &:is(.dim *));
 
@@ -11,6 +13,22 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @theme inline {
+  /* EpiTalk Design Tokens */
+  --color-et-orange: #f97316;
+  --color-et-purple: #a855f7;
+  --color-et-red-soft: #f87171;
+  --color-et-online: #22c55e;
+  --color-et-busy: #ef4444;
+  --color-et-bg: #f3f4f6;
+  --color-et-card: #ffffff;
+  --color-et-border: #e5e7eb;
+  --color-et-border-input: #d1d5db;
+  --color-et-text: #374151;
+  --color-et-title: #111827;
+  --color-et-muted: #9ca3af;
+  --color-et-secondary: #6b7280;
+  --color-et-avatar-empty: #e8e8e8;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -56,65 +74,101 @@
 :root {
   --radius: 0.75rem;
   --chat-font-size: 16px;
-  
-  /* Core Colors - Electric Blue Premium Theme */
-  --electric-blue: #023BFC;
-  --electric-blue-light: #3D6AFF;
-  --electric-blue-dark: #0129B8;
-  --electric-blue-glow: rgba(2, 59, 252, 0.25);
+
+  /* Brand */
+  --brand-primary: #0066CC;
+  --brand-dark: #003D82;
+  --brand-accent: #4A9EFF;
+  --brand-cta: #FF6B35;
+  --brand-cta-hover: #E55A26;
+  --brand-surface: #F5F5F5;
+  --brand-bg: #FFFFFF;
+
+  /* Neutral */
+  --n25: #FAFBFC;
+  --n50: #F5F7FA;
+  --n100: #ECEEF1;
+  --n150: #E1E5EA;
+  --n200: #D5DAE0;
+  --n300: #B8BFC7;
+  --n400: #8A929C;
+  --n500: #6B737D;
+  --n700: #333333;
+
+  /* Presence */
+  --presence-online: #2BAE5C;
+  --presence-dnd: #D93F3F;
+  --presence-offline: #8A929C;
+
+  /* Channel states */
+  --channel-active-bg: #E6F0FB;
+  --channel-active-hover: #DCE9F8;
+  --channel-active-text: #0066CC;
+
+  /* Rail overlays */
+  --rail-server-bg: rgba(255,255,255,0.08);
+  --rail-server-hover: rgba(255,255,255,0.16);
+  --rail-server-text: rgba(255,255,255,0.85);
+  --rail-divider: rgba(255,255,255,0.12);
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgba(15,24,40,0.04), 0 1px 3px rgba(15,24,40,0.03);
+  --shadow-actions: 0 2px 8px rgba(15,24,40,0.06), 0 1px 2px rgba(15,24,40,0.04);
+  --shadow-focus: 0 0 0 2px #FFFFFF, 0 0 0 5px #4A9EFF;
+  --shadow-composer: 0 0 0 3px #ECEEF1;
   
   /* Backgrounds */
   --background: #FFFFFF;
   --foreground: #1A1D26;
   --surface: #F7F8FA;
   --surface-elevated: #FFFFFF;
-  
+
   /* Cards & Popovers */
   --card: #FFFFFF;
   --card-foreground: #1A1D26;
   --popover: #FFFFFF;
   --popover-foreground: #1A1D26;
-  
-  /* Primary - Electric Blue */
-  --primary: #023BFC;
+
+  /* Primary - EpiTalk Orange */
+  --primary: #f97316;
   --primary-foreground: #FFFFFF;
-  
+
   /* Secondary - Cool Gray */
   --secondary: #F7F8FA;
   --secondary-foreground: #1A1D26;
-  
+
   /* Muted */
   --muted: #F1F3F5;
   --muted-foreground: #6B7280;
-  
-  /* Accent - Electric Blue Light */
-  --accent: #EBF0FF;
-  --accent-foreground: #023BFC;
-  
+
+  /* Accent - Orange tint */
+  --accent: #fff7ed;
+  --accent-foreground: #f97316;
+
   /* Destructive */
   --destructive: #EF4444;
-  
+
   /* Borders & Inputs */
   --border: #E5E7EB;
   --input: #F1F3F5;
-  --ring: #023BFC;
-  
-  /* Chart Colors - Blue Spectrum */
-  --chart-1: #023BFC;
-  --chart-2: #3D6AFF;
-  --chart-3: #6B8FFF;
-  --chart-4: #99B3FF;
-  --chart-5: #C7D6FF;
-  
-  /* Sidebar - Soft Gray */
+  --ring: #f97316;
+
+  /* Chart Colors */
+  --chart-1: #f97316;
+  --chart-2: #a855f7;
+  --chart-3: #fb923c;
+  --chart-4: #c084fc;
+  --chart-5: #fdba74;
+
+  /* Sidebar */
   --sidebar: #F7F8FA;
   --sidebar-foreground: #1A1D26;
-  --sidebar-primary: #023BFC;
+  --sidebar-primary: #f97316;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #EBF0FF;
-  --sidebar-accent-foreground: #023BFC;
+  --sidebar-accent: #fff7ed;
+  --sidebar-accent-foreground: #f97316;
   --sidebar-border: #E5E7EB;
-  --sidebar-ring: #023BFC;
+  --sidebar-ring: #f97316;
 }
 
 /* Cendré — warm muted gray */
@@ -129,7 +183,7 @@
   --popover: #EFEDE8;
   --popover-foreground: #2C2A26;
 
-  --primary: #023BFC;
+  --primary: #f97316;
   --primary-foreground: #FFFFFF;
 
   --secondary: #D9D6D0;
@@ -138,23 +192,23 @@
   --muted: #D1CEC8;
   --muted-foreground: #6B6860;
 
-  --accent: #D6DEFC;
-  --accent-foreground: #023BFC;
+  --accent: #fff7ed;
+  --accent-foreground: #f97316;
 
   --destructive: #EF4444;
 
   --border: #C5C2BB;
   --input: #D9D6D0;
-  --ring: #023BFC;
+  --ring: #f97316;
 
   --sidebar: #D9D6D0;
   --sidebar-foreground: #2C2A26;
-  --sidebar-primary: #023BFC;
+  --sidebar-primary: #f97316;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #D6DEFC;
-  --sidebar-accent-foreground: #023BFC;
+  --sidebar-accent: #fff7ed;
+  --sidebar-accent-foreground: #f97316;
   --sidebar-border: #C5C2BB;
-  --sidebar-ring: #023BFC;
+  --sidebar-ring: #f97316;
 }
 
 /* Sombre — dark gray, softer than full dark */
@@ -169,7 +223,7 @@
   --popover: #272A34;
   --popover-foreground: #E4E5EA;
 
-  --primary: #3D6AFF;
+  --primary: #f97316;
   --primary-foreground: #FFFFFF;
 
   --secondary: #2F3340;
@@ -178,23 +232,23 @@
   --muted: #2F3340;
   --muted-foreground: #9CA3AF;
 
-  --accent: #1E2A4A;
-  --accent-foreground: #3D6AFF;
+  --accent: #431407;
+  --accent-foreground: #fb923c;
 
   --destructive: #F87171;
 
   --border: rgba(255, 255, 255, 0.12);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: #3D6AFF;
+  --ring: #f97316;
 
   --sidebar: #272A34;
   --sidebar-foreground: #E4E5EA;
-  --sidebar-primary: #3D6AFF;
+  --sidebar-primary: #f97316;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1E2A4A;
-  --sidebar-accent-foreground: #3D6AFF;
+  --sidebar-accent: #431407;
+  --sidebar-accent-foreground: #fb923c;
   --sidebar-border: rgba(255, 255, 255, 0.12);
-  --sidebar-ring: #3D6AFF;
+  --sidebar-ring: #f97316;
 }
 
 /* Dark — full black */
@@ -203,38 +257,38 @@
   --foreground: #F7F8FA;
   --surface: #1A1D26;
   --surface-elevated: #23262F;
-  
+
   --card: #1A1D26;
   --card-foreground: #F7F8FA;
   --popover: #1A1D26;
   --popover-foreground: #F7F8FA;
-  
-  --primary: #3D6AFF;
+
+  --primary: #f97316;
   --primary-foreground: #FFFFFF;
-  
+
   --secondary: #23262F;
   --secondary-foreground: #F7F8FA;
-  
+
   --muted: #23262F;
   --muted-foreground: #9CA3AF;
-  
-  --accent: #1E2A4A;
-  --accent-foreground: #3D6AFF;
-  
+
+  --accent: #431407;
+  --accent-foreground: #fb923c;
+
   --destructive: #F87171;
-  
+
   --border: rgba(255, 255, 255, 0.1);
   --input: rgba(255, 255, 255, 0.1);
-  --ring: #3D6AFF;
-  
+  --ring: #f97316;
+
   --sidebar: #1A1D26;
   --sidebar-foreground: #F7F8FA;
-  --sidebar-primary: #3D6AFF;
+  --sidebar-primary: #f97316;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1E2A4A;
-  --sidebar-accent-foreground: #3D6AFF;
+  --sidebar-accent: #431407;
+  --sidebar-accent-foreground: #fb923c;
   --sidebar-border: rgba(255, 255, 255, 0.1);
-  --sidebar-ring: #3D6AFF;
+  --sidebar-ring: #f97316;
 }
 
 @layer base {
@@ -243,7 +297,10 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  code, pre, .font-mono {
+    font-family: 'IBM Plex Mono', monospace;
   }
 }
 
@@ -315,14 +372,42 @@
     0 0 40px rgba(2, 59, 252, 0.2);
 }
 
-/* Active Channel Pill */
+/* Active Channel Pill — EpiTalk gradient border */
 .channel-active {
   background: linear-gradient(135deg, #023BFC 0%, #3D6AFF 100%);
   color: white;
   font-weight: 600;
-  box-shadow: 
+  box-shadow:
     0 4px 12px rgba(2, 59, 252, 0.3),
     0 0 20px rgba(2, 59, 252, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EPITALK DESIGN SYSTEM UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.bg-et-gradient {
+  background: linear-gradient(135deg, #f97316, #a855f7);
+}
+
+.text-et-gradient {
+  background: linear-gradient(135deg, #f97316, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.border-et-gradient {
+  border: 1.5px solid transparent;
+  background-image: linear-gradient(#fff, #fff), linear-gradient(135deg, #f97316, #a855f7);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.channel-et-active {
+  border: 1.5px solid #f97316;
+  border-radius: 6px;
+  background-color: rgba(249, 115, 22, 0.06);
 }
 
 /* Server Icon Squircle */
@@ -458,6 +543,15 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #9CA3AF;
 }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-4px); }
+  40%       { transform: translateX(4px); }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(4px); }
+}
+.shake { animation: shake 0.35s ease; }
 
 /* Animation Keyframes */
 @keyframes pulse-glow {

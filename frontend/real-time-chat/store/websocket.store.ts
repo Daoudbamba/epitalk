@@ -22,70 +22,6 @@ import type { ConnectionState, WsMessage, PresenceStatus } from "@/lib/ws/types"
 // Wire the EventBus once at module load (idempotent).
 initEventBus();
 
-// CLIENT → SERVER events
-type ClientEvent =
-  | {
-      type: "MessageSend";
-      payload: { channel_id: string; content: string; reply_to?: string; attachment_url?: string };
-    }
-  | {
-      type: "MessageSchedule";
-      payload: {
-        channel_id: string;
-        content: string;
-        day_of_week: number;
-        hour: number;
-        minute: number;
-        reply_to?: string;
-      };
-    }
-  | {
-      type: "MessageEdit";
-      payload: { channel_id: string; message_id: string; content: string };
-    }
-  | {
-      type: "MessageDelete";
-      payload: { channel_id: string; message_id: string };
-    }
-  | { type: "JoinChannel"; payload: { channel_id: string } }
-  | { type: "LeaveChannel"; payload: { channel_id: string } }
-  | { type: "TypingStart"; payload: { channel_id: string } }
-  | { type: "TypingStop"; payload: { channel_id: string } }
-  | { type: "Ping" }
-  | {
-      type: "DmSend";
-      payload: { recipient_id: string; content: string; reply_to?: string };
-    }
-  | {
-      type: "DmEdit";
-      payload: { conversation_id: string; message_id: string; content: string };
-    }
-  | {
-      type: "DmDelete";
-      payload: { conversation_id: string; message_id: string };
-    }
-  | {
-      type: "DmSendGif";
-      payload: {
-        recipient_id: string;
-        gif: { id: string; url: string; preview?: string; provider?: string };
-        caption?: string | null;
-      };
-    }
-  | { type: "JoinDm"; payload: { peer_id: string } }
-  | { type: "LeaveDm"; payload: { peer_id: string } }
-  | {
-      type: "MessageSendGif";
-      payload: {
-        channel_id: string;
-        gif: { id: string; url: string; preview?: string; provider?: string };
-        caption?: string | null;
-      };
-    }
-  | {
-      type: "PresenceSet";
-      payload: { status: "online" | "idle" | "dnd" | "offline" };
-    };
 
 // SERVER → CLIENT events
 type ServerEvent =
@@ -357,49 +293,16 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
     presence: {},
 
     sendMessage: (channelId: string, content: string, replyTo?: string, attachmentUrl?: string) => {
-    const { socket, currentChannelId, isConnected } = get();
-    console.log("📤 [sendMessage] Called with:", {
-      channelId,
-      content: content.substring(0, 50),
-      replyTo,
-      attachmentUrl,
-      socketState: socket?.readyState,
-      isConnected,
-      currentChannelId,
-    });
-
     if (!channelId) {
       console.error("❌ Cannot send message: channelId is missing");
       return;
     }
-
-    if (!socket) {
-      console.error("❌ Cannot send message: WebSocket is null");
-      return;
-    }
-
-    if (socket.readyState !== WebSocket.OPEN) {
-      console.error("❌ Cannot send message: WebSocket not OPEN (state:", socket.readyState, ")");
-      return;
-    }
-
-    if (currentChannelId !== channelId) {
-      console.error("❌ Cannot send message: Not in the target channel. Current:", currentChannelId, "Target:", channelId);
-      return;
-    }
-    
-    const event = JSON.stringify({
-      type: "MessageSend",
-      payload: {
-        channel_id: channelId,
-        content,
-        ...(replyTo && { reply_to: replyTo }),
-        ...(attachmentUrl && { attachment_url: attachmentUrl }),
-      },
+    wsManager.send("MessageSend", {
+      channel_id: channelId,
+      content,
+      ...(replyTo && { reply_to: replyTo }),
+      ...(attachmentUrl && { attachment_url: attachmentUrl }),
     });
-    console.log("📤 [sendMessage] Sending event:", event);
-    socket.send(event);
-    console.log("✅ [sendMessage] Event sent successfully");
   },
 
   sendScheduledMessage: (
@@ -410,48 +313,22 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => {
     minute: number,
     replyTo?: string,
   ) => {
-    const { socket, currentChannelId } = get();
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      if (currentChannelId !== channelId) {
-        get().joinChannel(channelId);
-      }
-      const event: ClientEvent = {
-        type: "MessageSchedule",
-        payload: {
-          channel_id: channelId,
-          content,
-          day_of_week: dayOfWeek,
-          hour,
-          minute,
-          reply_to: replyTo,
-        },
-      };
-      socket.send(JSON.stringify(event));
-    } else {
-      console.error("❌ Cannot schedule message: WebSocket not connected");
-    }
+    wsManager.send("MessageSchedule", {
+      channel_id: channelId,
+      content,
+      day_of_week: dayOfWeek,
+      hour,
+      minute,
+      reply_to: replyTo,
+    });
   },
 
   editMessage: (channelId: string, messageId: string, content: string) => {
-    const { socket } = get();
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      const event: ClientEvent = {
-        type: "MessageEdit",
-        payload: { channel_id: channelId, message_id: messageId, content },
-      };
-      socket.send(JSON.stringify(event));
-    }
+    wsManager.send("MessageEdit", { channel_id: channelId, message_id: messageId, content });
   },
 
   deleteMessage: (channelId: string, messageId: string) => {
-    const { socket } = get();
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      const event: ClientEvent = {
-        type: "MessageDelete",
-        payload: { channel_id: channelId, message_id: messageId },
-      };
-      socket.send(JSON.stringify(event));
-    }
+    wsManager.send("MessageDelete", { channel_id: channelId, message_id: messageId });
   },
 
   setCurrentDmPeer: (peerId: string | null) => {

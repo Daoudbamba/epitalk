@@ -212,6 +212,7 @@ async fn wait_for_presence_event_user(
 }
 
 #[tokio::test]
+#[ignore = "integration: requires running Postgres — run with `cargo test -- --ignored`"]
 async fn http_and_ws_core_flow() {
     if std::env::var("EPITALK_SKIP_SLOW_TESTS").ok().as_deref() == Some("1") {
         return;
@@ -439,6 +440,7 @@ async fn http_and_ws_core_flow() {
 }
 
 #[tokio::test]
+#[ignore = "integration: requires running Postgres — run with `cargo test -- --ignored`"]
 async fn ws_presence_connect_and_disconnect_flow() {
     let (base_url, shutdown) = start_server().await;
     let client = reqwest::Client::new();
@@ -500,6 +502,7 @@ async fn ws_presence_connect_and_disconnect_flow() {
 }
 
 #[tokio::test]
+#[ignore = "integration: requires running Postgres — run with `cargo test -- --ignored`"]
 async fn ws_typing_start_is_throttled() {
     let (base_url, shutdown) = start_server().await;
     let client = reqwest::Client::new();

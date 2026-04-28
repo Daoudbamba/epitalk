@@ -97,7 +97,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         React.createElement(ServerMessageToast, {
           serverName: data?.serverName || "Serveur",
           channelName: data?.channelName || "channel",
-          username: title.split(" in ")[0] || "Utilisateur", // Extract username from title
+          username: data?.username || "Utilisateur",
           message: message,
           onDismiss: () => toast.dismiss(t.id),
           onView: () => {
@@ -149,12 +149,24 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       try {
         const tag = type === "dm" ? `dm-${userId}` : `server-msg-${data?.channelId}`;
         console.log("📢 [Notif] 📲 Showing system notification with tag:", tag);
-        new Notification(title, {
+        const sysNotif = new Notification(title, {
           body: message,
           icon: "/favicon.ico",
           tag,
           badge: "/favicon.ico",
         });
+        sysNotif.onclick = () => {
+          window.focus();
+          if (type === "server_message") {
+            window.dispatchEvent(
+              new CustomEvent("notification:server-message-click", { detail: { ...data } })
+            );
+          } else if (type === "dm") {
+            window.dispatchEvent(
+              new CustomEvent("notification:dm-click", { detail: { userId, ...data } })
+            );
+          }
+        };
       } catch (error) {
         console.error("📢 [Notif] ❌ Failed to show system notification:", error);
       }

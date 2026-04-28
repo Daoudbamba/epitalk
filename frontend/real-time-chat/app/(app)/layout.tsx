@@ -7,12 +7,18 @@ import { useAuthStore } from "@/store/auth.store";
 import { terminateSession } from "@/lib/auth/session";
 import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
 import { NotificationManager } from "@/components/notification-manager";
+import { BanModal } from "@/components/ban-modal";
+import { useNotificationClick } from "@/hooks/use-notification-click";
+import { useJoinAllChannels } from "@/hooks/useJoinAllChannels";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const [isChecking, setIsChecking] = useState(true);
+
+  useNotificationClick();
+  useJoinAllChannels();
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +66,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="h-screen w-screen flex">
       <NotificationPermissionBanner />
       <NotificationManager />
+      <BanModal />
       <main className="flex-1">{children}</main>
     </div>
   );

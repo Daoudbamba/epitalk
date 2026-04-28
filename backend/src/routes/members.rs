@@ -290,6 +290,7 @@ async fn ban_member(
     }
 
     // Create the ban record
+    // a. Insert ban record in DB
     let ban = MembershipRepository::ban_user(
         &state.db,
         params.server_id,
@@ -300,20 +301,27 @@ async fn ban_member(
     )
     .await?;
 
-    let ban_message = build_ban_message(ban.reason.as_deref());
+    // b. expires_at and reason are available from the returned ban record.
 
+    // c. Send Banned event to the user via WS (before closing the connection so
+    //    the client can display the reason before being disconnected).
     state.hub.send_event_to_user(
         &params.user_id.to_string(),
-        ServerEvent::Error {
-            code: "BANNED".to_string(),
-            message: ban_message,
+        ServerEvent::Banned {
+            server_id: params.server_id.to_string(),
+            expires_at: ban.expires_at.map(|dt| dt.to_rfc3339()),
+            reason: ban.reason.clone(),
         },
     );
 
-    // Also remove the user from the server (banned = no longer a member)
-    let _ = MembershipRepository::delete(&state.db, params.user_id, params.server_id).await;
+    // d. Delete membership — NotFound is silently ignored (user may already be gone).
+    match MembershipRepository::delete(&state.db, params.user_id, params.server_id).await {
+        Ok(_) | Err(crate::error::AppError::NotFound(_)) => {}
+        Err(e) => return Err(e),
+    }
 
-    // Apply ban effect immediately on all active WebSocket sessions.
+    // e. Close the WS connection for this user (only this server context in practice
+    //    maps to the full WS connection since the architecture uses one socket per user).
     state.hub.disconnect_user(&params.user_id.to_string());
 
     // Build response (we need username)
@@ -728,5 +736,84 @@ mod tests {
         let target = Uuid::new_v4();
         let result = validate_ban_permissions(caller, target, MemberRole::Owner, MemberRole::Member);
         assert!(result.is_ok());
+    }
+
+    // ── Tests de l'ordre strict de ban_member ──────────────────────────────
+
+    /// ban_member doit envoyer un événement `Banned` (et non `Error`) contenant
+    /// server_id, expires_at et reason.
+    #[tokio::test]
+    async fn ban_member_sends_banned_event_not_error() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("ban-event-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("ban_ev_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let member = UserRepository::create(
+            &pool,
+            &format!("ban-event-user-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("ban_ev_user_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create member");
+
+        let server = ServerRepository::create(&pool, "BanEventTest", owner.id)
+            .await
+            .expect("create server");
+
+        MembershipRepository::create(&pool, member.id, server.id, MemberRole::Member)
+            .await
+            .expect("add member");
+
+        // Enregistrer une connexion WS simulée pour le member
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        state.hub.register_connection(&member.id.to_string(), Uuid::new_v4(), tx);
+
+        let owner_auth = test_require_auth(owner.id, &owner.email, &owner.username);
+
+        let result = ban_member(
+            State(state.clone()),
+            owner_auth,
+            Path(MemberPath { server_id: server.id, user_id: member.id }),
+            axum::Json(crate::models::BanMemberRequest {
+                reason: Some("event-test".to_string()),
+                expires_at: None,
+            }),
+        )
+        .await
+        .expect("ban must succeed");
+
+        assert_eq!(result.0.user_id, member.id);
+
+        // Le premier message reçu doit être l'événement Banned (pas Error)
+        let msg = rx.try_recv().expect("banned user must receive a WS event");
+        match msg {
+            axum::extract::ws::Message::Text(text) => {
+                let v: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+                assert_eq!(v["type"], "Banned", "event type must be Banned, not Error");
+                assert_eq!(
+                    v["payload"]["server_id"],
+                    server.id.to_string(),
+                    "server_id must match"
+                );
+                assert!(v["payload"]["expires_at"].is_null(), "permanent ban: expires_at must be null");
+                assert_eq!(v["payload"]["reason"], "event-test");
+            }
+            other => panic!("expected Text, got {:?}", other),
+        }
+
+        crate::test_utils::delete_server(&pool, server.id).await;
+        crate::test_utils::delete_user(&pool, owner.id).await;
+        crate::test_utils::delete_user(&pool, member.id).await;
     }
 }

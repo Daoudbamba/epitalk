@@ -7,7 +7,6 @@ import {
   Smile,
   Gift,
   Sticker,
-  Send,
   Loader2,
   CornerUpLeft,
   Edit3,
@@ -217,6 +216,19 @@ export function ChatPanel() {
       console.error("jumpToMessage failed", err);
     }
   };
+
+  // Listen for notification clicks that request scrolling to a specific message
+  useEffect(() => {
+    const handler = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const { messageId } = event.detail ?? {};
+      if (messageId && activeServerId && activeChannelId) {
+        void jumpToMessage(messageId, activeServerId, activeChannelId);
+      }
+    };
+    window.addEventListener("notification:scroll-to-message", handler);
+    return () => window.removeEventListener("notification:scroll-to-message", handler);
+  }, [activeServerId, activeChannelId, jumpToMessage]);
 
   const canLoad = !!activeServerId && !!activeChannelId;
 
@@ -645,7 +657,7 @@ export function ChatPanel() {
   }, [gifQuery, openGifPicker]);
 
   return (
-    <div className="h-full border border-[var(--border)] min-w-0 flex flex-col bg-[var(--card)] shadow-lg overflow-hidden">
+    <div className="h-full min-w-0 flex flex-col bg-et-card overflow-hidden">
       {/* --- HEADER --- */}
       <div className="h-12 px-4 flex items-center border-b shadow-sm shrink-0">
         <span className="text-[var(--muted-foreground)] mr-2 text-2xl">#</span>
@@ -1272,7 +1284,7 @@ export function ChatPanel() {
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               disabled={!canLoad || sending}
-              className="px-14 pr-32 py-6 bg-[var(--muted)] border-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]"
+              className="px-14 pr-32 py-6 bg-et-bg border border-et-border rounded-lg focus-visible:ring-0 focus-visible:ring-offset-0 text-et-text placeholder:text-et-muted"
               placeholder={
                 !canLoad
                   ? isEnglish
@@ -1345,7 +1357,7 @@ export function ChatPanel() {
           <Button
             onClick={onSend}
             disabled={!canLoad || sending || !isConnected || (!value.trim() && !attachmentFile)}
-            className="h-12 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-9 h-9 p-0 bg-et-gradient hover:opacity-90 text-white rounded-lg transition-opacity disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             title={
               scheduleOpen
                 ? isEnglish
@@ -1357,9 +1369,9 @@ export function ChatPanel() {
             }
           >
             {sending ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Send className="h-5 w-5" />
+              <i className="bi bi-send-fill text-[13px]" />
             )}
           </Button>
         </div>

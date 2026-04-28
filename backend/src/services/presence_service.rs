@@ -271,4 +271,73 @@ mod tests {
         assert!(!service.is_online("user-1"));
         assert!(service.is_online("user-2"));
     }
+
+    // ── Correction 1: add_connection always forces Online ──────────────────────
+
+    #[test]
+    fn add_connection_forces_online_when_previously_idle() {
+        let service = PresenceService::new();
+
+        // Simulate a user who had set their status to Idle before disconnecting
+        service.set_status("user-1", PresenceStatus::Idle);
+        assert_eq!(service.get_status("user-1"), PresenceStatus::Idle);
+
+        // A new WS connection arrives — must reset to Online
+        service.add_connection("user-1", "conn-1");
+
+        assert_eq!(service.get_status("user-1"), PresenceStatus::Online);
+        assert!(service.is_online("user-1"));
+    }
+
+    #[test]
+    fn add_connection_forces_online_when_previously_dnd() {
+        let service = PresenceService::new();
+
+        service.set_status("user-1", PresenceStatus::Dnd);
+        assert_eq!(service.get_status("user-1"), PresenceStatus::Dnd);
+
+        service.add_connection("user-1", "conn-1");
+
+        assert_eq!(service.get_status("user-1"), PresenceStatus::Online);
+        assert!(service.is_online("user-1"));
+    }
+
+    #[test]
+    fn add_connection_forces_online_when_previously_offline() {
+        let service = PresenceService::new();
+
+        // User has no entry (effectively Offline)
+        assert_eq!(service.get_status("user-1"), PresenceStatus::Offline);
+
+        service.add_connection("user-1", "conn-1");
+
+        assert_eq!(service.get_status("user-1"), PresenceStatus::Online);
+    }
+
+    #[test]
+    fn add_connection_does_not_affect_other_users() {
+        let service = PresenceService::new();
+
+        service.add_connection("user-a", "conn-a");
+        service.set_status("user-b", PresenceStatus::Idle);
+
+        // Reconnect user-a — user-b must stay Idle
+        service.add_connection("user-a", "conn-a2");
+
+        assert_eq!(service.get_status("user-b"), PresenceStatus::Idle);
+        assert_eq!(service.get_status("user-a"), PresenceStatus::Online);
+    }
+
+    #[test]
+    fn add_connection_multiple_times_stays_online() {
+        let service = PresenceService::new();
+
+        service.add_connection("user-1", "conn-1");
+        // Simulate status being changed externally (e.g. client sent SetStatus)
+        service.set_status("user-1", PresenceStatus::Dnd);
+        // New WS connection (page refresh) must reset to Online
+        service.add_connection("user-1", "conn-2");
+
+        assert_eq!(service.get_status("user-1"), PresenceStatus::Online);
+    }
 }

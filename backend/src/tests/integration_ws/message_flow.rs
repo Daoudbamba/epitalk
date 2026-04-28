@@ -25,6 +25,7 @@ mod tests {
                 channel_id,
                 content,
                 reply_to,
+                attachment_url: _,
             } => {
                 assert_eq!(channel_id, "chan-1");
                 assert_eq!(content, "hello");
@@ -51,6 +52,7 @@ mod tests {
             content: "hello".to_string(),
             created_at: "2026-04-10T12:00:00Z".to_string(),
             reply_to: None,
+            attachment_url: None,
         };
 
         let v = serde_json::to_value(evt).expect("serialize MessageNew");

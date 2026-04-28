@@ -196,6 +196,13 @@ pub enum ServerEvent {
         message: String,
     },
 
+    /// The authenticated user has been banned from a server.
+    Banned {
+        server_id: String,
+        expires_at: Option<String>,
+        reason: Option<String>,
+    },
+
     UserOnline {
         user_id: String,
         status: String,
@@ -257,6 +264,21 @@ pub enum ServerEvent {
     DmDeleted {
         id: String,
         conversation_id: String,
+    },
+
+    /// Notification for a new message in a server channel.
+    /// Sent to all connected members of the server, regardless of which channel they are viewing.
+    MessageNotification {
+        server_id: String,
+        server_name: String,
+        channel_id: String,
+        channel_name: String,
+        message_id: String,
+        author_id: String,
+        author_username: String,
+        content: String,
+        created_at: String,
+        attachment_url: Option<String>,
     },
 }
 
@@ -449,5 +471,31 @@ mod tests {
         assert_eq!(pinned_v["payload"]["message_id"], "m1");
         assert_eq!(unpinned_v["type"], "MessageUnpinned");
         assert_eq!(unpinned_v["payload"]["message_id"], "m1");
+    }
+
+    #[test]
+    fn banned_event_serializes_with_optional_fields() {
+        let permanent = ServerEvent::Banned {
+            server_id: "srv-1".into(),
+            expires_at: None,
+            reason: None,
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&permanent).unwrap()).unwrap();
+        assert_eq!(v["type"], "Banned");
+        assert_eq!(v["payload"]["server_id"], "srv-1");
+        assert!(v["payload"]["expires_at"].is_null());
+        assert!(v["payload"]["reason"].is_null());
+
+        let temporary = ServerEvent::Banned {
+            server_id: "srv-2".into(),
+            expires_at: Some("2030-01-01T00:00:00Z".into()),
+            reason: Some("spam".into()),
+        };
+        let v2: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&temporary).unwrap()).unwrap();
+        assert_eq!(v2["type"], "Banned");
+        assert_eq!(v2["payload"]["expires_at"], "2030-01-01T00:00:00Z");
+        assert_eq!(v2["payload"]["reason"], "spam");
     }
 }

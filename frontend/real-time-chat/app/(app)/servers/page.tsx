@@ -6,6 +6,7 @@ import { ServersRail } from "./components/servers-rail";
 import { ChatPanel } from "./components/chat-panel";
 import { MembersPanel } from "./components/members-panel";
 import { ChannelsSidebar } from "./components/channels-sidebar";
+import { ServerSettingsModal } from "@/components/forms/server-settings-modal";
 import { Menu, Users, X } from "lucide-react";
 
 type MobileView = "sidebar" | "chat" | "members";
@@ -26,7 +27,7 @@ export default function ServersPage() {
   return (
     <ServersLoader>
       {({ refresh }) => (
-        <div className="h-full w-full flex overflow-hidden relative">
+        <div className="h-full w-full flex gap-2 p-2 bg-et-bg overflow-hidden relative">
           {!isDesktop && (
             <div className="fixed top-0 left-0 right-0 z-30 h-12 bg-[var(--card)] border-b flex items-center justify-between px-3">
               <button
@@ -46,12 +47,8 @@ export default function ServersPage() {
           )}
 
           {isDesktop && (
-            <div className="flex h-full">
-              <ServersRail
-                onRefresh={refresh}
-                openSettings={openServerSettings}
-                setOpenSettings={setOpenServerSettings}
-              />
+            <div className="h-full rounded-xl border border-et-border bg-et-card overflow-hidden shrink-0">
+              <ServersRail onRefresh={refresh} />
             </div>
           )}
 
@@ -59,26 +56,30 @@ export default function ServersPage() {
             <div
               className={
                 isDesktop
-                  ? "relative h-full w-60 lg:w-72 shrink-0 bg-[var(--card)] border-r border-[var(--border)]/20 overflow-hidden"
-                  : "fixed inset-0 z-20 pt-12 bg-[var(--card)] overflow-hidden"
+                  ? "h-full w-50 shrink-0 rounded-xl border border-et-border bg-et-card overflow-hidden"
+                  : "fixed inset-0 z-20 pt-12 bg-white overflow-hidden"
               }
             >
               {!isDesktop && (
                 <div className="border-b p-2">
-                  <ServersRail
-                    onRefresh={refresh}
-                    openSettings={openServerSettings}
-                    setOpenSettings={setOpenServerSettings}
-                  />
+                  <ServersRail onRefresh={refresh} />
                 </div>
               )}
-              <ChannelsSidebar onOpenSettings={() => setOpenServerSettings(true)} />
+              <ChannelsSidebar
+                onOpenSettings={() => setOpenServerSettings(true)}
+              />
             </div>
           )}
 
+          <ServerSettingsModal
+            open={openServerSettings}
+            onOpenChange={setOpenServerSettings}
+            onSuccess={refresh}
+          />
+
           {(isDesktop || mobileView === "chat") && (
             <div
-              className={`flex-1 min-w-0 h-full bg-[var(--card)] overflow-hidden${
+              className={`flex-1 min-w-0 h-full rounded-xl border border-et-border bg-et-card overflow-hidden${
                 !isDesktop ? " pt-12" : ""
               }`}
             >
@@ -90,8 +91,8 @@ export default function ServersPage() {
             <div
               className={
                 isDesktop
-                  ? "relative h-full w-60 lg:w-72 shrink-0 bg-[var(--card)] border-l border-[var(--border)]/20 overflow-hidden"
-                  : "fixed inset-0 z-20 pt-12 bg-[var(--card)] overflow-hidden"
+                  ? "h-full w-55 shrink-0 rounded-xl border border-et-border bg-et-card overflow-hidden"
+                  : "fixed inset-0 z-20 pt-12 bg-white overflow-hidden"
               }
             >
               <MembersPanel onRefresh={refresh} />

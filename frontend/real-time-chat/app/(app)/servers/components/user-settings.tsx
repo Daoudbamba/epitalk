@@ -16,10 +16,8 @@ export function UserSettings() {
   return (
     <Link
       href="/settings"
-      className={`relative w-12 h-12 rounded-2xl border-2 transition-all duration-300 flex items-center justify-center overflow-hidden ${
-        !user
-          ? "bg-[var(--surface)] border-[var(--border)] text-[var(--muted-foreground)] pointer-events-none"
-          : "border-[#023BFC]/30 shadow-lg hover:shadow-xl hover:scale-105"
+      className={`relative w-10.5 h-10.5 rounded-full flex items-center justify-center overflow-hidden ${
+        !user ? "bg-et-avatar-empty text-et-muted pointer-events-none" : ""
       }`}
       title={user ? "Paramètres utilisateur" : "Chargement..."}
     >
@@ -32,19 +30,12 @@ export function UserSettings() {
             className="w-full h-full object-cover"
           />
         ) : (
-          <span className="w-full h-full bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center text-white text-sm font-bold uppercase">
+          <span className="w-full h-full bg-et-gradient flex items-center justify-center text-white text-[11px] font-bold uppercase">
             {user.username.slice(0, 2)}
           </span>
         )
       ) : (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-          />
-        </svg>
+        <i className="bi bi-person text-[17px] text-et-muted" />
       )}
     </Link>
   );

@@ -10,6 +10,40 @@ const {
   shouldShowServerMessageNotification,
 } = require("./src/notifications");
 
+// Register custom protocol so "epitalk://" opens this app
+app.setAsDefaultProtocolClient("epitalk");
+
+// Single-instance lock — required for protocol handling on Windows
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  // Windows: protocol URL arrives as last item in commandLine of the second instance
+  app.on("second-instance", (_event, commandLine) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    const url = commandLine.find((arg) => arg.startsWith("epitalk://"));
+    if (url) handleProtocolUrl(url);
+  });
+}
+
+// macOS: protocol URL arrives via open-url event
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+  handleProtocolUrl(url);
+});
+
+function handleProtocolUrl(url) {
+  // Reserved for future deep-link routing (e.g. epitalk://channel/123)
+  console.log("[epitalk] protocol opened:", url);
+}
+
 let mainWindow;
 
 function createMainWindow() {
@@ -34,6 +68,9 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(menu);
 
   mainWindow.webContents.once("did-finish-load", () => {
+    // Signal to the web app that it is running inside Electron
+    mainWindow.webContents.executeJavaScript("window.__ELECTRON__ = true;").catch(() => {});
+
     if (!Notification.isSupported()) return;
 
     const shouldNotify = shouldShowReadyNotification({

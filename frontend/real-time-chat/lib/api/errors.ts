@@ -183,7 +183,16 @@ export function parseApiError(
     : (language === "en" ? STATUS_MESSAGES_EN : STATUS_MESSAGES_FR)[status] ||
       (language === "en" ? `Error ${status}` : `Erreur ${status}`);
 
-  return new ApiError(status, message);
+  const err = new ApiError(status, message);
+
+  // Extraire code et details si présents dans le payload
+  if (typeof payload === "object" && payload !== null) {
+    const obj = payload as Record<string, unknown>;
+    if (typeof obj.code === "string") err.code = obj.code;
+    if (obj.details !== undefined) err.details = obj.details;
+  }
+
+  return err;
 }
 
 // Helper pour l'UI - a utiliser dans les catch

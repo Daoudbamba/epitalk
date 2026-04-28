@@ -2,10 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Hash, Loader2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { channelsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 import { useLanguage } from "@/components/language-provider";
@@ -17,33 +13,29 @@ interface CreateChannelModalProps {
   onSuccess: () => Promise<void>;
 }
 
-export function CreateChannelModal({
-  open,
-  onOpenChange,
-  serverId,
-  onSuccess,
-}: CreateChannelModalProps) {
+export function CreateChannelModal({ open, onOpenChange, serverId, onSuccess }: CreateChannelModalProps) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shake, setShake] = useState(false);
   const { language } = useLanguage();
   const isEnglish = language === "en";
 
+  const triggerShake = () => {
+    setShake(true);
+    setTimeout(() => setShake(false), 400);
+  };
+
   const handleSubmit = async () => {
-    if (!serverId) {
-      setError(isEnglish ? "No server selected" : "Aucun serveur sélectionné");
-      return;
-    }
-
+    if (!serverId) return;
     const trimmed = name.trim();
-    if (!trimmed) {
-      setError(isEnglish ? "Channel name is required" : "Le nom du channel est requis");
+    if (!trimmed || trimmed.length < 2) {
+      triggerShake();
+      setError(isEnglish ? "At least 2 characters required" : "Minimum 2 caractères requis");
       return;
     }
-
     setLoading(true);
     setError(null);
-
     try {
       await channelsApi.create(serverId, trimmed);
       await onSuccess();
@@ -57,132 +49,75 @@ export function CreateChannelModal({
   };
 
   const handleClose = () => {
-    if (!loading) {
-      setName("");
-      setError(null);
-      onOpenChange(false);
-    }
+    if (loading) return;
+    setName("");
+    setError(null);
+    onOpenChange(false);
   };
 
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") handleClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, loading]);
 
   if (!open) return null;
 
   return createPortal(
     <>
-      {/* Overlay */}
-      <div className="fixed inset-0 z-50 bg-black/50" onClick={handleClose} />
+      <div className="fixed inset-0 z-50 bg-black/35" onClick={handleClose} />
+      <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-90 max-w-[calc(100vw-32px)] bg-white rounded-2xl p-6 shadow-lg">
 
-      {/* Modal */}
-      <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md px-4">
-        <div className="bg-[var(--card)] backdrop-blur-xl shadow-2xl rounded-2xl overflow-hidden">
-          {/* Decorative header bar */}
-          <div className="h-1.5 bg-gradient-to-r from-[#023BFC] via-[#3D6AFF] to-[#023BFC]" />
+        {/* Informative header — shows live channel name preview */}
+        <p className="text-center text-[13px] font-medium uppercase tracking-wide text-et-muted mb-5">
+          {name.trim() || (isEnglish ? "CHANNEL NAME" : "NOM CHANNEL")}
+        </p>
 
-          <div className="p-6">
-            {/* Header */}
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 text-xl font-semibold text-[var(--foreground)]">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center shadow-lg shrink-0">
-                    <Hash className="h-5 w-5 text-white" />
-                  </div>
-                  {isEnglish ? "Create a channel" : "Créer un channel"}
-                </div>
-                <p className="text-[var(--muted-foreground)] mt-2 text-sm">
-                  {isEnglish
-                    ? "Channels are discussion spaces within your server."
-                    : "Les channels sont des espaces de discussion au sein de votre serveur."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleClose}
-                disabled={loading}
-                className="ml-3 mt-0.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors shrink-0"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+        {/* Section */}
+        <p className="text-[14px] font-medium text-et-title mb-0.5">
+          {isEnglish ? "Create a new channel" : "Créer un nouvel channel"}
+        </p>
+        <p className="text-[12px] text-et-muted mb-4">
+          {isEnglish
+            ? "Channels are discussion spaces within your server."
+            : "Les channels sont des espaces de discussion au sein de votre serveur."}
+        </p>
 
-            {/* Fields */}
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="channel-name" className="text-sm font-medium text-[var(--foreground)]">
-                  {isEnglish ? "Channel name" : "Nom du channel"}
-                </Label>
-                <div className="flex items-center gap-2">
-                  <span className="text-[#023BFC] font-bold text-lg">#</span>
-                  <Input
-                    id="channel-name"
-                    value={name}
-                    onChange={(e) =>
-                      setName(e.target.value.toLowerCase().replace(/\s+/g, "-"))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSubmit();
-                    }}
-                    placeholder={isEnglish ? "general" : "général"}
-                    disabled={loading}
-                    autoFocus
-                    className="flex-1 h-12 px-4 rounded-xl border-[var(--border)] focus:border-[#023BFC] focus:ring-[#023BFC]/20 transition-all duration-200 bg-[var(--surface)]"
-                  />
-                </div>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  {isEnglish
-                    ? "Use lowercase letters and dashes"
-                    : "Utilisez des lettres minuscules et des tirets"}
-                </p>
-              </div>
+        <input
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value.toLowerCase().replace(/\s+/g, "-"));
+            setError(null);
+          }}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
+          placeholder={isEnglish ? "channel-name" : "nom-du-channel"}
+          disabled={loading}
+          autoFocus
+          className={[
+            "w-full h-9 px-3 text-[13px] rounded-lg border bg-white text-et-text placeholder:text-et-muted focus:outline-none focus:border-et-orange transition-colors",
+            shake ? "shake border-et-red-soft" : "border-et-border-input",
+          ].join(" ")}
+        />
+        {error && <p className="text-[11px] text-et-red-soft mt-1.5">{error}</p>}
 
-              {error && (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
-                  <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                    <span className="text-red-500 text-xs">!</span>
-                  </div>
-                  <p className="text-sm text-red-600">{error}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="mt-6 flex gap-3 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleClose}
-                disabled={loading}
-                className="h-11 px-6 rounded-xl border-[var(--border)] hover:bg-[var(--surface)] transition-all duration-200"
-              >
-                {isEnglish ? "Cancel" : "Annuler"}
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSubmit}
-                disabled={loading || !name.trim() || !serverId}
-                className="h-11 px-6 rounded-xl bg-gradient-to-r from-[#023BFC] to-[#3D6AFF] hover:from-[#0235E0] hover:to-[#3560E8] text-white shadow-lg shadow-[#023BFC]/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isEnglish ? "Creating..." : "Création..."}
-                  </>
-                ) : isEnglish ? (
-                  "Create channel"
-                ) : (
-                  "Créer le channel"
-                )}
-              </Button>
-            </div>
-          </div>
+        {/* Buttons */}
+        <div className="flex gap-3 justify-center mt-5">
+          <button
+            onClick={handleClose}
+            disabled={loading}
+            className="px-6 py-2 rounded-lg border border-et-red-soft text-et-red-soft text-[13px] font-medium hover:bg-red-50/50 transition-colors disabled:opacity-50"
+          >
+            {isEnglish ? "Cancel" : "Annuler"}
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !name.trim()}
+            className="px-6 py-2 rounded-lg border border-et-orange text-et-orange text-[13px] font-medium hover:bg-orange-50/50 transition-colors disabled:opacity-50"
+          >
+            {loading ? "..." : isEnglish ? "Create" : "Créer"}
+          </button>
         </div>
       </div>
     </>,

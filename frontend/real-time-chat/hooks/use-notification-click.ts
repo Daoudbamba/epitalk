@@ -1,23 +1,41 @@
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useDmStore } from "@/store/dm.store";
+import { useServerStore } from "@/store/server.store";
+import { useChannelStore } from "@/store/channel.store";
 
-/**
- * Hook to handle notification clicks and navigate to the corresponding DM
- */
 export function useNotificationClick() {
+  const router = useRouter();
+
   useEffect(() => {
-    const handleNotificationClick = (event: Event) => {
-      if (event instanceof CustomEvent && event.detail?.userId) {
-        const { userId } = event.detail;
-        // Navigate to the DM with this user
-        useDmStore.getState().setActivePeer(userId);
+    const handleDmClick = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const { userId } = event.detail ?? {};
+      if (userId) useDmStore.getState().setActivePeer(userId);
+      router.push("/dm");
+    };
+
+    const handleServerMessageClick = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const { serverId, channelId, messageId } = event.detail ?? {};
+      if (serverId) useServerStore.getState().setActiveServer(serverId);
+      if (channelId) useChannelStore.getState().setActiveChannel(channelId);
+      router.push("/servers");
+      if (messageId) {
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("notification:scroll-to-message", { detail: { messageId } })
+          );
+        }, 600);
       }
     };
 
-    window.addEventListener("notification:dm-click", handleNotificationClick);
+    window.addEventListener("notification:dm-click", handleDmClick);
+    window.addEventListener("notification:server-message-click", handleServerMessageClick);
 
     return () => {
-      window.removeEventListener("notification:dm-click", handleNotificationClick);
+      window.removeEventListener("notification:dm-click", handleDmClick);
+      window.removeEventListener("notification:server-message-click", handleServerMessageClick);
     };
-  }, []);
+  }, [router]);
 }

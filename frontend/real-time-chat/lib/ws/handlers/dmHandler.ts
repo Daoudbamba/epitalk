@@ -73,15 +73,24 @@ export const dmHandler = {
       const messageAgeMs = now - messageTimestamp;
       const isHistorical = messageAgeMs > 5000; // 5 seconds threshold
 
+      let notifContent: string;
+      try {
+        const parsed = JSON.parse(content) as { type?: string };
+        notifContent = parsed?.type === "gif" ? "🖼 GIF" : content.substring(0, 100);
+      } catch {
+        notifContent = content.substring(0, 100);
+      }
+
       useNotificationStore.getState().showNotification({
         type: "dm",
         title: `Message de ${peerUsername}`,
-        message: content.substring(0, 100),
+        message: notifContent,
         userId: peerId,
         isHistorical,
         data: {
           peerId,
           peerUsername,
+          messageId: id,
         },
       });
     }

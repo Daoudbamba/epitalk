@@ -8,7 +8,17 @@ export default defineConfig({
     },
   },
   test: {
+    globals: true,
     environment: "jsdom",
-    include: ["lib/**/*.test.ts"],
+    setupFiles: ["__tests__/setup.ts"],
+    include: [
+      "lib/**/*.test.{ts,tsx}",
+      "store/**/*.test.{ts,tsx}",
+      "__tests__/**/*.test.{ts,tsx}",
+    ],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html"],
+    },
   },
 });

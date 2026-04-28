@@ -25,42 +25,51 @@ import { useLanguage } from "@/components/language-provider";
 
 const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
 const ROLE_LABELS: Record<string, string> = {
-  Owner: "👑 Propriétaire",
-  Admin: "🛡️ Admin",
-  Moderator: "🔧 Modérateur",
-  Member: "👤 Membre",
+  Owner: "Propriétaire",
+  Admin: "Admin",
+  Moderator: "Modérateur",
+  Member: "Membre",
+};
+const ROLE_BADGE: Record<string, string> = {
+  Owner: "CRÉATEUR",
+  Admin: "ADMIN",
+  Moderator: "MODÉRATEUR",
+  Member: "MEMBRE",
 };
 
-const BAN_DURATION_OPTIONS = [
-  { value: "1h" as const, fr: "1 heure", en: "1 hour" },
-  { value: "24h" as const, fr: "24 heures", en: "24 hours" },
-  { value: "7j" as const, fr: "7 jours", en: "7 days" },
-  { value: "30j" as const, fr: "30 jours", en: "30 days" },
-];
-type BanDuration = "1h" | "24h" | "7j" | "30j";
+type BanDurationUnit = "minutes" | "hours" | "days";
 
-function getExpiresAt(duration: BanDuration): string {
-  const hoursMap: Record<BanDuration, number> = {
-    "1h": 1,
-    "24h": 24,
-    "7j": 24 * 7,
-    "30j": 24 * 30,
+function computeExpiresAt(value: number, unit: BanDurationUnit): string {
+  const msMap: Record<BanDurationUnit, number> = {
+    minutes: value * 60 * 1000,
+    hours: value * 60 * 60 * 1000,
+    days: value * 24 * 60 * 60 * 1000,
   };
-  const d = new Date();
-  d.setHours(d.getHours() + hoursMap[duration]);
-  return d.toISOString();
+  return new Date(Date.now() + msMap[unit]).toISOString();
 }
 
-function formatExpiry(expiresAt: string | null, isEnglish: boolean): string {
-  if (!expiresAt) return "Permanent";
-  const diff = new Date(expiresAt).getTime() - Date.now();
+function formatExpiry(expiresAt: string | null | undefined, isEnglish: boolean): string {
+  if (!expiresAt || expiresAt === "null") return isEnglish ? "Permanent" : "Permanent";
+  const ts = new Date(expiresAt).getTime();
+  if (isNaN(ts)) return isEnglish ? "Permanent" : "Permanent";
+  const diff = ts - Date.now();
   if (diff <= 0) return isEnglish ? "Expired" : "Expiré";
-  const hours = Math.ceil(diff / (1000 * 60 * 60));
-  if (hours < 24) {
-    return isEnglish ? `Expires in ${hours}h` : `Expire dans ${hours}h`;
+  const minutes = Math.floor(diff / (1000 * 60));
+  if (minutes < 60) {
+    return isEnglish
+      ? `Expires in ${minutes}m`
+      : `Expire dans ${minutes} minute${minutes > 1 ? "s" : ""}`;
   }
-  const days = Math.ceil(hours / 24);
-  return isEnglish ? `Expires in ${days}d` : `Expire dans ${days}j`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return isEnglish
+      ? `Expires in ${hours}h`
+      : `Expire dans ${hours} heure${hours > 1 ? "s" : ""}`;
+  }
+  const days = Math.floor(hours / 24);
+  return isEnglish
+    ? `Expires in ${days}d`
+    : `Expire dans ${days} jour${days > 1 ? "s" : ""}`;
 }
 
 function MemberMenu({
@@ -188,7 +197,8 @@ export function MembersPanel({
   // Ban modal state
   const [banTarget, setBanTarget] = useState<{ id: string; username: string; permanent: boolean } | null>(null);
   const [banReason, setBanReason] = useState("");
-  const [banDuration, setBanDuration] = useState<BanDuration>("24h");
+  const [banDurationValue, setBanDurationValue] = useState<number>(1);
+  const [banDurationUnit, setBanDurationUnit] = useState<BanDurationUnit>("hours");
 
   useEffect(() => {
     if (!activeServerId || !isMemberOfActiveServer) {
@@ -286,11 +296,12 @@ export function MembersPanel({
   const doBan = async () => {
     if (!server || !banTarget) return;
     const { id: memberId, permanent } = banTarget;
-    const expiresAt = permanent ? null : getExpiresAt(banDuration);
+    const expiresAt = permanent ? null : computeExpiresAt(banDurationValue, banDurationUnit);
     const reason = banReason.trim() || null;
     setBanTarget(null);
     setBanReason("");
-    setBanDuration("24h");
+    setBanDurationValue(1);
+    setBanDurationUnit("hours");
     setLoadingBan(memberId);
     setActionError(null);
     // Optimistic: remove from list immediately
@@ -343,11 +354,11 @@ export function MembersPanel({
 
   if (!server) {
     return (
-      <aside className="w-full border-l p-4">
-        <h3 className="text-sm font-semibold mb-4">
+      <aside className="h-full p-3 overflow-auto">
+        <h3 className="text-[14px] font-medium text-et-title mb-3">
           {isEnglish ? "Members" : "Membres"}
         </h3>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-et-muted">
           {isEnglish ? "No server selected" : "Aucun serveur sélectionné"}
         </p>
       </aside>
@@ -378,7 +389,7 @@ export function MembersPanel({
   ).length;
 
   return (
-    <aside className="h-[95%] rounded-2xl my-4 ml-2 border border-border w-full p-4 overflow-auto shadow-lg">
+    <aside className="h-full w-full p-3 overflow-auto">
       {/* Kick confirmation modal */}
       <ConfirmActionDialog
         open={!!kickTarget}
@@ -407,7 +418,8 @@ export function MembersPanel({
           if (!open) {
             setBanTarget(null);
             setBanReason("");
-            setBanDuration("24h");
+            setBanDurationValue(1);
+            setBanDurationUnit("hours");
           }
         }}
       >
@@ -446,17 +458,26 @@ export function MembersPanel({
                 <label className="text-xs font-medium text-foreground">
                   {isEnglish ? "Duration" : "Durée"}
                 </label>
-                <select
-                  value={banDuration}
-                  onChange={(e) => setBanDuration(e.target.value as BanDuration)}
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {BAN_DURATION_OPTIONS.map((d) => (
-                    <option key={d.value} value={d.value}>
-                      {isEnglish ? d.en : d.fr}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={banDurationValue}
+                    onChange={(e) =>
+                      setBanDurationValue(Math.max(1, parseInt(e.target.value) || 1))
+                    }
+                    className="w-24 rounded-md border border-border bg-card px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <select
+                    value={banDurationUnit}
+                    onChange={(e) => setBanDurationUnit(e.target.value as BanDurationUnit)}
+                    className="flex-1 rounded-md border border-border bg-card px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="minutes">{isEnglish ? "Minutes" : "Minutes"}</option>
+                    <option value="hours">{isEnglish ? "Hours" : "Heures"}</option>
+                    <option value="days">{isEnglish ? "Days" : "Jours"}</option>
+                  </select>
+                </div>
               </div>
             )}
           </div>
@@ -467,7 +488,8 @@ export function MembersPanel({
               onClick={() => {
                 setBanTarget(null);
                 setBanReason("");
-                setBanDuration("24h");
+                setBanDurationValue(1);
+                setBanDurationUnit("hours");
               }}
               disabled={loadingBan !== null}
             >
@@ -485,15 +507,15 @@ export function MembersPanel({
         </DialogContent>
       </Dialog>
 
-      <h3 className="text-sm font-semibold mb-1">
-        {language === "en" ? "Members" : "Membres"} ({
-          membersLoading ? "..." : members.length
-        })
-      </h3>
-      <p className="text-xs text-muted-foreground mb-3">
-        <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />
-        {onlineCount} {language === "en" ? "online" : "en ligne"}
-      </p>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-[14px] font-medium text-et-title">
+          {language === "en" ? "Members" : "Membres"}
+        </h3>
+        <span className="flex items-center gap-1 text-[11px] text-et-secondary">
+          <span className="w-2 h-2 rounded-full bg-et-online inline-block" />
+          {membersLoading ? "..." : onlineCount}
+        </span>
+      </div>
 
       {/* Personal status control */}
       {currentUser && (
@@ -540,12 +562,16 @@ export function MembersPanel({
             const showKick = isOwner && !memberIsOwner && !isSelf;
             const showBan = canBan && !memberIsOwner && !isSelf;
 
+            const presenceStatus = presence[m.user_id]?.status?.toLowerCase();
+            const isOnline = presenceStatus === "online";
+            const isDnd = presenceStatus === "dnd";
+
             return (
               <li key={m.user_id} className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  {/* Avatar with presence indicator */}
-                  <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-foreground overflow-hidden">
+                <div className="flex items-center gap-2 group/member">
+                  {/* Avatar with presence dot */}
+                  <div className="relative shrink-0">
+                    <div className="w-9 h-9 rounded-full bg-et-avatar-empty flex items-center justify-center text-xs font-semibold text-et-text overflow-hidden">
                       {m.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -557,65 +583,74 @@ export function MembersPanel({
                         (m.username || "U").slice(0, 2).toUpperCase()
                       )}
                     </div>
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                        (() => {
-                          const s = presence[m.user_id]?.status?.toLowerCase();
-                          if (s === "online") return "bg-green-500";
-                          if (s === "idle") return "bg-red-500";
-                          if (s === "dnd") return "bg-amber-500";
-                          return "bg-gray-400";
-                        })()
-                      }`}
-                      title={presence[m.user_id]?.status ?? "offline"}
-                    />
+                    {(isOnline || isDnd) && (
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-white ${
+                          isOnline ? "bg-et-online" : "bg-et-busy"
+                        }`}
+                        title={presence[m.user_id]?.status ?? "offline"}
+                      />
+                    )}
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div
-                      className={`font-medium truncate ${presence[m.user_id]?.status?.toLowerCase() === "online" ? "text-zinc-800" : "text-zinc-400"}`}
-                    >
-                      {m.username || "Utilisateur"}
+                  {/* Name + role + status */}
+                  <div className="flex-1 min-w-0 flex flex-col gap-px">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[13px] font-medium text-et-title truncate">
+                        {m.username || "Utilisateur"}
+                      </span>
+                      <span className="text-et-muted">•</span>
+                      <span className="text-[9px] font-medium uppercase tracking-[0.08em] text-et-muted whitespace-nowrap">
+                        {ROLE_BADGE[m.role] ?? m.role.toUpperCase()}
+                      </span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {ROLE_LABELS[m.role] || m.role}
+                    <div className="flex items-center gap-1 text-[11px] text-et-secondary">
+                      {isOnline ? (
+                        <><span className="w-1.5 h-1.5 rounded-full bg-et-online inline-block" />En ligne</>
+                      ) : isDnd ? (
+                        <><span className="w-1.5 h-1.5 rounded-full bg-et-busy inline-block" />Ne pas déranger</>
+                      ) : (
+                        <><span className="text-et-muted">»</span>Hors ligne</>
+                      )}
                     </div>
                   </div>
 
-                  {/* "..." moderation menu (Admin+ only, not for self or owner) */}
-                  {(showKick || showBan) && (
-                    <MemberMenu
-                      showKick={showKick}
-                      showBan={showBan}
-                      onKick={() => setKickTarget({ id: m.user_id, username: m.username })}
-                      onBanPermanent={() => {
-                        setBanTarget({ id: m.user_id, username: m.username, permanent: true });
-                        setBanReason("");
-                      }}
-                      onBanTemporary={() => {
-                        setBanTarget({ id: m.user_id, username: m.username, permanent: false });
-                        setBanReason("");
-                        setBanDuration("24h");
-                      }}
-                      isEnglish={isEnglish}
-                    />
-                  )}
+                  {/* Action icons — visible on hover */}
+                  <div className="flex items-center gap-1.5 opacity-0 group-hover/member:opacity-100 transition-opacity shrink-0">
+                    {/* DM button — not shown for self */}
+                    {currentUser && m.user_id !== currentUser.id && (
+                      <button
+                        onClick={() => {
+                          setActivePeer(m.user_id);
+                          router.push("/dm");
+                        }}
+                        title="Message privé"
+                        className="text-et-muted hover:text-et-orange transition-colors"
+                      >
+                        <i className="bi bi-chat-dots text-[13px]" />
+                      </button>
+                    )}
 
-                  {/* DM button — not shown for self */}
-                  {currentUser && m.user_id !== currentUser.id && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setActivePeer(m.user_id);
-                        router.push("/dm");
-                      }}
-                      title="Message privé"
-                      className="h-6 w-6 p-0 text-xs text-muted-foreground hover:text-[#023BFC]"
-                    >
-                      💬
-                    </Button>
-                  )}
+                    {/* Moderation menu */}
+                    {(showKick || showBan) && (
+                      <MemberMenu
+                        showKick={showKick}
+                        showBan={showBan}
+                        onKick={() => setKickTarget({ id: m.user_id, username: m.username })}
+                        onBanPermanent={() => {
+                          setBanTarget({ id: m.user_id, username: m.username, permanent: true });
+                          setBanReason("");
+                        }}
+                        onBanTemporary={() => {
+                          setBanTarget({ id: m.user_id, username: m.username, permanent: false });
+                          setBanReason("");
+                          setBanDurationValue(1);
+                          setBanDurationUnit("hours");
+                        }}
+                        isEnglish={isEnglish}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 {/* Role management dropdown (owner only, not for other owners) */}
@@ -664,7 +699,7 @@ export function MembersPanel({
                   <div className="text-[10px] text-muted-foreground">
                     {ban.reason || (isEnglish ? "No reason" : "Sans motif")}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className={`text-[10px] font-medium ${!ban.expires_at ? "text-red-500" : "text-muted-foreground"}`}>
                     {formatExpiry(ban.expires_at, isEnglish)}
                   </div>
                 </div>
