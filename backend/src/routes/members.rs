@@ -549,4 +549,184 @@ mod tests {
         delete_user(&pool, owner.id).await;
         delete_user(&pool, member.id).await;
     }
+
+    #[tokio::test]
+    async fn ban_member_expires_at_in_past_returns_bad_request() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("ban-past-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("ban_past_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let member = UserRepository::create(
+            &pool,
+            &format!("ban-past-user-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("ban_past_user_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create member");
+
+        let server = ServerRepository::create(&pool, "BanPast", owner.id)
+            .await
+            .expect("create server");
+
+        MembershipRepository::create(&pool, member.id, server.id, MemberRole::Member)
+            .await
+            .expect("add member");
+
+        let owner_auth = test_require_auth(owner.id, &owner.email, &owner.username);
+
+        let result = ban_member(
+            State(state.clone()),
+            owner_auth,
+            Path(MemberPath { server_id: server.id, user_id: member.id }),
+            Json(BanMemberRequest {
+                reason: None,
+                expires_at: Some("2000-01-01T00:00:00Z".to_string()),
+            }),
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(AppError::BadRequest(_))),
+            "expires_at in the past must return BadRequest, got: {:?}",
+            result.err()
+        );
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+        delete_user(&pool, member.id).await;
+    }
+
+    #[tokio::test]
+    async fn ban_member_already_banned_returns_conflict() {
+        let Some(pool) = try_test_pool().await else { return; };
+        let db_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://epitalk:Epitalk94!@localhost:5432/epitalk".to_string());
+        let state = Arc::new(AppState::new(pool.clone(), test_config(&db_url)));
+
+        let owner = UserRepository::create(
+            &pool,
+            &format!("ban-dup-owner-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("ban_dup_owner_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create owner");
+
+        let member = UserRepository::create(
+            &pool,
+            &format!("ban-dup-user-{}@example.test", Uuid::new_v4()),
+            "hash",
+            &format!("ban_dup_user_{}", Uuid::new_v4().to_string().replace('-', "")),
+        )
+        .await
+        .expect("create member");
+
+        let server = ServerRepository::create(&pool, "BanDup", owner.id)
+            .await
+            .expect("create server");
+
+        MembershipRepository::create(&pool, member.id, server.id, MemberRole::Member)
+            .await
+            .expect("add member");
+
+        let owner_auth = test_require_auth(owner.id, &owner.email, &owner.username);
+
+        // First ban (permanent) — must succeed
+        ban_member(
+            State(state.clone()),
+            owner_auth.clone(),
+            Path(MemberPath { server_id: server.id, user_id: member.id }),
+            Json(BanMemberRequest { reason: Some("first ban".to_string()), expires_at: None }),
+        )
+        .await
+        .expect("first ban must succeed");
+
+        // Re-add the member so the second ban attempt can proceed past membership checks
+        MembershipRepository::create(&pool, member.id, server.id, MemberRole::Member)
+            .await
+            .expect("re-add member after first ban");
+
+        // Second ban on same user — must return Conflict
+        let result = ban_member(
+            State(state.clone()),
+            owner_auth,
+            Path(MemberPath { server_id: server.id, user_id: member.id }),
+            Json(BanMemberRequest { reason: Some("duplicate ban".to_string()), expires_at: None }),
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(AppError::Conflict(_))),
+            "banning an already-banned user must return Conflict, got: {:?}",
+            result.err()
+        );
+
+        delete_server(&pool, server.id).await;
+        delete_user(&pool, owner.id).await;
+        delete_user(&pool, member.id).await;
+    }
+
+    // ── Pure unit tests (no DB) ────────────────────────────────────────────────
+
+    #[test]
+    fn is_ban_active_permanent_is_always_active() {
+        let now = chrono::Utc::now();
+        assert!(is_ban_active(None, now), "permanent ban (expires_at=None) must be active");
+    }
+
+    #[test]
+    fn is_ban_active_future_expiry_is_active() {
+        let now = chrono::Utc::now();
+        let future = now + chrono::Duration::hours(24);
+        assert!(is_ban_active(Some(future), now), "ban with future expiry must be active");
+    }
+
+    #[test]
+    fn is_ban_active_past_expiry_is_inactive() {
+        let now = chrono::Utc::now();
+        let past = now - chrono::Duration::hours(1);
+        assert!(!is_ban_active(Some(past), now), "ban with past expiry must be inactive");
+    }
+
+    #[test]
+    fn validate_ban_permissions_self_ban_rejected() {
+        let id = Uuid::new_v4();
+        let result = validate_ban_permissions(id, id, MemberRole::Owner, MemberRole::Member);
+        assert!(matches!(result, Err(AppError::BadRequest(_))));
+    }
+
+    #[test]
+    fn validate_ban_permissions_owner_protected() {
+        let caller = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let result = validate_ban_permissions(caller, target, MemberRole::Owner, MemberRole::Owner);
+        assert!(matches!(result, Err(AppError::Forbidden(_))));
+    }
+
+    #[test]
+    fn validate_ban_permissions_admin_cannot_ban_peer_admin() {
+        let caller = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let result = validate_ban_permissions(caller, target, MemberRole::Admin, MemberRole::Admin);
+        assert!(matches!(result, Err(AppError::Forbidden(_))));
+    }
+
+    #[test]
+    fn validate_ban_permissions_owner_can_ban_member() {
+        let caller = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let result = validate_ban_permissions(caller, target, MemberRole::Owner, MemberRole::Member);
+        assert!(result.is_ok());
+    }
 }

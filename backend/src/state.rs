@@ -42,8 +42,6 @@ impl AppState {
         // Spawn a background scanner that marks idle users after threshold
         {
             let presence_clone = presence.clone();
-            let hub_clone = Arc::new(Hub::new());
-            // We want to broadcast to the real hub: use hub (not hub_clone)
             let hub_for_scan = hub.clone();
             tokio::spawn(async move {
                 loop {

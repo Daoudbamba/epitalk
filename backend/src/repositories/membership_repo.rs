@@ -17,7 +17,7 @@ impl MembershipRepository {
     ) -> AppResult<Option<Membership>> {
         let membership = sqlx::query_as::<_, Membership>(
             r#"
-            SELECT id, user_id, server_id, role, joined_at
+            SELECT user_id, server_id, role, joined_at
             FROM memberships
             WHERE user_id = $1 AND server_id = $2
             "#,

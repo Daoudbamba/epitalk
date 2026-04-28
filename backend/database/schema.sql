@@ -148,6 +148,30 @@ CREATE INDEX idx_invites_created_by ON invites(created_by);
 CREATE INDEX idx_invites_expires_at ON invites(expires_at) WHERE expires_at IS NOT NULL;
 
 -- =============================================================================
+-- TABLE: bans
+-- =============================================================================
+-- Bans utilisateurs sur un serveur (permanent ou temporaire)
+
+CREATE TABLE IF NOT EXISTS bans (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    server_id   UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    banned_by   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason      TEXT,
+    expires_at  TIMESTAMP WITH TIME ZONE,
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_bans_server_user UNIQUE (server_id, user_id)
+);
+
+CREATE INDEX idx_bans_server_id  ON bans(server_id);
+CREATE INDEX idx_bans_user_id    ON bans(user_id);
+CREATE INDEX idx_bans_expires_at ON bans(expires_at) WHERE expires_at IS NOT NULL;
+
+COMMENT ON TABLE  bans            IS 'Bans d''utilisateurs sur un serveur';
+COMMENT ON COLUMN bans.expires_at IS 'NULL = ban permanent, sinon date d''expiration UTC';
+
+-- =============================================================================
 -- FUNCTIONS
 -- =============================================================================
 
