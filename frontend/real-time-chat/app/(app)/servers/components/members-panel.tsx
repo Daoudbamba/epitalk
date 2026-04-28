@@ -354,11 +354,11 @@ export function MembersPanel({
 
   if (!server) {
     return (
-      <aside className="h-full p-3 overflow-auto">
-        <h3 className="text-[14px] font-medium text-et-title mb-3">
+      <aside className="h-full flex flex-col bg-[#F5F5F5] border-l border-[#D5DAE0] p-3 overflow-auto">
+        <h3 className="text-[14px] font-semibold text-[#003D82] mb-3">
           {isEnglish ? "Members" : "Membres"}
         </h3>
-        <p className="text-xs text-et-muted">
+        <p className="text-xs text-[#8A929C]">
           {isEnglish ? "No server selected" : "Aucun serveur sélectionné"}
         </p>
       </aside>
@@ -389,7 +389,7 @@ export function MembersPanel({
   ).length;
 
   return (
-    <aside className="h-full w-full p-3 overflow-auto">
+    <aside className="h-full w-full flex flex-col bg-[#F5F5F5] border-l border-[#D5DAE0] overflow-hidden">
       {/* Kick confirmation modal */}
       <ConfirmActionDialog
         open={!!kickTarget}
@@ -507,20 +507,21 @@ export function MembersPanel({
         </DialogContent>
       </Dialog>
 
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[14px] font-medium text-et-title">
+      {/* Header */}
+      <div className="h-14 flex items-center justify-between px-4 border-b border-[#D5DAE0] shrink-0">
+        <span className="text-[#003D82] text-[14px] font-semibold">
           {language === "en" ? "Members" : "Membres"}
-        </h3>
-        <span className="flex items-center gap-1 text-[11px] text-et-secondary">
-          <span className="w-2 h-2 rounded-full bg-et-online inline-block" />
-          {membersLoading ? "..." : onlineCount}
+        </span>
+        <span className="flex items-center gap-1 text-[13px] text-[#8A929C]">
+          <span className="w-2 h-2 rounded-full bg-[#2BAE5C] inline-block" />
+          {membersLoading ? "…" : onlineCount}
         </span>
       </div>
 
       {/* Personal status control */}
       {currentUser && (
-        <div className="mb-3 flex items-center gap-2 text-sm">
-          <label className="text-xs text-muted-foreground">Mon statut:</label>
+        <div className="px-4 py-2 flex items-center gap-2 border-b border-[#D5DAE0] shrink-0">
+          <label className="text-[11px] text-[#8A929C] shrink-0">Statut :</label>
           <select
             value={presence?.[currentUser.id]?.status ?? "online"}
             onChange={(e) =>
@@ -528,7 +529,7 @@ export function MembersPanel({
                 e.target.value as "online" | "idle" | "dnd" | "offline",
               )
             }
-            className="text-xs border rounded px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
+            className="flex-1 text-[11px] border border-[#D5DAE0] rounded px-2 py-1 bg-white text-[#6B737D] focus:outline-none"
           >
             <option value="online">En ligne</option>
             <option value="idle">Inactif</option>
@@ -538,24 +539,19 @@ export function MembersPanel({
       )}
 
       {actionError && (
-        <div className="mb-3 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-          <span className="shrink-0">&#9888;</span>
+        <div className="mx-3 mt-2 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <span className="shrink-0">⚠</span>
           <span className="flex-1">{actionError}</span>
-          <button
-            onClick={() => setActionError(null)}
-            className="text-red-400 hover:text-red-600 ml-1"
-          >
-            &times;
-          </button>
+          <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 ml-1">×</button>
         </div>
       )}
 
       {membersLoading ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-[#8A929C] px-4 py-3">
           {language === "en" ? "Loading..." : "Chargement..."}
         </p>
       ) : (
-        <ul className="space-y-3 text-sm">
+        <ul className="flex-1 overflow-auto py-2 space-y-0.5">
           {sortedMembers.map((m) => {
             const memberIsOwner = m.role === "Owner";
             const isSelf = currentUser?.id === m.user_id;
@@ -567,11 +563,11 @@ export function MembersPanel({
             const isDnd = presenceStatus === "dnd";
 
             return (
-              <li key={m.user_id} className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 group/member">
+              <li key={m.user_id} className="flex flex-col gap-1 mx-2">
+                <div className="h-8 flex items-center gap-3 px-2 rounded hover:bg-[#ECEEF1] cursor-pointer group/member transition-colors">
                   {/* Avatar with presence dot */}
                   <div className="relative shrink-0">
-                    <div className="w-9 h-9 rounded-full bg-et-avatar-empty flex items-center justify-center text-xs font-semibold text-et-text overflow-hidden">
+                    <div className="w-7 h-7 rounded-full bg-[#E6F0FB] flex items-center justify-center text-[11px] font-semibold font-mono text-[#003D82] overflow-hidden">
                       {m.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -583,88 +579,55 @@ export function MembersPanel({
                         (m.username || "U").slice(0, 2).toUpperCase()
                       )}
                     </div>
-                    {(isOnline || isDnd) && (
-                      <span
-                        className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-white ${
-                          isOnline ? "bg-et-online" : "bg-et-busy"
-                        }`}
-                        title={presence[m.user_id]?.status ?? "offline"}
-                      />
-                    )}
+                    <span
+                      className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-[#F5F5F5] ${
+                        isOnline ? "bg-[#2BAE5C]" : isDnd ? "bg-[#D93F3F]" : "bg-[#8A929C]"
+                      }`}
+                      title={presence[m.user_id]?.status ?? "offline"}
+                    />
                   </div>
 
-                  {/* Name + role + status */}
-                  <div className="flex-1 min-w-0 flex flex-col gap-px">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[13px] font-medium text-et-title truncate">
-                        {m.username || "Utilisateur"}
-                      </span>
-                      <span className="text-et-muted">•</span>
-                      <span className="text-[9px] font-medium uppercase tracking-[0.08em] text-et-muted whitespace-nowrap">
-                        {ROLE_BADGE[m.role] ?? m.role.toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-[11px] text-et-secondary">
-                      {isOnline ? (
-                        <><span className="w-1.5 h-1.5 rounded-full bg-et-online inline-block" />En ligne</>
-                      ) : isDnd ? (
-                        <><span className="w-1.5 h-1.5 rounded-full bg-et-busy inline-block" />Ne pas déranger</>
-                      ) : (
-                        <><span className="text-et-muted">»</span>Hors ligne</>
-                      )}
-                    </div>
-                  </div>
+                  {/* Name + role */}
+                  <span className={`flex-1 text-[13px] truncate ${isOnline || isDnd ? "text-[#333333]" : "text-[#8A929C]"}`}>
+                    {m.username || "Utilisateur"}
+                  </span>
+                  <span className="text-[10px] font-mono font-semibold text-[#8A929C] whitespace-nowrap">
+                    {ROLE_BADGE[m.role] ?? m.role.toUpperCase()}
+                  </span>
 
                   {/* Action icons — visible on hover */}
-                  <div className="flex items-center gap-1.5 opacity-0 group-hover/member:opacity-100 transition-opacity shrink-0">
-                    {/* DM button — not shown for self */}
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover/member:opacity-100 transition-opacity shrink-0">
                     {currentUser && m.user_id !== currentUser.id && (
                       <button
-                        onClick={() => {
-                          setActivePeer(m.user_id);
-                          router.push("/dm");
-                        }}
+                        onClick={() => { setActivePeer(m.user_id); router.push("/dm"); }}
                         title="Message privé"
-                        className="text-et-muted hover:text-et-orange transition-colors"
+                        className="w-6 h-6 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#D5DAE0] hover:text-[#333333] transition-colors"
                       >
-                        <i className="bi bi-chat-dots text-[13px]" />
+                        <i className="bi bi-chat-dots text-[12px]" />
                       </button>
                     )}
-
-                    {/* Moderation menu */}
                     {(showKick || showBan) && (
                       <MemberMenu
                         showKick={showKick}
                         showBan={showBan}
                         onKick={() => setKickTarget({ id: m.user_id, username: m.username })}
-                        onBanPermanent={() => {
-                          setBanTarget({ id: m.user_id, username: m.username, permanent: true });
-                          setBanReason("");
-                        }}
-                        onBanTemporary={() => {
-                          setBanTarget({ id: m.user_id, username: m.username, permanent: false });
-                          setBanReason("");
-                          setBanDurationValue(1);
-                          setBanDurationUnit("hours");
-                        }}
+                        onBanPermanent={() => { setBanTarget({ id: m.user_id, username: m.username, permanent: true }); setBanReason(""); }}
+                        onBanTemporary={() => { setBanTarget({ id: m.user_id, username: m.username, permanent: false }); setBanReason(""); setBanDurationValue(1); setBanDurationUnit("hours"); }}
                         isEnglish={isEnglish}
                       />
                     )}
                   </div>
                 </div>
 
-                {/* Role management dropdown (owner only, not for other owners) */}
                 {isOwner && !memberIsOwner && (
                   <select
                     value={m.role}
                     onChange={(e) => onChangeRole(m.user_id, e.target.value)}
                     disabled={loadingRole === m.user_id}
-                    className="text-xs border rounded px-1 py-0.5 bg-card text-muted-foreground"
+                    className="text-[11px] border border-[#D5DAE0] rounded px-1 py-0.5 bg-white text-[#6B737D] ml-10"
                   >
                     {ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>
-                        {ROLE_LABELS[role] || role}
-                      </option>
+                      <option key={role} value={role}>{ROLE_LABELS[role] || role}</option>
                     ))}
                   </select>
                 )}
@@ -675,16 +638,16 @@ export function MembersPanel({
       )}
 
       {/* Active bans section */}
-      <div className="mt-6 border-t border-border pt-4">
-        <h4 className="text-xs font-semibold mb-2">
+      <div className="border-t border-[#D5DAE0] pt-3 px-4 pb-3 shrink-0">
+        <h4 className="text-[11px] font-mono font-semibold uppercase tracking-[0.06em] text-[#8A929C] mb-2">
           {isEnglish ? "Active bans" : "Bans actifs"}
         </h4>
         {loadingBans ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-[#8A929C]">
             {isEnglish ? "Loading..." : "Chargement..."}
           </p>
         ) : bans.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-[#8A929C]">
             {isEnglish ? "No active bans." : "Aucun ban actif."}
           </p>
         ) : (
@@ -692,7 +655,7 @@ export function MembersPanel({
             {bans.map((ban) => (
               <div
                 key={ban.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs"
+                className="flex items-center justify-between gap-2 rounded-lg border border-[#D5DAE0] p-2 text-xs"
               >
                 <div className="min-w-0">
                   <div className="font-medium truncate">{ban.username}</div>
