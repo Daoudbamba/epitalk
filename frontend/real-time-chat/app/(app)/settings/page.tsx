@@ -2,18 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
 import { useWebSocketStore } from "@/store/websocket.store";
 import { authApi } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 import {
-  Copy,
   Check,
-  ArrowLeft,
+  ChevronLeft,
   User,
-  Shield,
-  Bell,
   LogOut,
   Smile,
   ImageIcon,
@@ -35,27 +30,25 @@ const API_BASE =
     ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
     : "http://localhost:3001";
 
-type Section = "profile" | "appearance" | "privacy" | "notifications";
+type Section = "profile" | "appearance";
 
 const NAV_ITEMS: { key: Section; icon: React.ReactNode }[] = [
   { key: "profile", icon: <User className="w-4 h-4" /> },
   { key: "appearance", icon: <Palette className="w-4 h-4" /> },
-  { key: "privacy", icon: <Shield className="w-4 h-4" /> },
-  { key: "notifications", icon: <Bell className="w-4 h-4" /> },
 ];
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode; preview: string; desc: string }[] = [
-  { value: "light", label: "Clair", icon: <Sun className="w-5 h-5" />, preview: "bg-white border-[#E5E7EB]", desc: "Thème lumineux par défaut" },
-  { value: "ash", label: "Cendré", icon: <Monitor className="w-5 h-5" />, preview: "bg-[#E8E6E1] border-[#C5C2BB]", desc: "Gris chaud et reposant" },
-  { value: "dim", label: "Sombre", icon: <Moon className="w-5 h-5" />, preview: "bg-[#1E2028] border-[#2F3340]", desc: "Sombre mais pas trop" },
-  { value: "dark", label: "Dark", icon: <Moon className="w-5 h-5" />, preview: "bg-[#0F1117] border-[#1A1D26]", desc: "Noir profond" },
+  { value: "light", label: "Clair", icon: <Sun size={14} />, preview: "bg-white", desc: "Thème lumineux par défaut" },
+  { value: "ash", label: "Cendré", icon: <Monitor size={14} />, preview: "bg-[#E8E4DE]", desc: "Gris chaud et reposant" },
+  { value: "dim", label: "Sombre", icon: <Moon size={14} />, preview: "bg-[#2A2A2A]", desc: "Sombre mais pas trop" },
+  { value: "dark", label: "Dark", icon: <Moon size={14} />, preview: "bg-[#111111]", desc: "Noir profond" },
 ];
 
-const FONT_SIZE_OPTIONS: { value: FontSize; label: string; example: string }[] = [
-  { value: "sm", label: "Petit", example: "text-sm" },
-  { value: "base", label: "Normal", example: "text-base" },
-  { value: "lg", label: "Grand", example: "text-lg" },
-  { value: "xl", label: "Très grand", example: "text-xl" },
+const FONT_SIZE_OPTIONS: { value: FontSize; label: string; aaSize: string }[] = [
+  { value: "sm", label: "Petit", aaSize: "text-[12px]" },
+  { value: "base", label: "Normal", aaSize: "text-[14px]" },
+  { value: "lg", label: "Grand", aaSize: "text-[16px]" },
+  { value: "xl", label: "Très grand", aaSize: "text-[18px]" },
 ];
 
 export default function SettingsPage() {
@@ -67,11 +60,13 @@ export default function SettingsPage() {
   const setUser = useAuthStore((s) => s.setUser);
   const disconnect = useWebSocketStore((s) => s.disconnect);
 
-  const theme = (user?.theme as Theme) || "light";
+  const theme = useAppearanceStore((s) => s.theme);
+  const setTheme = useAppearanceStore((s) => s.setTheme);
   const fontSize = useAppearanceStore((s) => s.fontSize);
   const setFontSize = useAppearanceStore((s) => s.setFontSize);
 
   const handleSetTheme = async (t: Theme) => {
+    setTheme(t);
     try {
       const updated = await authApi.updateProfile({ theme: t });
       setUser(updated);
@@ -81,7 +76,6 @@ export default function SettingsPage() {
   };
 
   const [section, setSection] = useState<Section>("profile");
-  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Edit form state
   const [editUsername, setEditUsername] = useState("");
@@ -97,7 +91,6 @@ export default function SettingsPage() {
   const bioRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize form values from user
   const initForm = useCallback(() => {
     if (!user) return;
     setEditUsername(user.username);
@@ -111,7 +104,6 @@ export default function SettingsPage() {
     initForm();
   }, [initForm]);
 
-  // Close emoji picker on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
@@ -124,28 +116,15 @@ export default function SettingsPage() {
     }
   }, [showEmojiPicker]);
 
-
   const navLabelBySection: Record<Section, string> = {
     profile: getSettingsNavLabel(language, "profile"),
     appearance: getSettingsNavLabel(language, "appearance"),
-    privacy: getSettingsNavLabel(language, "privacy"),
-    notifications: getSettingsNavLabel(language, "notifications"),
   };
 
   const handleLogout = () => {
     disconnect();
     logout();
     router.push("/login");
-  };
-
-  const handleCopy = async (value: string, field: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
-    } catch {
-      // Clipboard not available
-    }
   };
 
   const handleSaveProfile = async () => {
@@ -213,7 +192,6 @@ export default function SettingsPage() {
     const newBio = editBio.slice(0, start) + emoji.native + editBio.slice(end);
     if (newBio.length <= 500) {
       setEditBio(newBio);
-      // Restore cursor position after emoji insert
       requestAnimationFrame(() => {
         const pos = start + emoji.native.length;
         textarea.setSelectionRange(pos, pos);
@@ -225,562 +203,515 @@ export default function SettingsPage() {
 
   if (!user) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#023BFC] border-t-transparent rounded-full animate-spin" />
+      <div className="h-screen w-screen flex items-center justify-center bg-[#FAFBFC]">
+        <div className="w-8 h-8 border-2 border-[#0066CC] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   const avatarUrl = user.avatar_url ? `${API_BASE}${user.avatar_url}` : null;
+  const bannerGradient = `linear-gradient(to right, ${user.banner_color_1 || "#023BFC"}, ${user.banner_color_2 || "#3D6AFF"})`;
+  const avatarBg = `linear-gradient(135deg, ${user.banner_color_1 || "#023BFC"}, ${user.banner_color_2 || "#3D6AFF"})`;
+
+  const sectionSubtitle =
+    section === "profile"
+      ? isEnglish ? "Identity, banner, profile picture" : "Identité, bannière, photo de profil"
+      : isEnglish ? "Theme and font size" : "Thème et taille de la police";
+
+  const sectionIcon =
+    section === "profile" ? <User className="w-4 h-4" /> : <Palette className="w-4 h-4" />;
+
+  const sectionTitle =
+    section === "profile"
+      ? isEnglish ? "Profile" : "Profil"
+      : isEnglish ? "Appearance" : "Apparence";
 
   return (
-    <div className="h-full flex bg-[var(--surface)]">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[var(--card)] border-r border-[var(--border)] flex flex-col">
-        {/* Back */}
-        <div className="p-4 border-b border-[var(--border)]">
-          <Link
-            href="/servers"
-            className="flex items-center gap-2 text-sm text-[var(--muted-foreground)] hover:text-[#023BFC] transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            {isEnglish ? "Back" : "Retour"}
-          </Link>
-        </div>
+    <div className="h-screen w-screen overflow-hidden bg-[#FAFBFC] p-5">
+      <div className="flex h-full gap-5">
 
-        {/* User mini card */}
-        <div className="p-4 border-b border-[var(--border)]">
-          <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center flex-shrink-0">
+        {/* ── Left panel ── */}
+        <aside className="w-[240px] flex-shrink-0 bg-[#003D82] rounded-xl border border-[#D5DAE0] shadow-[0_1px_2px_rgba(15,24,40,0.04)] overflow-hidden flex flex-col h-full">
+
+          {/* Back */}
+          <button
+            onClick={() => router.push("/servers")}
+            className="mx-3 mt-3 flex items-center gap-2 h-9 px-3 rounded bg-[rgba(255,255,255,0.08)] text-white text-[13px] hover:bg-[rgba(255,255,255,0.16)] transition-colors"
+          >
+            <ChevronLeft size={14} />
+            {isEnglish ? "Back" : "Retour"}
+          </button>
+
+          {/* Avatar + user info */}
+          <div className="mt-4 px-4 flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+              style={{ background: avatarBg }}
+            >
               {avatarUrl ? (
                 <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
               ) : (
-                <span className="text-white text-sm font-bold uppercase">
-                  {user.username.slice(0, 2)}
+                <span className="text-white font-mono text-[14px] font-semibold">
+                  {user.username.slice(0, 1).toUpperCase()}
                 </span>
               )}
             </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 p-3 space-y-1">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setSection(item.key)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                section === item.key
-                  ? "bg-[#023BFC]/10 text-[#023BFC]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              {item.icon}
-              {navLabelBySection[item.key]}
-            </button>
-          ))}
-        </nav>
-
-        {/* Logout */}
-        <div className="p-3 border-t border-[var(--border)]">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-all"
-          >
-            <LogOut className="w-4 h-4" />
-            {isEnglish ? "Sign out" : "Se deconnecter"}
-          </button>
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <main className="flex-1 min-h-0 overflow-y-auto">
-        {section === "profile" && (
-          <div className="max-w-2xl mx-auto p-8 space-y-8">
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">
-              {isEnglish ? "My profile" : "Mon profil"}
-            </h1>
-
-            {/* Banner + Avatar side by side */}
-            <div className="flex gap-4 items-start">
-              {/* Banner rectangle */}
-              <div className="flex-1">
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-2 block">
-                  {isEnglish ? "Banner" : "Banniere"}
-                </label>
-                <div
-                  className="h-28 rounded-2xl"
-                  style={{
-                    background: `linear-gradient(135deg, ${user.banner_color_1 || "#023BFC"}, ${user.banner_color_2 || "#3D6AFF"})`,
-                  }}
-                />
-              </div>
-              {/* Avatar square */}
-              <div>
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-2 block">
-                  {isEnglish ? "Avatar" : "Avatar"}
-                </label>
-                <div className="relative w-28 h-28">
-                  <div className="w-28 h-28 rounded-2xl border-2 border-[var(--border)] shadow-lg overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-white text-3xl font-bold uppercase">
-                        {user.username.slice(0, 2)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="absolute inset-0 rounded-2xl bg-black/0 hover:bg-black/50 flex items-center justify-center gap-2 opacity-0 hover:opacity-100 transition-all">
-                    <button
-                      onClick={() => photoInputRef.current?.click()}
-                      disabled={uploading}
-                      className="p-1.5 rounded-lg bg-white/20 hover:bg-white/40 transition-colors cursor-pointer"
-                      title={isEnglish ? "Change photo" : "Changer la photo"}
-                    >
-                      <ImageIcon className="w-5 h-5 text-white" />
-                    </button>
-                  </div>
-                  {uploading && (
-                    <div className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center">
-                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Aperçu du profil */}
             <div>
-              <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-3 block">
-                {isEnglish ? "Preview - as seen by others" : "Apercu - tel que vu par les autres"}
-              </label>
-              <div className="flex gap-6 items-start">
-                {/* Normal / full card preview */}
-                <div className="w-72 rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-lg overflow-hidden flex-shrink-0">
-                  <div
-                    className="h-20"
-                    style={{
-                      background: `linear-gradient(135deg, ${user.banner_color_1 || "#023BFC"}, ${user.banner_color_2 || "#3D6AFF"})`,
-                    }}
-                  />
-                  <div className="px-4 -mt-8 pb-4">
-                    <div className="relative inline-block">
-                      <div className="w-16 h-16 rounded-full border-4 border-[var(--card)] shadow overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
-                        {avatarUrl ? (
-                          <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-white text-xl font-bold uppercase">
-                            {user.username.slice(0, 2)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-2">
-                      <div className="font-bold text-[var(--foreground)]">{user.username}</div>
-                      {user.bio && (
-                        <p className="text-xs text-[var(--muted-foreground)] mt-1 whitespace-pre-wrap line-clamp-3">{user.bio}</p>
-                      )}
-                      {user.created_at && (
-                        <div className="mt-2 pt-2 border-t border-[var(--border)]">
-                          <span className="text-[10px] text-[var(--muted-foreground)] uppercase tracking-wide">
-                            {isEnglish ? "Member since" : "Membre depuis"}
-                          </span>
-                          <div className="text-xs font-medium text-[var(--foreground)]">
-                            {new Date(user.created_at).toLocaleDateString(isEnglish ? "en-US" : "fr-FR", { year: "numeric", month: "short", day: "numeric" })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Mini preview (member list style) */}
-                <div className="flex-1 space-y-3">
-                  <span className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                    {isEnglish ? "Compact view" : "Vue compacte"}
-                  </span>
-                  <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 shadow-sm">
-                    <div className="relative flex-shrink-0">
-                      <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center">
-                        {avatarUrl ? (
-                          <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-white text-xs font-bold uppercase">
-                            {user.username.slice(0, 2)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-[var(--foreground)] truncate">{user.username}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-
-            {/* Account Data — Discord style */}
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
-              {/* Username row */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-                <div>
-                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                    {isEnglish ? "Username" : "Nom d'utilisateur"}
-                  </div>
-                  <div className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">{user.username}</div>
-                </div>
-              </div>
-
-              {/* Member since row */}
+              <div className="text-white text-[14px] font-semibold">{user.username}</div>
               {user.created_at && (
-                <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                    {isEnglish ? "Member since" : "Membre depuis"}
-                  </div>
-                  <div className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
-                    {new Date(user.created_at).toLocaleDateString(isEnglish ? "en-US" : "fr-FR", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </div>
+                <div className="text-[rgba(255,255,255,0.6)] text-[12px]">
+                  {isEnglish ? "Since" : "Depuis"} {new Date(user.created_at).getFullYear()}
                 </div>
               )}
             </div>
+          </div>
 
+          {/* Section label */}
+          <div className="mt-6 px-4 mb-2">
+            <span className="text-[11px] font-mono uppercase tracking-[0.06em] text-[rgba(255,255,255,0.4)]">
+              {isEnglish ? "Account" : "Compte"}
+            </span>
+          </div>
 
-            {/* Divider */}
-            <div className="h-px bg-[var(--border)]" />
-
-            {/* Edit form */}
-            <h2 className="text-lg font-bold text-[var(--foreground)]">
-              {isEnglish ? "Edit profile" : "Modifier le profil"}
-            </h2>
-
-            <div className="space-y-5">
-              {/* Username */}
-              <div>
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  {isEnglish ? "Username" : "Nom d'utilisateur"}
-                </label>
-                <input
-                  type="text"
-                  value={editUsername}
-                  onChange={(e) => setEditUsername(e.target.value)}
-                  maxLength={32}
-                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all"
-                />
-              </div>
-
-              {/* Bio / Notes with emoji picker */}
-              <div>
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  {isEnglish ? "Notes / Bio" : "Notes / Bio"}
-                </label>
-                <div className="relative">
-                  <textarea
-                    ref={bioRef}
-                    value={editBio}
-                    onChange={(e) => setEditBio(e.target.value)}
-                    maxLength={500}
-                    rows={3}
-                    placeholder={isEnglish ? "Write something about yourself..." : "Ecris quelque chose a propos de toi..."}
-                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[#023BFC] focus:ring-2 focus:ring-[#023BFC]/20 transition-all resize-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowEmojiPicker((v) => !v)}
-                    className="absolute right-2 top-3 p-1.5 rounded-lg hover:bg-[var(--surface)] text-[var(--muted-foreground)] hover:text-[#023BFC] transition-colors"
-                    title={isEnglish ? "Add emoji" : "Ajouter un emoji"}
-                  >
-                    <Smile className="w-4 h-4" />
-                  </button>
-                  {showEmojiPicker && (
-                    <div ref={emojiPickerRef} className="absolute right-0 top-full mt-1 z-50">
-                      <Picker
-                        data={data}
-                        onEmojiSelect={handleEmojiSelect}
-                        theme="light"
-                        locale={isEnglish ? "en" : "fr"}
-                        previewPosition="none"
-                        skinTonePosition="search"
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="text-xs text-[var(--muted-foreground)] mt-1 text-right">{editBio.length}/500</div>
-              </div>
-
-              {/* Banner Colors */}
-              <div>
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  {isEnglish ? "Banner colors" : "Couleurs de la banniere"}
-                </label>
-                <div
-                  className="mt-2 h-14 rounded-xl"
-                  style={{
-                    background: `linear-gradient(135deg, ${editColor1}, ${editColor2})`,
-                  }}
-                />
-                <div className="flex gap-3 mt-2">
-                  <div className="flex-1">
-                    <label className="text-xs text-[var(--muted-foreground)]">
-                      {isEnglish ? "Color 1" : "Couleur 1"}
-                    </label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <input
-                        type="color"
-                        value={editColor1}
-                        onChange={(e) => setEditColor1(e.target.value)}
-                        className="w-8 h-8 rounded-lg border border-[var(--border)] cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={editColor1}
-                        onChange={(e) => setEditColor1(e.target.value)}
-                        maxLength={7}
-                        className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs font-mono text-[var(--foreground)] outline-none focus:border-[#023BFC]"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-xs text-[var(--muted-foreground)]">
-                      {isEnglish ? "Color 2" : "Couleur 2"}
-                    </label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <input
-                        type="color"
-                        value={editColor2}
-                        onChange={(e) => setEditColor2(e.target.value)}
-                        className="w-8 h-8 rounded-lg border border-[var(--border)] cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={editColor2}
-                        onChange={(e) => setEditColor2(e.target.value)}
-                        maxLength={7}
-                        className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs font-mono text-[var(--foreground)] outline-none focus:border-[#023BFC]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Avatar upload */}
-              <div className="relative">
-                <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  {isEnglish ? "Profile picture" : "Photo de profil"}
-                </label>
-                <div className="mt-2 flex items-center gap-3">
-                  {/* Current avatar preview */}
-                  <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-gradient-to-br from-[#023BFC] to-[#3D6AFF] flex items-center justify-center flex-shrink-0">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-white text-lg font-bold uppercase">
-                        {user.username.slice(0, 2)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Upload button */}
-                  <div className="flex flex-col gap-1.5">
-                    <Button
-                      onClick={() => photoInputRef.current?.click()}
-                      disabled={uploading}
-                      variant="outline"
-                      className="rounded-xl border-[var(--border)] hover:border-[#023BFC] hover:bg-[#023BFC]/5 text-[var(--foreground)] text-sm px-3 h-9 gap-2"
-                    >
-                      <ImageIcon className="w-4 h-4" />
-                      {uploading ? (isEnglish ? "Upload..." : "Upload...") : isEnglish ? "Photo" : "Photo"}
-                    </Button>
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      {isEnglish ? "JPG, PNG or WebP · max 10 MB" : "JPG, PNG ou WebP · max 10 Mo"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Hidden file input for photos */}
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-                className="hidden"
-                onChange={handlePhotoUpload}
-              />
-
-              {/* Save */}
-              <Button
-                onClick={handleSaveProfile}
-                disabled={saving}
-                className="w-full h-11 rounded-xl bg-gradient-to-r from-[#023BFC] to-[#3D6AFF] hover:from-[#023BFC]/90 hover:to-[#3D6AFF]/90 text-white border-0 shadow-lg"
+          {/* Nav items */}
+          <nav className="px-3 flex flex-col gap-1">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setSection(item.key)}
+                className={`flex items-center gap-3 h-9 px-3 rounded text-[14px] transition-colors ${
+                  section === item.key
+                    ? "bg-[#0066CC] text-white font-medium"
+                    : "text-[rgba(255,255,255,0.7)] hover:bg-[rgba(255,255,255,0.08)]"
+                }`}
               >
-                {saving ? (isEnglish ? "Saving..." : "Enregistrement...") : isEnglish ? "Save changes" : "Enregistrer les modifications"}
-              </Button>
-            </div>
+                {item.icon}
+                {navLabelBySection[item.key]}
+              </button>
+            ))}
+          </nav>
+
+          {/* Logout */}
+          <button
+            onClick={handleLogout}
+            className="mt-auto mb-4 mx-3 flex items-center gap-2 h-9 px-3 rounded text-[#FF6B35] text-[13px] hover:bg-[rgba(255,255,255,0.08)] transition-colors"
+          >
+            <LogOut size={14} />
+            {isEnglish ? "Sign out" : "Se déconnecter"}
+          </button>
+        </aside>
+
+        {/* ── Right panel ── */}
+        <main className="flex-1 min-w-0 bg-white rounded-xl border border-[#D5DAE0] shadow-[0_1px_2px_rgba(15,24,40,0.04)] overflow-hidden flex flex-col h-full">
+
+          {/* Header */}
+          <div className="h-14 flex-shrink-0 flex items-center gap-3 px-8 border-b border-[#D5DAE0]">
+            <span className="flex items-center gap-2 text-[#0066CC] font-semibold text-[15px]">
+              {sectionIcon}
+              {sectionTitle}
+            </span>
+            <div className="w-px h-5 bg-[#D5DAE0]" />
+            <span className="text-[#8A929C] text-[13px] font-mono">{sectionSubtitle}</span>
           </div>
-        )}
 
-        {section === "appearance" && (
-          <div className="max-w-2xl mx-auto p-8 space-y-8">
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">
-              {isEnglish ? "Appearance" : "Apparence"}
-            </h1>
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-8 py-8">
 
-            {/* Theme selection */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Palette className="w-5 h-5 text-[var(--muted-foreground)]" />
-                <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                  {isEnglish ? "Theme" : "Theme"}
-                </h2>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {THEME_OPTIONS.map((opt) => {
-                  const active = theme === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => handleSetTheme(opt.value)}
-                      className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 ${
-                        active
-                          ? "border-[#023BFC] ring-2 ring-[#023BFC]/20"
-                          : "border-[var(--border)] hover:border-[#023BFC]/40"
-                      }`}
-                    >
-                      <div className={`w-full h-16 rounded-xl ${opt.preview} border mb-3`} />
-                      <div className="flex items-center gap-2">
-                        <span className="text-[var(--muted-foreground)]">{opt.icon}</span>
-                        <span className="font-semibold text-sm text-[var(--foreground)]">{opt.label}</span>
+            {/* ── Profile tab ── */}
+            {section === "profile" && (
+              <div className="space-y-8">
+
+                {/* Mon profil */}
+                <section>
+                  <h2 className="text-[18px] font-semibold text-[#003D82] mb-4">
+                    {isEnglish ? "My profile" : "Mon profil"}
+                  </h2>
+                  <div className="border border-[#D5DAE0] rounded-lg overflow-hidden">
+                    <div className="h-24" style={{ background: bannerGradient }} />
+                    <div className="relative -mt-10 ml-6 z-10 inline-block">
+                      <div
+                        className="w-20 h-20 rounded-full border-4 border-white overflow-hidden flex items-center justify-center"
+                        style={{ background: !avatarUrl ? avatarBg : undefined }}
+                      >
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white text-2xl font-bold uppercase">
+                            {user.username.slice(0, 1)}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs text-[var(--muted-foreground)] mt-1">{opt.desc}</p>
-                      {active && (
-                        <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-[#023BFC] flex items-center justify-center">
-                          <Check className="w-3 h-3 text-white" />
-                        </div>
+                    </div>
+                    <div className="px-6 pb-4 pt-2">
+                      <div className="text-[16px] font-semibold text-[#003D82]">{user.username}</div>
+                      {user.created_at && (
+                        <>
+                          <div className="text-[11px] font-mono uppercase text-[#8A929C] mt-1">
+                            {isEnglish ? "Member since" : "Membre depuis"}
+                          </div>
+                          <div className="text-[13px] font-semibold text-[#333333]">
+                            {new Date(user.created_at).toLocaleDateString(
+                              isEnglish ? "en-US" : "fr-FR",
+                              { year: "numeric", month: "long", day: "numeric" }
+                            )}
+                          </div>
+                        </>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                    </div>
+                  </div>
+                </section>
 
-            {/* Font size selection */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Type className="w-5 h-5 text-[var(--muted-foreground)]" />
-                <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                  {isEnglish ? "Font size" : "Taille de la police"}
-                </h2>
-              </div>
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
-                {FONT_SIZE_OPTIONS.map((opt) => {
-                  const active = fontSize === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => setFontSize(opt.value)}
-                      className={`w-full flex items-center justify-between px-5 py-4 border-b border-[var(--border)] last:border-b-0 transition-all ${
-                        active ? "bg-[#023BFC]/5" : "hover:bg-[var(--surface)]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          active ? "border-[#023BFC]" : "border-[var(--border)]"
-                        }`}>
-                          {active && <div className="w-2.5 h-2.5 rounded-full bg-[#023BFC]" />}
+                {/* Aperçu */}
+                <section>
+                  <h2 className="text-[18px] font-semibold text-[#003D82] mb-4">
+                    {isEnglish ? "Preview — as seen by others" : "Aperçu — tel que vu par les autres"}
+                  </h2>
+                  <div className="flex gap-4 items-start">
+
+                    {/* Full card */}
+                    <div className="w-56 border border-[#D5DAE0] rounded-lg overflow-hidden flex-shrink-0">
+                      <div className="h-16" style={{ background: bannerGradient }} />
+                      <div className="relative -mt-6 ml-4">
+                        <div
+                          className="w-12 h-12 rounded-full border-2 border-white overflow-hidden flex items-center justify-center"
+                          style={{ background: !avatarUrl ? avatarBg : undefined }}
+                        >
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-white text-sm font-bold uppercase">
+                              {user.username.slice(0, 1)}
+                            </span>
+                          )}
                         </div>
-                        <span className={`font-medium text-[var(--foreground)] ${opt.example}`}>{opt.label}</span>
                       </div>
-                      <span className={`text-[var(--muted-foreground)] ${opt.example}`}>Aa</span>
+                      <div className="px-4 pb-3 pt-1">
+                        <div className="text-[14px] font-semibold text-[#333333]">{user.username}</div>
+                        {user.created_at && (
+                          <>
+                            <div className="text-[10px] font-mono uppercase text-[#8A929C] mt-2">
+                              {isEnglish ? "Member since" : "Membre depuis"}
+                            </div>
+                            <div className="text-[13px] font-semibold text-[#333333]">
+                              {new Date(user.created_at).toLocaleDateString(
+                                isEnglish ? "en-US" : "fr-FR",
+                                { year: "numeric", month: "long", day: "numeric" }
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Compact view */}
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[11px] font-mono uppercase text-[#8A929C]">
+                        {isEnglish ? "Compact view" : "Vue compacte"}
+                      </span>
+                      <div className="border border-[#D5DAE0] rounded-lg px-3 py-2 flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0"
+                          style={{ background: !avatarUrl ? avatarBg : undefined }}
+                        >
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt={user.username} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-white text-xs font-bold uppercase">
+                              {user.username.slice(0, 1)}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[14px] text-[#333333]">{user.username}</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Error */}
+                {error && (
+                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
+
+                {/* Edit form */}
+                <section>
+                  <h2 className="text-[18px] font-semibold text-[#003D82] mb-6">
+                    {isEnglish ? "Edit profile" : "Modifier le profil"}
+                  </h2>
+                  <div className="space-y-5">
+
+                    {/* Username */}
+                    <div>
+                      <label className="block text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C] mb-2">
+                        {isEnglish ? "Username" : "Nom d'utilisateur"}
+                      </label>
+                      <input
+                        type="text"
+                        value={editUsername}
+                        onChange={(e) => setEditUsername(e.target.value)}
+                        maxLength={32}
+                        className="w-full h-10 px-3 rounded border border-[#D5DAE0] text-[14px] outline-none focus:border-[#0066CC] focus:shadow-[0_0_0_3px_rgba(74,158,255,0.18)] transition-all"
+                      />
+                    </div>
+
+                    {/* Bio */}
+                    <div>
+                      <label className="block text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C] mb-2">
+                        {isEnglish ? "Notes / Bio" : "Notes / Bio"}
+                      </label>
+                      <div className="relative">
+                        <textarea
+                          ref={bioRef}
+                          value={editBio}
+                          onChange={(e) => setEditBio(e.target.value)}
+                          maxLength={500}
+                          rows={3}
+                          placeholder={isEnglish ? "Write something about yourself..." : "Écris quelque chose à propos de toi..."}
+                          className="w-full min-h-[96px] px-3 py-2 rounded border border-[#D5DAE0] text-[14px] resize-none outline-none focus:border-[#0066CC] focus:shadow-[0_0_0_3px_rgba(74,158,255,0.18)] transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowEmojiPicker((v) => !v)}
+                          className="absolute right-2 top-2 p-1.5 rounded hover:bg-[#F5F7FA] text-[#8A929C] hover:text-[#0066CC] transition-colors"
+                        >
+                          <Smile className="w-4 h-4" />
+                        </button>
+                        {showEmojiPicker && (
+                          <div ref={emojiPickerRef} className="absolute right-0 top-full mt-1 z-50">
+                            <Picker
+                              data={data}
+                              onEmojiSelect={handleEmojiSelect}
+                              theme="light"
+                              locale={isEnglish ? "en" : "fr"}
+                              previewPosition="none"
+                              skinTonePosition="search"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[12px] text-[#8A929C] mt-1 text-right">{editBio.length}/500</div>
+                    </div>
+
+                    {/* Banner colors */}
+                    <div>
+                      <label className="block text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C] mb-2">
+                        {isEnglish ? "Banner colors" : "Couleurs de la bannière"}
+                      </label>
+                      <div
+                        className="w-full h-16 rounded-lg mt-2"
+                        style={{ background: `linear-gradient(to right, ${editColor1}, ${editColor2})` }}
+                      />
+                      <div className="flex gap-4 mt-3">
+                        {/* Color 1 */}
+                        <div className="flex-1">
+                          <label className="text-[13px] text-[#6B737D] mb-1 block">
+                            {isEnglish ? "Color 1" : "Couleur 1"}
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-8 h-8 rounded cursor-pointer flex-shrink-0 border border-[#D5DAE0]"
+                              style={{ background: editColor1 }}
+                              onClick={() => document.getElementById("color1-picker")?.click()}
+                            />
+                            <input
+                              id="color1-picker"
+                              type="color"
+                              value={editColor1}
+                              onChange={(e) => setEditColor1(e.target.value)}
+                              className="hidden"
+                            />
+                            <input
+                              type="text"
+                              value={editColor1}
+                              onChange={(e) => setEditColor1(e.target.value)}
+                              maxLength={7}
+                              className="flex-1 h-10 px-3 rounded border border-[#D5DAE0] font-mono text-[14px] outline-none focus:border-[#0066CC]"
+                            />
+                          </div>
+                        </div>
+                        {/* Color 2 */}
+                        <div className="flex-1">
+                          <label className="text-[13px] text-[#6B737D] mb-1 block">
+                            {isEnglish ? "Color 2" : "Couleur 2"}
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-8 h-8 rounded cursor-pointer flex-shrink-0 border border-[#D5DAE0]"
+                              style={{ background: editColor2 }}
+                              onClick={() => document.getElementById("color2-picker")?.click()}
+                            />
+                            <input
+                              id="color2-picker"
+                              type="color"
+                              value={editColor2}
+                              onChange={(e) => setEditColor2(e.target.value)}
+                              className="hidden"
+                            />
+                            <input
+                              type="text"
+                              value={editColor2}
+                              onChange={(e) => setEditColor2(e.target.value)}
+                              maxLength={7}
+                              className="flex-1 h-10 px-3 rounded border border-[#D5DAE0] font-mono text-[14px] outline-none focus:border-[#0066CC]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Profile picture */}
+                    <div>
+                      <label className="block text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C] mb-2">
+                        {isEnglish ? "Profile picture" : "Photo de profil"}
+                      </label>
+                      <div className="flex items-center gap-4 mt-2">
+                        <div
+                          className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0"
+                          style={{ background: !avatarUrl ? avatarBg : undefined }}
+                        >
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-white text-xl font-bold uppercase">
+                              {user.username.slice(0, 1)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <button
+                            onClick={() => photoInputRef.current?.click()}
+                            disabled={uploading}
+                            className="flex items-center gap-2 h-10 px-4 rounded border border-[#D5DAE0] bg-white text-[14px] hover:bg-[#F5F7FA] disabled:opacity-60 transition-colors"
+                          >
+                            <ImageIcon className="w-4 h-4" />
+                            {uploading ? "Upload..." : isEnglish ? "Photo" : "Photo"}
+                          </button>
+                          <span className="text-[12px] text-[#8A929C]">
+                            {isEnglish ? "JPG, PNG or WebP · max 10 MB" : "JPG, PNG ou WebP · max 10 Mo"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Hidden file input */}
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                      className="hidden"
+                      onChange={handlePhotoUpload}
+                    />
+
+                    {/* Save */}
+                    <button
+                      onClick={handleSaveProfile}
+                      disabled={saving}
+                      className="w-full h-12 rounded-lg bg-[#0066CC] text-white text-[15px] font-medium hover:bg-[#0055AA] disabled:opacity-60 transition-colors"
+                    >
+                      {saving
+                        ? isEnglish ? "Saving..." : "Enregistrement..."
+                        : isEnglish ? "Save changes" : "Enregistrer les modifications"}
                     </button>
-                  );
-                })}
+                  </div>
+                </section>
               </div>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                {isEnglish
-                  ? "Font size applies to messages and server content."
-                  : "La taille de police s'applique aux messages et au contenu du serveur."}
-              </p>
-            </div>
-          </div>
-        )}
+            )}
 
-        {section === "privacy" && (
-          <div className="max-w-2xl mx-auto p-8 space-y-6">
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">
-              {isEnglish ? "Privacy" : "Confidentialite"}
-            </h1>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center space-y-3">
-              <Shield className="w-12 h-12 mx-auto text-[var(--muted-foreground)]/40" />
-              <p className="text-[var(--muted-foreground)] text-sm">
-                {isEnglish
-                  ? "Privacy settings will be available soon."
-                  : "Les parametres de confidentialite seront bientot disponibles."}
-              </p>
-            </div>
-          </div>
-        )}
+            {/* ── Appearance tab ── */}
+            {section === "appearance" && (
+              <div className="space-y-8">
 
-        {section === "notifications" && (
-          <div className="max-w-2xl mx-auto p-8 space-y-6">
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">
-              {isEnglish ? "Notifications" : "Notifications"}
-            </h1>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 text-center space-y-3">
-              <Bell className="w-12 h-12 mx-auto text-[var(--muted-foreground)]/40" />
-              <p className="text-[var(--muted-foreground)] text-sm">
-                {isEnglish
-                  ? "Notification settings will be available soon."
-                  : "Les parametres de notification seront bientot disponibles."}
-              </p>
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
-  );
-}
+                {/* Theme */}
+                <section>
+                  <div className="flex items-center gap-2 text-[18px] font-semibold text-[#003D82] mb-4">
+                    <Palette className="w-5 h-5" />
+                    <h2>{isEnglish ? "Theme" : "Thème"}</h2>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {THEME_OPTIONS.map((opt) => {
+                      const active = theme === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => handleSetTheme(opt.value)}
+                          className={`relative rounded-lg overflow-hidden cursor-pointer text-left transition-colors ${
+                            active
+                              ? "border-2 border-[#0066CC]"
+                              : "border border-[#D5DAE0] hover:border-[#0066CC]"
+                          }`}
+                        >
+                          <div className={`h-16 ${opt.preview}`} />
+                          {active && (
+                            <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[#0066CC] flex items-center justify-center">
+                              <Check size={12} className="text-white" />
+                            </div>
+                          )}
+                          <div className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span className={active ? "text-[#0066CC]" : "text-[#8A929C]"}>
+                                {opt.icon}
+                              </span>
+                              <span className="text-[14px] font-medium text-[#333333]">{opt.label}</span>
+                            </div>
+                            <p className="text-[12px] text-[#8A929C] mt-0.5">{opt.desc}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
 
-/** Helper: readonly info field with copy button */
-function InfoField({
-  label,
-  value,
-  field,
-  copiedField,
-  onCopy,
-  mono,
-}: {
-  label: string;
-  value: string;
-  field: string;
-  copiedField: string | null;
-  onCopy: (value: string, field: string) => void;
-  mono?: boolean;
-}) {
-  return (
-    <div className="rounded-xl border border-[var(--border)] p-3 bg-[var(--card)]">
-      <label className="text-xs font-medium text-[var(--muted-foreground)] uppercase tracking-wide">{label}</label>
-      <div className="flex items-center justify-between mt-1">
-        <span className={`${mono ? "font-mono text-sm truncate pr-2" : "font-semibold"} text-[var(--foreground)]`}>{value}</span>
-        <button
-          onClick={() => onCopy(value, field)}
-          className="text-[var(--muted-foreground)] hover:text-[#023BFC] transition-colors flex-shrink-0"
-          title="Copier"
-        >
-          {copiedField === field ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-        </button>
+                {/* Font size */}
+                <section>
+                  <div className="flex items-center gap-2 text-[18px] font-semibold text-[#003D82] mb-4">
+                    <Type className="w-5 h-5" />
+                    <h2>{isEnglish ? "Font size" : "Taille de la police"}</h2>
+                  </div>
+                  <div className="flex flex-col border border-[#D5DAE0] rounded-lg overflow-hidden">
+                    {FONT_SIZE_OPTIONS.map((opt, i) => {
+                      const active = fontSize === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => setFontSize(opt.value)}
+                          className={`h-12 flex items-center px-4 cursor-pointer transition-colors ${
+                            i > 0 ? "border-t border-[#D5DAE0]" : ""
+                          } ${
+                            active
+                              ? "bg-[#E6F0FB] border-l-2 border-l-[#0066CC]"
+                              : "hover:bg-[#FAFBFC]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <div
+                              className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                active ? "border-[#0066CC]" : "border-[#D5DAE0]"
+                              }`}
+                            >
+                              {active && <div className="w-2 h-2 rounded-full bg-[#0066CC]" />}
+                            </div>
+                            <span className={`text-[14px] ${active ? "font-medium text-[#0066CC]" : "text-[#333333]"}`}>
+                              {opt.label}
+                            </span>
+                          </div>
+                          <span className={`ml-auto font-mono ${opt.aaSize} ${active ? "text-[#0066CC]" : "text-[#8A929C]"}`}>
+                            Aa
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-[12px] text-[#8A929C]">
+                    {isEnglish
+                      ? "Font size applies to messages and server content."
+                      : "La taille de police s'applique aux messages et au contenu du serveur."}
+                  </p>
+                </section>
+              </div>
+            )}
+          </div>
+        </main>
       </div>
     </div>
   );
