@@ -60,13 +60,11 @@ export default function SettingsPage() {
   const setUser = useAuthStore((s) => s.setUser);
   const disconnect = useWebSocketStore((s) => s.disconnect);
 
-  const theme = useAppearanceStore((s) => s.theme);
-  const setTheme = useAppearanceStore((s) => s.setTheme);
+  const theme = (user?.theme as Theme) || "light";
   const fontSize = useAppearanceStore((s) => s.fontSize);
   const setFontSize = useAppearanceStore((s) => s.setFontSize);
 
   const handleSetTheme = async (t: Theme) => {
-    setTheme(t);
     try {
       const updated = await authApi.updateProfile({ theme: t });
       setUser(updated);

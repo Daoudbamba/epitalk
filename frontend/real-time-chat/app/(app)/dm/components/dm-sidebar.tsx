@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useDmStore } from "@/store/dm.store";
 import { usePresenceStore } from "@/store/presence.store";
-import { MessageSquare, Edit3, Search, Image, Paperclip, UserPlus } from "lucide-react";
+import { MessageSquare, Edit3, Search, Image, Paperclip, UserPlus, Home } from "lucide-react";
 import type { DmConversation } from "@/lib/api/dm.api";
 
 const API_BASE =
@@ -50,6 +51,7 @@ function getExcerpt(lastMessage: string): { type: "gif" | "file" | "text"; text:
 }
 
 export function DmSidebar() {
+  const router = useRouter();
   const conversations = useDmStore((s) => s.conversations);
   const activePeerId = useDmStore((s) => s.activePeerId);
   const setActivePeer = useDmStore((s) => s.setActivePeer);
@@ -69,9 +71,18 @@ export function DmSidebar() {
           <MessageSquare size={16} className="text-[#0066CC]" />
           <span className="text-[15px] font-semibold text-[#003D82]">Messages privés</span>
         </div>
-        <button className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#333333] transition-colors">
-          <Edit3 size={16} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => router.push("/servers")}
+            title="Retour aux serveurs"
+            className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#0066CC] transition-colors"
+          >
+            <Home size={15} />
+          </button>
+          <button className="w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#333333] transition-colors">
+            <Edit3 size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Search bar */}

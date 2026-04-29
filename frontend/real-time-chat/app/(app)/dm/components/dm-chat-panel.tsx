@@ -33,6 +33,7 @@ import { useWebSocketStore, type WsMessage } from "@/store/websocket.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useDmStore } from "@/store/dm.store";
 import { usePresenceStore } from "@/store/presence.store";
+import { useMemberStore } from "@/store/member.store";
 import { useAppearanceStore } from "@/store/appearance.store";
 import { dmApi } from "@/lib/api";
 import type { DmConversation } from "@/lib/api/dm.api";
@@ -101,6 +102,7 @@ export function DmChatPanel() {
   const conversations = useDmStore((s) => s.conversations);
 
   const presence = usePresenceStore((s) => s.presence);
+  const members = useMemberStore((s) => s.members);
 
   const isConnected = useWebSocketStore((s) => s.isConnected);
   const connect = useWebSocketStore((s) => s.connect);
@@ -716,9 +718,11 @@ export function DmChatPanel() {
                     {isCompact ? (
                       <div className="w-9 shrink-0" />
                     ) : (() => {
-                      const msgAvatarUrl = isAuthor
-                        ? prefixBackendUrl(user?.avatar_url)
-                        : peerAvatarUrl;
+                      const rawUrl = isAuthor
+                        ? user?.avatar_url
+                        : members.find((m) => m.user_id === msg.author_id)?.avatar_url
+                          ?? peerAvatarUrl?.replace(API_BASE, "") ?? null;
+                      const msgAvatarUrl = prefixBackendUrl(rawUrl);
                       return (
                         <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-mono font-semibold shrink-0 overflow-hidden ${msgAvatarUrl ? "" : `${avatarColor.bg} ${avatarColor.text}`}`}>
                           {msgAvatarUrl ? (
