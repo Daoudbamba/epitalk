@@ -8,6 +8,7 @@ import { terminateSession } from "@/lib/auth/session";
 import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
 import { NotificationManager } from "@/components/notification-manager";
 import { BanModal } from "@/components/ban-modal";
+import { KickModal } from "@/components/kick-modal";
 import { useNotificationClick } from "@/hooks/use-notification-click";
 import { useJoinAllChannels } from "@/hooks/useJoinAllChannels";
 
@@ -67,6 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <NotificationPermissionBanner />
       <NotificationManager />
       <BanModal />
+      <KickModal />
       <main className="flex-1">{children}</main>
     </div>
   );

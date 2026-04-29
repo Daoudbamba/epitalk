@@ -9,16 +9,25 @@ export type BanModalData = {
   reason: string | null;
 };
 
+export type KickModalData = {
+  serverId: string;
+  serverName: string;
+  reason: string | null;
+};
+
 type ServerStore = {
   servers: Server[];
   activeServerId: string | null;
   banModal: BanModalData | null;
+  kickModal: KickModalData | null;
 
   setServers: (servers: Server[]) => void;
   setActiveServer: (serverId: string) => void;
   removeServer: (serverId: string) => void;
   showBanModal: (data: BanModalData) => void;
   closeBanModal: () => void;
+  showKickModal: (data: KickModalData) => void;
+  closeKickModal: () => void;
 };
 
 export const useServerStore = create<ServerStore>()(
@@ -27,6 +36,7 @@ export const useServerStore = create<ServerStore>()(
       servers: [],
       activeServerId: null,
       banModal: null,
+      kickModal: null,
 
       setServers: (servers) => set({ servers }),
       setActiveServer: (serverId) => set({ activeServerId: serverId }),
@@ -40,6 +50,8 @@ export const useServerStore = create<ServerStore>()(
 
       showBanModal: (data) => set({ banModal: data }),
       closeBanModal: () => set({ banModal: null }),
+      showKickModal: (data) => set({ kickModal: data }),
+      closeKickModal: () => set({ kickModal: null }),
     }),
     {
       name: "server-store",

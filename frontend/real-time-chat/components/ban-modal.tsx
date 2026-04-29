@@ -1,22 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { Clock, ShieldX } from "lucide-react";
 import { useServerStore } from "@/store/server.store";
 
-function formatBanDuration(expiresAt: string): string {
-  const now = Date.now();
-  const expMs = new Date(expiresAt).getTime();
-  const diffMs = expMs - now;
-
-  if (diffMs <= 0) return "expiré";
-
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffDays >= 1) return `${diffDays} jour${diffDays > 1 ? "s" : ""}`;
-  if (diffHours >= 1) return `${diffHours} heure${diffHours > 1 ? "s" : ""}`;
-  return `${diffMins} minute${diffMins > 1 ? "s" : ""}`;
+function formatExpiration(expiresAt: string): string {
+  try {
+    const d = new Date(expiresAt);
+    return d.toLocaleDateString("fr-FR", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return expiresAt;
+  }
 }
 
 export function BanModal() {
@@ -27,6 +27,12 @@ export function BanModal() {
   if (!banModal) return null;
 
   const { serverName, expiresAt, reason } = banModal;
+  const isTemp = !!expiresAt;
+
+  const railColor = isTemp ? "#FF6B35" : "#D93F3F";
+  const badgeBg = isTemp ? "bg-[#FFF0E8]" : "bg-[#FDEAEA]";
+  const badgeText = isTemp ? "text-[#FF6B35]" : "text-[#D93F3F]";
+  const badgeLabel = isTemp ? "BANNISSEMENT TEMPORAIRE" : "BANNISSEMENT PERMANENT";
 
   const handleClose = () => {
     closeBanModal();
@@ -41,41 +47,79 @@ export function BanModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       style={{ pointerEvents: "auto" }}
     >
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8 flex flex-col gap-5">
-        <h2 className="text-xl font-semibold text-white">
-          Vous avez été banni de{" "}
-          <span className="text-red-400">{serverName}</span>
-        </h2>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden flex">
+        {/* Colored left rail */}
+        <div
+          className="w-1.5 shrink-0"
+          style={{ backgroundColor: railColor }}
+        />
 
-        <p className="text-sm text-zinc-400">
-          {expiresAt ? (
-            <>
-              Ban temporaire — expire dans{" "}
-              <span className="text-zinc-200 font-medium">
-                {formatBanDuration(expiresAt)}
+        {/* Content */}
+        <div className="flex-1 px-7 py-6 flex flex-col gap-5">
+          {/* Header */}
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: isTemp ? "#FFF0E8" : "#FDEAEA" }}
+            >
+              {isTemp ? (
+                <Clock size={20} style={{ color: railColor }} />
+              ) : (
+                <ShieldX size={20} style={{ color: railColor }} />
+              )}
+            </div>
+            <div>
+              <div className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-semibold uppercase tracking-[0.06em] ${badgeBg} ${badgeText} mb-1`}>
+                {badgeLabel}
+              </div>
+              <p className="text-[15px] font-semibold text-[#1A1D23] leading-snug">
+                Vous avez été exclu de{" "}
+                <span style={{ color: railColor }}>{serverName}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-[#ECEEF1]" />
+
+          {/* Rows */}
+          <div className="flex flex-col gap-4">
+            {isTemp && expiresAt && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C]">
+                  EXPIRATION
+                </span>
+                <span className="text-[14px] text-[#1A1D23] font-medium">
+                  {formatExpiration(expiresAt)}
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C]">
+                MOTIF
               </span>
-            </>
-          ) : (
-            <span className="text-red-300 font-medium">Ban définitif</span>
-          )}
-        </p>
+              <span className="text-[14px] text-[#1A1D23]">
+                {reason && reason.trim() ? reason : "Aucun motif précisé"}
+              </span>
+            </div>
+          </div>
 
-        <p className="text-sm text-zinc-400">
-          Motif :{" "}
-          <span className="text-zinc-200">
-            {reason && reason.trim() ? reason : "Motif non précisé"}
-          </span>
-        </p>
+          {/* Divider */}
+          <div className="border-t border-[#ECEEF1]" />
 
-        <button
-          onClick={handleClose}
-          className="mt-2 w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 transition-colors"
-        >
-          Fermer le message
-        </button>
+          {/* Footer */}
+          <button
+            onClick={handleClose}
+            className="w-full h-10 rounded-lg text-white text-[14px] font-semibold transition-opacity hover:opacity-90 active:opacity-80"
+            style={{ backgroundColor: railColor }}
+          >
+            Fermer le message
+          </button>
+        </div>
       </div>
     </div>
   );
