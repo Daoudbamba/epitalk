@@ -1,16 +1,17 @@
 //! Server routes
 //!
 //! Routes:
-//! - GET    /servers           - List user's servers
-//! - POST   /servers           - Create a new server
-//! - GET    /servers/:id       - Get server details
-//! - PATCH  /servers/:id       - Update server
-//! - DELETE /servers/:id       - Delete server
-//! - POST   /servers/:id/leave - Leave server
-//! - POST   /servers/:id/transfer - Transfer ownership
+//! - GET    /servers                  - List user's servers
+//! - POST   /servers                  - Create a new server
+//! - GET    /servers/:id              - Get server details
+//! - PATCH  /servers/:id              - Update server
+//! - DELETE /servers/:id              - Delete server
+//! - POST   /servers/:id/avatar       - Upload server avatar
+//! - POST   /servers/:id/leave        - Leave server
+//! - POST   /servers/:id/transfer     - Transfer ownership
 
 use axum::{
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     routing::{get, post},
     Json, Router,
 };
@@ -33,6 +34,10 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_servers).post(create_server))
         .route("/:server_id", get(get_server).patch(update_server).delete(delete_server))
+        .route(
+            "/:server_id/avatar",
+            post(upload_server_avatar).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
         .route("/:server_id/leave", post(leave_server))
         .route("/:server_id/transfer", post(transfer_ownership))
         .nest("/:server_id/channels", channels::router())
@@ -48,7 +53,7 @@ async fn list_servers(
     let user_id = auth.user_id;
 
     let servers = ServerRepository::find_by_user_id(&state.db, user_id).await?;
-    
+
     let mut responses = Vec::new();
     for server in servers {
         let member_count = ServerRepository::get_member_count(&state.db, server.id).await?;
@@ -70,7 +75,7 @@ async fn create_server(
 
     let server = ServerRepository::create(&state.db, &payload.name, user_id).await?;
     let mut response = ServerResponse::from(server);
-    response.member_count = Some(1); // Owner is the first member
+    response.member_count = Some(1);
 
     Ok(Json(response))
 }
@@ -83,7 +88,6 @@ async fn get_server(
 ) -> AppResult<Json<ServerResponse>> {
     let user_id = auth.user_id;
 
-    // Check membership
     if !MembershipRepository::is_member(&state.db, user_id, server_id).await? {
         return Err(AppError::Forbidden("Not a member of this server".to_string()));
     }
@@ -108,7 +112,6 @@ async fn update_server(
 ) -> AppResult<Json<ServerResponse>> {
     let user_id = auth.user_id;
 
-    // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, server_id)
         .await?
         .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
@@ -125,6 +128,104 @@ async fn update_server(
     Ok(Json(response))
 }
 
+/// Upload server avatar (OWNER only)
+async fn upload_server_avatar(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Path(server_id): Path<Uuid>,
+    mut multipart: Multipart,
+) -> AppResult<Json<ServerResponse>> {
+    let user_id = auth.user_id;
+
+    let role = MembershipRepository::get_role(&state.db, user_id, server_id)
+        .await?
+        .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
+
+    if role != MemberRole::Owner {
+        return Err(AppError::Forbidden(
+            "Only the owner can set the server avatar".to_string(),
+        ));
+    }
+
+    let upload_dir = state.config.upload_dir.clone();
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .map_err(|e| AppError::Internal(format!("Cannot create upload dir: {e}")))?;
+
+    let mut avatar_path: Option<String> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Invalid multipart: {e}")))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        if field_name != "avatar" {
+            continue;
+        }
+
+        let content_type = field.content_type().unwrap_or("").to_string();
+        let file_name = field.file_name().unwrap_or("").to_string();
+        let ext = match content_type.as_str() {
+            "image/jpeg" => "jpg",
+            "image/png" => "png",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            _ => {
+                let lower = file_name.to_lowercase();
+                if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+                    "jpg"
+                } else if lower.ends_with(".png") {
+                    "png"
+                } else if lower.ends_with(".gif") {
+                    "gif"
+                } else if lower.ends_with(".webp") {
+                    "webp"
+                } else {
+                    return Err(AppError::Validation(
+                        "Only JPEG, PNG, GIF and WebP images are allowed".to_string(),
+                    ));
+                }
+            }
+        };
+
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("Failed to read file: {e}")))?;
+
+        if data.len() > 10 * 1024 * 1024 {
+            return Err(AppError::Validation(
+                "Avatar file must be under 10 MB".to_string(),
+            ));
+        }
+
+        let filename = format!(
+            "server_{}_{}.{}",
+            server_id,
+            chrono::Utc::now().timestamp(),
+            ext
+        );
+        let filepath = format!("{}/{}", upload_dir, filename);
+
+        tokio::fs::write(&filepath, &data)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to save file: {e}")))?;
+
+        avatar_path = Some(format!("/uploads/{}", filename));
+    }
+
+    let avatar_url = avatar_path
+        .ok_or_else(|| AppError::BadRequest("No avatar field in multipart form".to_string()))?;
+
+    let server = ServerRepository::update_avatar(&state.db, server_id, &avatar_url).await?;
+    let member_count = ServerRepository::get_member_count(&state.db, server_id).await?;
+    let mut response = ServerResponse::from(server);
+    response.member_count = Some(member_count);
+
+    Ok(Json(response))
+}
+
 /// Delete server (OWNER only)
 async fn delete_server(
     State(state): State<Arc<AppState>>,
@@ -133,7 +234,6 @@ async fn delete_server(
 ) -> AppResult<Json<serde_json::Value>> {
     let user_id = auth.user_id;
 
-    // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, server_id)
         .await?
         .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
@@ -155,7 +255,6 @@ async fn leave_server(
 ) -> AppResult<Json<serde_json::Value>> {
     let user_id = auth.user_id;
 
-    // Check role
     let role = MembershipRepository::get_role(&state.db, user_id, server_id)
         .await?
         .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
@@ -186,7 +285,6 @@ async fn transfer_ownership(
 ) -> AppResult<Json<ServerResponse>> {
     let user_id = auth.user_id;
 
-    // Check current user is owner
     let role = MembershipRepository::get_role(&state.db, user_id, server_id)
         .await?
         .ok_or_else(|| AppError::Forbidden("Not a member of this server".to_string()))?;
@@ -195,7 +293,6 @@ async fn transfer_ownership(
         return Err(AppError::Forbidden("Only the owner can transfer ownership".to_string()));
     }
 
-    // Check new owner is a member
     if !MembershipRepository::is_member(&state.db, payload.new_owner_id, server_id).await? {
         return Err(AppError::BadRequest("New owner must be a member of the server".to_string()));
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import {
@@ -23,18 +24,30 @@ import { serversApi } from "@/lib/api";
 import { ApiError, getErrorMessage } from "@/lib/api/errors";
 import { useLanguage } from "@/components/language-provider";
 
-const ROLE_OPTIONS = ["Admin", "Moderator", "Member"] as const;
-const ROLE_LABELS: Record<string, string> = {
-  Owner: "Propriétaire",
-  Admin: "Admin",
-  Moderator: "Modérateur",
-  Member: "Membre",
+const ROLE_TAG: Record<string, string> = {
+  Owner: "PED",
+  Admin: "PED",
+  Moderator: "APE",
+  Member: "B1",
 };
-const ROLE_BADGE: Record<string, string> = {
-  Owner: "CRÉATEUR",
-  Admin: "ADMIN",
-  Moderator: "MODÉRATEUR",
-  Member: "MEMBRE",
+const ROLE_TAG_CLASS: Record<string, string> = {
+  Owner: "text-[#003D82]",
+  Admin: "text-[#003D82]",
+  Moderator: "text-[#8A3F18]",
+  Member: "text-[#6B737D]",
+};
+const ROLE_CATEGORY: Record<string, string> = {
+  Owner: "PÉDAGO",
+  Admin: "PÉDAGO",
+  Moderator: "STAFF",
+  Member: "ÉTUDIANTS",
+};
+
+const STATUS_CONFIG: Record<string, { label: string; labelFr: string; dot: string }> = {
+  online:  { label: "Online",           labelFr: "En ligne",          dot: "bg-[#2BAE5C]" },
+  dnd:     { label: "Do not disturb",   labelFr: "Ne pas déranger",   dot: "bg-[#D93F3F]" },
+  offline: { label: "Offline",          labelFr: "Hors ligne",        dot: "bg-[#8A929C]" },
+  idle:    { label: "Away",             labelFr: "Absent",            dot: "bg-[#8A929C]" },
 };
 
 type BanDurationUnit = "minutes" | "hours" | "days";
@@ -73,18 +86,26 @@ function formatExpiry(expiresAt: string | null | undefined, isEnglish: boolean):
 }
 
 function MemberMenu({
+  canChangeRole,
   showKick,
   showBan,
+  onRolePedago,
+  onRoleStaff,
+  onRoleMember,
   onKick,
-  onBanPermanent,
   onBanTemporary,
+  onBanPermanent,
   isEnglish,
 }: {
+  canChangeRole: boolean;
   showKick: boolean;
   showBan: boolean;
+  onRolePedago: () => void;
+  onRoleStaff: () => void;
+  onRoleMember: () => void;
   onKick: () => void;
-  onBanPermanent: () => void;
   onBanTemporary: () => void;
+  onBanPermanent: () => void;
   isEnglish: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -93,9 +114,7 @@ function MemberMenu({
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -103,21 +122,46 @@ function MemberMenu({
 
   return (
     <div ref={ref} className="relative">
-      <Button
-        size="sm"
-        variant="ghost"
+      <button
         onClick={() => setOpen((v) => !v)}
-        className="h-6 w-6 p-0 text-base leading-none text-muted-foreground"
+        className="w-6 h-6 rounded text-[#8A929C] hover:bg-[#D5DAE0] hover:text-[#333333] flex items-center justify-center"
         title={isEnglish ? "Actions" : "Actions"}
       >
-        ···
-      </Button>
+        <MoreHorizontal className="w-3.5 h-3.5" />
+      </button>
+
       {open && (
-        <div className="absolute right-0 top-7 z-50 min-w-37 rounded-lg border border-border bg-card shadow-lg py-1">
+        <div className="absolute top-8 right-0 z-50 bg-white rounded-lg shadow-lg border border-[#D5DAE0] min-w-50 py-1">
+          {canChangeRole && (
+            <>
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-[13px] hover:bg-[#ECEEF1] text-[#333333]"
+                onClick={() => { setOpen(false); onRolePedago(); }}
+              >
+                {isEnglish ? "Set as Pédago" : "Définir comme Pédago"}
+              </button>
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-[13px] hover:bg-[#ECEEF1] text-[#333333]"
+                onClick={() => { setOpen(false); onRoleStaff(); }}
+              >
+                {isEnglish ? "Set as Staff (APE)" : "Définir comme Staff (APE)"}
+              </button>
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-[13px] hover:bg-[#ECEEF1] text-[#333333]"
+                onClick={() => { setOpen(false); onRoleMember(); }}
+              >
+                {isEnglish ? "Set as Student" : "Définir comme Étudiant"}
+              </button>
+              <div className="h-px bg-[#E1E5EA] my-1" />
+            </>
+          )}
           {showKick && (
             <button
               type="button"
-              className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted text-orange-600"
+              className="w-full px-3 py-2 text-left text-[13px] hover:bg-[#ECEEF1] text-[#D93F3F]"
               onClick={() => { setOpen(false); onKick(); }}
             >
               {isEnglish ? "Kick" : "Expulser"}
@@ -125,20 +169,19 @@ function MemberMenu({
           )}
           {showBan && (
             <>
-              {showKick && <div className="my-1 border-t border-border" />}
               <button
                 type="button"
-                className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted text-red-600"
-                onClick={() => { setOpen(false); onBanPermanent(); }}
+                className="w-full px-3 py-2 text-left text-[13px] hover:bg-[#ECEEF1] text-[#D93F3F]"
+                onClick={() => { setOpen(false); onBanTemporary(); }}
               >
-                {isEnglish ? "Permanent ban" : "Ban définitif"}
+                {isEnglish ? "Temporary ban" : "Bannir temporairement"}
               </button>
               <button
                 type="button"
-                className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted text-red-500"
-                onClick={() => { setOpen(false); onBanTemporary(); }}
+                className="w-full px-3 py-2 text-left text-[13px] hover:bg-[#ECEEF1] text-[#D93F3F]"
+                onClick={() => { setOpen(false); onBanPermanent(); }}
               >
-                {isEnglish ? "Temporary ban" : "Ban temporaire"}
+                {isEnglish ? "Permanent ban" : "Bannir définitivement"}
               </button>
             </>
           )}
@@ -167,6 +210,21 @@ export function MembersPanel({
   const { language } = useLanguage();
   const isEnglish = language === "en";
 
+  // Presence dropdown
+  const [presenceOpen, setPresenceOpen] = useState(false);
+  const presenceRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!presenceOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (presenceRef.current && !presenceRef.current.contains(e.target as Node)) {
+        setPresenceOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [presenceOpen]);
+
   const server = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
     [servers, activeServerId],
@@ -191,10 +249,7 @@ export function MembersPanel({
   const [loadingBans, setLoadingBans] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Kick modal state
   const [kickTarget, setKickTarget] = useState<{ id: string; username: string } | null>(null);
-
-  // Ban modal state
   const [banTarget, setBanTarget] = useState<{ id: string; username: string; permanent: boolean } | null>(null);
   const [banReason, setBanReason] = useState("");
   const [banDurationValue, setBanDurationValue] = useState<number>(1);
@@ -256,7 +311,6 @@ export function MembersPanel({
     setKickTarget(null);
     setLoadingKick(targetId);
     setActionError(null);
-    // Optimistic: remove from list immediately
     setMembers(members.filter((m) => m.user_id !== targetId));
     try {
       await serversApi.kickMember(server.id, targetId);
@@ -304,7 +358,6 @@ export function MembersPanel({
     setBanDurationUnit("hours");
     setLoadingBan(memberId);
     setActionError(null);
-    // Optimistic: remove from list immediately
     setMembers(members.filter((m) => m.user_id !== memberId));
     try {
       await serversApi.banMember(server.id, memberId, {
@@ -354,7 +407,7 @@ export function MembersPanel({
 
   if (!server) {
     return (
-      <aside className="h-full flex flex-col bg-[#F5F5F5] border-l border-[#D5DAE0] p-3 overflow-auto">
+      <aside className="flex flex-col w-60 min-h-full bg-[#F5F5F5] border-l border-[#D5DAE0] p-3 overflow-auto">
         <h3 className="text-[14px] font-semibold text-[#003D82] mb-3">
           {isEnglish ? "Members" : "Membres"}
         </h3>
@@ -366,14 +419,18 @@ export function MembersPanel({
   }
 
   const isOwner = !!currentUser && server.owner_id === currentUser.id;
-  const canBan = isOwner || members.find((m) => m.user_id === currentUser?.id)?.role === "Admin";
+  const currentUserRole = members.find((m) => m.user_id === currentUser?.id)?.role;
+  const isPedagoOrOwner = isOwner || currentUserRole === "Admin";
+  const isModerator = currentUserRole === "Moderator";
+  const canBan = isPedagoOrOwner;
 
-  // Sort: online first, then by role priority
+  // Presence helpers
+  const myRawStatus = presence[currentUser?.id ?? ""]?.status?.toLowerCase() ?? "online";
+  const myStatusConfig = STATUS_CONFIG[myRawStatus] ?? STATUS_CONFIG.online;
+
   const sortedMembers = [...members].sort((a, b) => {
-    const aOnline =
-      presence[a.user_id]?.status?.toLowerCase() === "online" ? 0 : 1;
-    const bOnline =
-      presence[b.user_id]?.status?.toLowerCase() === "online" ? 0 : 1;
+    const aOnline = presence[a.user_id]?.status?.toLowerCase() === "online" ? 0 : 1;
+    const bOnline = presence[b.user_id]?.status?.toLowerCase() === "online" ? 0 : 1;
     if (aOnline !== bOnline) return aOnline - bOnline;
     const rolePriority: Record<string, number> = {
       Owner: 0,
@@ -384,12 +441,20 @@ export function MembersPanel({
     return (rolePriority[a.role] ?? 4) - (rolePriority[b.role] ?? 4);
   });
 
-  const onlineCount = members.filter(
-    (m) => presence[m.user_id]?.status?.toLowerCase() === "online",
+  const offlineCount = members.filter(
+    (m) => (presence[m.user_id]?.status?.toLowerCase() ?? "offline") === "offline",
   ).length;
 
+  const categoryOrder = ["PÉDAGO", "STAFF", "ÉTUDIANTS"];
+  const grouped = categoryOrder
+    .map((cat) => ({
+      label: cat,
+      members: sortedMembers.filter((m) => (ROLE_CATEGORY[m.role] ?? "ÉTUDIANTS") === cat),
+    }))
+    .filter((g) => g.members.length > 0);
+
   return (
-    <aside className="h-full w-full flex flex-col bg-[#F5F5F5] border-l border-[#D5DAE0] overflow-hidden">
+    <aside className="flex flex-col w-60 min-h-full bg-[#F5F5F5] border-l border-[#D5DAE0] overflow-hidden">
       {/* Kick confirmation modal */}
       <ConfirmActionDialog
         open={!!kickTarget}
@@ -508,35 +573,52 @@ export function MembersPanel({
       </Dialog>
 
       {/* Header */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-[#D5DAE0] shrink-0">
-        <span className="text-[#003D82] text-[14px] font-semibold">
-          {language === "en" ? "Members" : "Membres"}
-        </span>
-        <span className="flex items-center gap-1 text-[13px] text-[#8A929C]">
-          <span className="w-2 h-2 rounded-full bg-[#2BAE5C] inline-block" />
-          {membersLoading ? "…" : onlineCount}
-        </span>
-      </div>
-
-      {/* Personal status control */}
-      {currentUser && (
-        <div className="px-4 py-2 flex items-center gap-2 border-b border-[#D5DAE0] shrink-0">
-          <label className="text-[11px] text-[#8A929C] shrink-0">Statut :</label>
-          <select
-            value={presence?.[currentUser.id]?.status ?? "online"}
-            onChange={(e) =>
-              setPresence?.(
-                e.target.value as "online" | "idle" | "dnd" | "offline",
-              )
-            }
-            className="flex-1 text-[11px] border border-[#D5DAE0] rounded px-2 py-1 bg-white text-[#6B737D] focus:outline-none"
-          >
-            <option value="online">En ligne</option>
-            <option value="idle">Inactif</option>
-            <option value="dnd">Ne pas déranger</option>
-          </select>
+      <div className="px-4 pt-3 pb-2 border-b border-[#D5DAE0] shrink-0">
+        <div className="flex items-center justify-between">
+          <span className="text-[14px] font-semibold text-[#003D82]">
+            {isEnglish ? "Members" : "Membres"} · {members.length}
+          </span>
         </div>
-      )}
+
+        {/* Presence selector */}
+        {currentUser && (
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C]">
+              {isEnglish ? "My status" : "Mon statut"}
+            </span>
+            <div className="relative" ref={presenceRef}>
+              <button
+                onClick={() => setPresenceOpen((v) => !v)}
+                className="flex items-center gap-1.5 text-[12px] text-[#333333] hover:text-[#003D82] transition-colors"
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${myStatusConfig.dot}`} />
+                <span>{isEnglish ? myStatusConfig.label : myStatusConfig.labelFr}</span>
+              </button>
+              {presenceOpen && (
+                <div className="absolute top-6 right-0 z-50 bg-white rounded-lg shadow-lg border border-[#D5DAE0] min-w-45 py-1">
+                  {(["online", "dnd", "offline"] as const).map((status) => {
+                    const cfg = STATUS_CONFIG[status];
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] hover:bg-[#ECEEF1] text-[#333333]"
+                        onClick={() => {
+                          setPresence?.(status as "online" | "idle" | "dnd" | "offline");
+                          setPresenceOpen(false);
+                        }}
+                      >
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+                        {isEnglish ? cfg.label : cfg.labelFr}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {actionError && (
         <div className="mx-3 mt-2 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -546,145 +628,140 @@ export function MembersPanel({
         </div>
       )}
 
+      {/* Member list grouped by role category */}
       {membersLoading ? (
         <p className="text-sm text-[#8A929C] px-4 py-3">
-          {language === "en" ? "Loading..." : "Chargement..."}
+          {isEnglish ? "Loading..." : "Chargement..."}
         </p>
       ) : (
-        <ul className="flex-1 overflow-auto py-2 space-y-0.5">
-          {sortedMembers.map((m) => {
-            const memberIsOwner = m.role === "Owner";
-            const isSelf = currentUser?.id === m.user_id;
-            const showKick = isOwner && !memberIsOwner && !isSelf;
-            const showBan = canBan && !memberIsOwner && !isSelf;
+        <div className="flex-1 overflow-y-auto py-2">
+          {grouped.map(({ label, members: groupMembers }) => (
+            <div key={label}>
+              {/* Category header */}
+              <div className="flex items-center gap-1 px-4 pt-3 pb-1 text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C]">
+                {label} · {groupMembers.length}
+              </div>
 
-            const presenceStatus = presence[m.user_id]?.status?.toLowerCase();
-            const isOnline = presenceStatus === "online";
-            const isDnd = presenceStatus === "dnd";
+              {groupMembers.map((m) => {
+                const memberIsOwner = m.role === "Owner";
+                const isSelf = currentUser?.id === m.user_id;
+                const canActOnMember = !memberIsOwner && !isSelf;
+                // Show "..." only for users who have moderation rights
+                const showMenu = canActOnMember && (isPedagoOrOwner || isModerator);
+                // Role-change items only for PÉDAGO/Owner
+                const canChangeRoleForMember = canActOnMember && isPedagoOrOwner;
+                const showKick = canActOnMember && (isPedagoOrOwner || isModerator);
+                const showBan = canActOnMember && (isPedagoOrOwner || isModerator);
 
-            return (
-              <li key={m.user_id} className="flex flex-col gap-1 mx-2">
-                <div className="h-8 flex items-center gap-3 px-2 rounded hover:bg-[#ECEEF1] cursor-pointer group/member transition-colors">
-                  {/* Avatar with presence dot */}
-                  <div className="relative shrink-0">
-                    <div className="w-7 h-7 rounded-full bg-[#E6F0FB] flex items-center justify-center text-[11px] font-semibold font-mono text-[#003D82] overflow-hidden">
-                      {m.avatar_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}${m.avatar_url}`}
-                          alt={m.username}
-                          className="w-full h-full object-cover"
+                const presenceStatus = presence[m.user_id]?.status?.toLowerCase();
+                const isOnline = presenceStatus === "online";
+                const isDnd = presenceStatus === "dnd";
+
+                return (
+                  <div key={m.user_id} className="mx-2">
+                    <div className="h-8 flex items-center gap-3 px-2 rounded hover:bg-[#ECEEF1] cursor-pointer group transition-colors duration-120">
+                      {/* Avatar with presence dot */}
+                      <div className="relative w-7 h-7 rounded-full shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-[#E6F0FB] flex items-center justify-center text-[11px] font-mono font-semibold text-[#003D82] overflow-hidden">
+                          {m.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}${m.avatar_url}`}
+                              alt={m.username}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            (m.username || "U").slice(0, 2).toUpperCase()
+                          )}
+                        </div>
+                        <span
+                          className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[#F5F5F5] ${
+                            isOnline ? "bg-[#2BAE5C]" : isDnd ? "bg-[#D93F3F]" : "bg-[#8A929C]"
+                          }`}
                         />
-                      ) : (
-                        (m.username || "U").slice(0, 2).toUpperCase()
-                      )}
-                    </div>
-                    <span
-                      className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-[#F5F5F5] ${
-                        isOnline ? "bg-[#2BAE5C]" : isDnd ? "bg-[#D93F3F]" : "bg-[#8A929C]"
-                      }`}
-                      title={presence[m.user_id]?.status ?? "offline"}
-                    />
-                  </div>
+                      </div>
 
-                  {/* Name + role */}
-                  <span className={`flex-1 text-[13px] truncate ${isOnline || isDnd ? "text-[#333333]" : "text-[#8A929C]"}`}>
-                    {m.username || "Utilisateur"}
-                  </span>
-                  <span className="text-[10px] font-mono font-semibold text-[#8A929C] whitespace-nowrap">
-                    {ROLE_BADGE[m.role] ?? m.role.toUpperCase()}
-                  </span>
-
-                  {/* Action icons — visible on hover */}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover/member:opacity-100 transition-opacity shrink-0">
-                    {currentUser && m.user_id !== currentUser.id && (
-                      <button
-                        onClick={() => { setActivePeer(m.user_id); router.push("/dm"); }}
-                        title="Message privé"
-                        className="w-6 h-6 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#D5DAE0] hover:text-[#333333] transition-colors"
+                      {/* Name */}
+                      <span
+                        className={`flex-1 truncate text-[13px] ${
+                          isOnline || isDnd ? "text-[#333333]" : "text-[#8A929C]"
+                        } ${loadingRole === m.user_id ? "opacity-50" : ""}`}
                       >
-                        <i className="bi bi-chat-dots text-[12px]" />
-                      </button>
-                    )}
-                    {(showKick || showBan) && (
-                      <MemberMenu
-                        showKick={showKick}
-                        showBan={showBan}
-                        onKick={() => setKickTarget({ id: m.user_id, username: m.username })}
-                        onBanPermanent={() => { setBanTarget({ id: m.user_id, username: m.username, permanent: true }); setBanReason(""); }}
-                        onBanTemporary={() => { setBanTarget({ id: m.user_id, username: m.username, permanent: false }); setBanReason(""); setBanDurationValue(1); setBanDurationUnit("hours"); }}
-                        isEnglish={isEnglish}
-                      />
-                    )}
-                  </div>
-                </div>
+                        {m.username || "Utilisateur"}
+                      </span>
 
-                {isOwner && !memberIsOwner && (
-                  <select
-                    value={m.role}
-                    onChange={(e) => onChangeRole(m.user_id, e.target.value)}
-                    disabled={loadingRole === m.user_id}
-                    className="text-[11px] border border-[#D5DAE0] rounded px-1 py-0.5 bg-white text-[#6B737D] ml-10"
-                  >
-                    {ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>{ROLE_LABELS[role] || role}</option>
-                    ))}
-                  </select>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                      {/* Role tag */}
+                      <span className={`text-[10px] font-mono font-semibold tracking-wider ${ROLE_TAG_CLASS[m.role] ?? "text-[#6B737D]"}`}>
+                        {ROLE_TAG[m.role] ?? m.role.slice(0, 3).toUpperCase()}
+                      </span>
+
+                      {/* Actions — visible on hover */}
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        {currentUser && m.user_id !== currentUser.id && (
+                          <button
+                            onClick={() => { setActivePeer(m.user_id); router.push("/dm"); }}
+                            title="Message privé"
+                            className="w-6 h-6 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#D5DAE0] hover:text-[#333333] transition-colors"
+                          >
+                            <i className="bi bi-chat-dots text-[12px]" />
+                          </button>
+                        )}
+                        {showMenu && (
+                          <MemberMenu
+                            canChangeRole={canChangeRoleForMember}
+                            showKick={showKick}
+                            showBan={showBan}
+                            onRolePedago={() => void onChangeRole(m.user_id, "Admin")}
+                            onRoleStaff={() => void onChangeRole(m.user_id, "Moderator")}
+                            onRoleMember={() => void onChangeRole(m.user_id, "Member")}
+                            onKick={() => setKickTarget({ id: m.user_id, username: m.username })}
+                            onBanTemporary={() => {
+                              setBanTarget({ id: m.user_id, username: m.username, permanent: false });
+                              setBanReason("");
+                              setBanDurationValue(1);
+                              setBanDurationUnit("hours");
+                            }}
+                            onBanPermanent={() => {
+                              setBanTarget({ id: m.user_id, username: m.username, permanent: true });
+                              setBanReason("");
+                            }}
+                            isEnglish={isEnglish}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* Active bans section */}
-      <div className="border-t border-[#D5DAE0] pt-3 px-4 pb-3 shrink-0">
-        <h4 className="text-[11px] font-mono font-semibold uppercase tracking-[0.06em] text-[#8A929C] mb-2">
-          {isEnglish ? "Active bans" : "Bans actifs"}
-        </h4>
-        {loadingBans ? (
-          <p className="text-xs text-[#8A929C]">
-            {isEnglish ? "Loading..." : "Chargement..."}
-          </p>
-        ) : bans.length === 0 ? (
-          <p className="text-xs text-[#8A929C]">
-            {isEnglish ? "No active bans." : "Aucun ban actif."}
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {bans.map((ban) => (
-              <div
-                key={ban.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-[#D5DAE0] p-2 text-xs"
+      {/* Offline count footer */}
+      {offlineCount > 0 && (
+        <div className="px-4 py-3 text-[11px] text-[#8A929C] font-mono">
+          +{offlineCount} hors ligne
+        </div>
+      )}
+
+      {/* Hidden bans section — preserves ban/unban logic */}
+      <div className="hidden">
+        {loadingBans && <span />}
+        {bans.map((ban) => (
+          <div key={ban.id}>
+            <span>{ban.username}</span>
+            <span>{formatExpiry(ban.expires_at, isEnglish)}</span>
+            {canBan && (
+              <button
+                onClick={() => onUnban(ban.user_id)}
+                disabled={loadingUnban === ban.user_id}
               >
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{ban.username}</div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {ban.reason || (isEnglish ? "No reason" : "Sans motif")}
-                  </div>
-                  <div className={`text-[10px] font-medium ${!ban.expires_at ? "text-red-500" : "text-muted-foreground"}`}>
-                    {formatExpiry(ban.expires_at, isEnglish)}
-                  </div>
-                </div>
-                {canBan && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onUnban(ban.user_id)}
-                    disabled={loadingUnban === ban.user_id}
-                    className="h-6 px-2 text-[10px]"
-                  >
-                    {loadingUnban === ban.user_id
-                      ? "..."
-                      : isEnglish
-                        ? "Unban"
-                        : "Débannir"}
-                  </Button>
-                )}
-              </div>
-            ))}
+                {isEnglish ? "Unban" : "Débannir"}
+              </button>
+            )}
           </div>
-        )}
+        ))}
       </div>
     </aside>
   );

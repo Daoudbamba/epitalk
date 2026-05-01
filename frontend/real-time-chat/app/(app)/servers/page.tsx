@@ -27,7 +27,7 @@ export default function ServersPage() {
   return (
     <ServersLoader>
       {({ refresh }) => (
-        <div className="h-screen w-screen overflow-hidden bg-[#FAFBFC] flex items-center justify-center p-5">
+        <div className="h-screen w-screen overflow-hidden bg-[#FAFBFC] p-5">
           {/* Mobile top bar */}
           {!isDesktop && (
             <div className="fixed top-0 left-0 right-0 z-30 h-12 bg-white border-b border-[#D5DAE0] flex items-center justify-between px-3">
@@ -49,27 +49,24 @@ export default function ServersPage() {
 
           {/* Desktop layout */}
           {isDesktop ? (
-            <div
-              className="flex h-full w-full max-h-190 rounded-xl overflow-hidden border border-[#D5DAE0] bg-white"
-              style={{ boxShadow: "0 1px 2px rgba(15,24,40,0.04), 0 1px 3px rgba(15,24,40,0.03)" }}
-            >
+            <div className="flex h-full w-full gap-5">
               {/* Rail */}
-              <div className="h-full shrink-0">
+              <div className="h-full w-22 shrink-0 rounded-xl border border-[#D5DAE0] overflow-hidden shadow-[0_1px_2px_rgba(15,24,40,0.04),0_1px_3px_rgba(15,24,40,0.03)]">
                 <ServersRail onRefresh={refresh} />
               </div>
 
               {/* Channels */}
-              <div className="h-full w-60 shrink-0">
+              <div className="h-full w-60 shrink-0 rounded-xl border border-[#D5DAE0] overflow-hidden shadow-[0_1px_2px_rgba(15,24,40,0.04),0_1px_3px_rgba(15,24,40,0.03)]">
                 <ChannelsSidebar onOpenSettings={() => setOpenServerSettings(true)} />
               </div>
 
               {/* Chat */}
-              <div className="flex-1 min-w-0 h-full">
+              <div className="flex-1 min-w-0 h-full rounded-xl border border-[#D5DAE0] overflow-hidden shadow-[0_1px_2px_rgba(15,24,40,0.04),0_1px_3px_rgba(15,24,40,0.03)]">
                 <ChatPanel />
               </div>
 
               {/* Members */}
-              <div className="h-full w-60 shrink-0">
+              <div className="h-full w-60 shrink-0 rounded-xl border border-[#D5DAE0] overflow-hidden shadow-[0_1px_2px_rgba(15,24,40,0.04),0_1px_3px_rgba(15,24,40,0.03)]">
                 <MembersPanel onRefresh={refresh} />
               </div>
             </div>

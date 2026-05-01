@@ -12,7 +12,7 @@ impl ServerRepository {
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<Server>> {
         let server = sqlx::query_as::<_, Server>(
             r#"
-            SELECT id, name, owner_id, created_at, updated_at
+            SELECT id, name, owner_id, avatar_url, created_at, updated_at
             FROM servers
             WHERE id = $1
             "#,
@@ -28,7 +28,7 @@ impl ServerRepository {
     pub async fn find_by_user_id(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<Server>> {
         let servers = sqlx::query_as::<_, Server>(
             r#"
-            SELECT s.id, s.name, s.owner_id, s.created_at, s.updated_at
+            SELECT s.id, s.name, s.owner_id, s.avatar_url, s.created_at, s.updated_at
             FROM servers s
             INNER JOIN memberships m ON s.id = m.server_id
             WHERE m.user_id = $1
@@ -44,15 +44,13 @@ impl ServerRepository {
 
     /// Create a new server (also creates owner membership)
     pub async fn create(pool: &PgPool, name: &str, owner_id: Uuid) -> AppResult<Server> {
-        // Start transaction
         let mut tx = pool.begin().await?;
 
-        // Create server
         let server = sqlx::query_as::<_, Server>(
             r#"
             INSERT INTO servers (name, owner_id)
             VALUES ($1, $2)
-            RETURNING id, name, owner_id, created_at, updated_at
+            RETURNING id, name, owner_id, avatar_url, created_at, updated_at
             "#,
         )
         .bind(name)
@@ -60,7 +58,6 @@ impl ServerRepository {
         .fetch_one(&mut *tx)
         .await?;
 
-        // Create owner membership
         sqlx::query(
             r#"
             INSERT INTO memberships (user_id, server_id, role)
@@ -73,7 +70,6 @@ impl ServerRepository {
         .execute(&mut *tx)
         .await?;
 
-        // Create default #general channel
         sqlx::query(
             r#"
             INSERT INTO channels (server_id, name, kind)
@@ -89,18 +85,37 @@ impl ServerRepository {
         Ok(server)
     }
 
-    /// Update server
+    /// Update server name
     pub async fn update(pool: &PgPool, id: Uuid, name: &str) -> AppResult<Server> {
         let server = sqlx::query_as::<_, Server>(
             r#"
             UPDATE servers
             SET name = $2, updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, owner_id, created_at, updated_at
+            RETURNING id, name, owner_id, avatar_url, created_at, updated_at
             "#,
         )
         .bind(id)
         .bind(name)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Server not found".to_string()))?;
+
+        Ok(server)
+    }
+
+    /// Update server avatar URL
+    pub async fn update_avatar(pool: &PgPool, id: Uuid, avatar_url: &str) -> AppResult<Server> {
+        let server = sqlx::query_as::<_, Server>(
+            r#"
+            UPDATE servers
+            SET avatar_url = $2, updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, name, owner_id, avatar_url, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(avatar_url)
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| AppError::NotFound("Server not found".to_string()))?;
@@ -131,13 +146,12 @@ impl ServerRepository {
     ) -> AppResult<Server> {
         let mut tx = pool.begin().await?;
 
-        // Update server owner
         let server = sqlx::query_as::<_, Server>(
             r#"
             UPDATE servers
             SET owner_id = $2, updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, owner_id, created_at, updated_at
+            RETURNING id, name, owner_id, avatar_url, created_at, updated_at
             "#,
         )
         .bind(server_id)
@@ -145,7 +159,6 @@ impl ServerRepository {
         .fetch_one(&mut *tx)
         .await?;
 
-        // Update new owner's role to OWNER
         sqlx::query(
             r#"
             UPDATE memberships
@@ -158,7 +171,6 @@ impl ServerRepository {
         .execute(&mut *tx)
         .await?;
 
-        // Demote old owner to ADMIN
         sqlx::query(
             r#"
             UPDATE memberships

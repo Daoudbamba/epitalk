@@ -8,6 +8,9 @@ type DmNew = z.infer<typeof DmNewSchema>;
 type DmEdited = z.infer<typeof DmEditedSchema>;
 type DmDeleted = z.infer<typeof DmDeletedSchema>;
 
+// Deduplication — prevents triple notifications when joinDm is called multiple times
+const seenDmMessageIds = new Set<string>();
+
 function getPeerId(conversationId: string, myId: string): string | null {
   if (!conversationId.startsWith("dm:")) return null;
   const parts = conversationId.slice(3).split(":");
@@ -66,12 +69,17 @@ export const dmHandler = {
 
     // Trigger notification for incoming DM (not own messages)
     if (author_id !== authUser.id) {
-      // Detect if this is a historical message (loaded from archive during JoinDm)
-      // Messages older than 5 seconds are considered historical
-      const messageTimestamp = new Date(created_at).getTime();
-      const now = Date.now();
-      const messageAgeMs = now - messageTimestamp;
-      const isHistorical = messageAgeMs > 5000; // 5 seconds threshold
+      // Deduplication: same message can arrive multiple times when joinDm is called
+      // more than once (e.g. reconnect + peer-change effects firing together)
+      if (seenDmMessageIds.has(id)) return;
+      seenDmMessageIds.add(id);
+      if (seenDmMessageIds.size > 500) {
+        const first = seenDmMessageIds.values().next().value;
+        if (first) seenDmMessageIds.delete(first);
+      }
+
+      const messageAgeMs = Date.now() - new Date(created_at).getTime();
+      const isHistorical = messageAgeMs > 5000;
 
       let notifContent: string;
       try {
@@ -80,6 +88,11 @@ export const dmHandler = {
       } catch {
         notifContent = content.substring(0, 100);
       }
+
+      // Skip if the user is currently viewing this DM conversation and the window is visible
+      const activePeerId = useDmStore.getState().activePeerId;
+      const isPageVisible = typeof document !== "undefined" && document.visibilityState === "visible";
+      if (activePeerId === peerId && isPageVisible) return;
 
       useNotificationStore.getState().showNotification({
         type: "dm",

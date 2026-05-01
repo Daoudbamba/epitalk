@@ -91,6 +91,13 @@ export function createServersApi(client: FetchClient) {
     deleteInvite: (serverId: string, inviteCode: string) =>
       client.delete<void>(`/servers/${serverId}/invites/${inviteCode}`),
     
+    // Upload server avatar (multipart, owner only)
+    uploadAvatar: (serverId: string, file: File) => {
+      const formData = new FormData();
+      formData.append("avatar", file);
+      return client.postFile<Server>(`/servers/${serverId}/avatar`, formData);
+    },
+
     // Join server via invite code (top-level route)
     joinByInvite: (code: string) =>
       client.post<Server>("/join", { code }),

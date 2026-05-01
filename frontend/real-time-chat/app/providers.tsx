@@ -12,7 +12,7 @@ export function Providers({
   return (
     <LanguageProvider>
       {children}
-      <Toaster position="top-right" richColors />
+      <Toaster position="top-right" richColors duration={6000} visibleToasts={3} />
     </LanguageProvider>
   );
 }

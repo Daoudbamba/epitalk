@@ -16,8 +16,8 @@ export const translations = {
     hero: {
       title: "Connecter, discuter, partager.",
       subtitle:
-        "EpiTalk est une plateforme de discussion en temps réel pensée pour créer, organiser et faire grandir des communautés modernes.",
-      ctaPrimary: "Créer mon premier serveur",
+        "EpiTalk est l'outil de messagerie interne d'EPITECH, conçu pour favoriser et sécuriser les échanges au sein de l'université.",
+      ctaPrimary: "Commencer à utiliser EpiTalk",
     },
     stats: {
       activitiesTitle: "Activités",
@@ -41,8 +41,8 @@ export const translations = {
     hero: {
       title: "Connect, chat, share.",
       subtitle:
-        "EpiTalk is a real-time messaging platform designed to create, organize, and grow modern communities.",
-      ctaPrimary: "Create my first server",
+        "EpiTalk is EPITECH's internal messaging tool, designed to foster and secure exchanges within the university.",
+      ctaPrimary: "Start using EpiTalk",
     },
     stats: {
       activitiesTitle: "Activity",

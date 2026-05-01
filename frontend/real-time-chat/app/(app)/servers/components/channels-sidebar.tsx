@@ -142,14 +142,14 @@ export function ChannelsSidebar({
         : "border-blue-200 text-blue-700 bg-blue-50";
 
   return (
-    <div className="h-full flex flex-col bg-[#F5F5F5] border-r border-[#D5DAE0] overflow-hidden">
+    <div className="flex flex-col w-60 min-h-full bg-[#F5F5F5] border-r border-[#D5DAE0] overflow-hidden">
       {/* Header */}
       <div className="h-14 flex items-center justify-between px-4 border-b border-[#D5DAE0] shrink-0">
-        <span className="text-[#003D82] text-[15px] font-semibold truncate">
+        <span className="text-[#003D82] text-[15px] font-semibold truncate flex-1">
           {activeServer?.name ??
             (language === "en" ? "No server" : "Aucun serveur")}
         </span>
-        <ChevronDown size={16} className="text-[#8A929C] shrink-0 ml-1" />
+        <ChevronDown size={16} className="text-[#8A929C] w-4 h-4 cursor-pointer hover:text-[#333333] shrink-0 ml-1" />
       </div>
 
       {/* Channels list */}
@@ -173,26 +173,35 @@ export function ChannelsSidebar({
         ) : (
           channels.map((c) => {
             const active = c.id === activeChannelId;
+            const unread = !active && (c as any).unread_count > 0;
+            const mentions = (c as any).mention_count as number | undefined;
             return (
-              <div key={c.id} className="flex items-center gap-1 group/item">
-                <button
-                  onClick={() => setActiveChannel(c.id)}
-                  className={[
-                    "flex-1 h-9 flex items-center gap-2 px-2 rounded text-[14px] cursor-pointer select-none transition-colors duration-120 truncate",
-                    active
-                      ? "bg-[#E6F0FB] text-[#0066CC] font-medium hover:bg-[#DCE9F8]"
+              <div
+                key={c.id}
+                onClick={() => setActiveChannel(c.id)}
+                className={[
+                  "group relative flex items-center gap-2 h-9 px-2 rounded cursor-pointer select-none transition-colors duration-120",
+                  active
+                    ? "bg-[#E6F0FB] text-[#0066CC] font-medium hover:bg-[#DCE9F8]"
+                    : unread
+                      ? "text-[#333333] font-medium hover:bg-[#ECEEF1]"
                       : "text-[#6B737D] hover:bg-[#ECEEF1] hover:text-[#333333]",
-                  ].join(" ")}
-                >
-                  <Hash size={14} className="shrink-0" />
-                  <span className="flex-1 truncate text-left">{c.name}</span>
-                </button>
-
-                {/* Delete button — visible on hover, owner only */}
+                ].join(" ")}
+              >
+                {unread && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0066CC] absolute left-0.5" />
+                )}
+                <Hash size={14} className="w-3.5 h-3.5 shrink-0" />
+                <span className="flex-1 truncate text-[14px]">{c.name}</span>
+                {mentions && mentions > 0 && (
+                  <span className="min-w-4.5 h-4.5 rounded-full bg-[#FF6B35] text-white text-[10px] font-mono font-semibold flex items-center justify-center px-1">
+                    {mentions}
+                  </span>
+                )}
                 <button
-                  onClick={() => onDelete(c.id)}
+                  onClick={(e) => { e.stopPropagation(); onDelete(c.id); }}
                   disabled={!activeServerId || loading || !isOwner}
-                  className="w-5.5 h-5.5 rounded flex items-center justify-center opacity-0 group-hover/item:opacity-100 transition-all duration-120 text-[#8A929C] hover:text-[#FF6B35] hover:bg-[#ECEEF1] disabled:cursor-not-allowed disabled:opacity-30"
+                  className="opacity-0 group-hover:opacity-100 w-5.5 h-5.5 rounded flex items-center justify-center text-[#8A929C] hover:text-[#FF6B35] hover:bg-[#ECEEF1] transition-all duration-120 disabled:cursor-not-allowed disabled:opacity-30"
                   title={isOwner ? "Supprimer" : "Réservé au créateur"}
                 >
                   <Trash2 size={14} />
@@ -218,7 +227,7 @@ export function ChannelsSidebar({
           <button
             onClick={onOpenSettings}
             disabled={!activeServerId}
-            className="flex-1 flex items-center gap-2 h-9 px-3 rounded border border-[#D5DAE0] bg-transparent text-[#6B737D] text-[13px] hover:bg-[#F5F7FA] hover:text-[#333333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 px-3 rounded border border-[#D5DAE0] bg-transparent text-[#6B737D] text-[13px] hover:bg-[#F5F7FA] hover:text-[#333333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             title={language === "en" ? "Server settings" : "Paramètres serveur"}
           >
             <Settings size={14} />
@@ -242,6 +251,7 @@ export function ChannelsSidebar({
         onOpenChange={setOpenCreateChannel}
         serverId={activeServerId}
         onSuccess={handleChannelCreated}
+        serverName={activeServer?.name}
       />
     </div>
   );

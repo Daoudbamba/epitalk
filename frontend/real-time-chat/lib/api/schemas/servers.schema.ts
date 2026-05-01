@@ -5,6 +5,7 @@ export const ServerSchema = z.object({
   id: z.string(),
   name: z.string(),
   owner_id: z.string(),
+  avatar_url: z.string().nullable().optional(),
   created_at: z.string(),
   member_count: z.number().optional(),
 });

@@ -2,6 +2,14 @@
 @import "tw-animate-css";
 @import "bootstrap-icons/font/bootstrap-icons.css";
 
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  color: #333333;
+}
+.font-mono, code, pre, kbd {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
 @custom-variant dark (&:is(.dark *), &:is(.dim *));
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -298,7 +306,7 @@
     @apply bg-background text-foreground;
     font-family: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
   }
-  code, pre, .font-mono {
+  code, pre, kbd, .font-mono {
     font-family: 'IBM Plex Mono', monospace;
   }
 }

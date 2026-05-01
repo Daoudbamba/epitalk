@@ -64,7 +64,7 @@ export const HeroHeader = () => {
                                     aria-label={
                                         language === "fr" ? "Switch to English" : "Passer en français"
                                     }
-                                    className="hidden text-xs font-medium sm:inline-flex"
+                                    className="hidden text-xs font-medium sm:inline-flex hover:text-[#0066CC]"
                                 >
                                     {language === "fr" ? "FR" : "EN"}
                                 </Button>
@@ -86,7 +86,7 @@ export const HeroHeader = () => {
                                     <li key={index}>
                                         <Link
                                             href={item.href}
-                                            className="text-muted-foreground hover:text-accent-foreground block duration-150"
+                                            className="text-muted-foreground hover:text-[#0066CC] block duration-150"
                                         >
                                             <span>{item.name}</span>
                                         </Link>
@@ -102,7 +102,7 @@ export const HeroHeader = () => {
                                         <li key={index}>
                                             <Link
                                                 href={item.href}
-                                                className="text-muted-foreground hover:text-accent-foreground block duration-150"
+                                                className="text-muted-foreground hover:text-[#0066CC] block duration-150"
                                             >
                                                 <span>{item.name}</span>
                                             </Link>
@@ -115,7 +115,7 @@ export const HeroHeader = () => {
                                     asChild
                                     variant="outline"
                                     size="sm"
-                                    className={cn(isScrolled && "lg:hidden")}
+                                    className={cn("hover:bg-[#0066CC] hover:text-white hover:border-[#0066CC]", isScrolled && "lg:hidden")}
                                 >
                                     <Link href="/login">
                                         <span>{nav.signIn}</span>
@@ -124,7 +124,7 @@ export const HeroHeader = () => {
                                 <Button
                                     asChild
                                     size="sm"
-                                    className={cn(isScrolled && "lg:hidden")}
+                                    className={cn("bg-[#0066CC] hover:bg-[#0055AA]", isScrolled && "lg:hidden")}
                                 >
                                     <Link href="/register">
                                         <span>{nav.signUp}</span>
@@ -133,7 +133,7 @@ export const HeroHeader = () => {
                                 <Button
                                     asChild
                                     size="sm"
-                                    className={cn(isScrolled ? "lg:inline-flex " : "hidden")}
+                                    className={cn("bg-[#0066CC] hover:bg-[#0055AA]", isScrolled ? "lg:inline-flex" : "hidden")}
                                 >
                                     <Link href="/login">
                                         <span>{nav.joinServer}</span>

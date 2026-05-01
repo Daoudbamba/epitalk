@@ -4,6 +4,7 @@ import { useAuthStore } from "@/store/auth.store";
 import React from "react";
 import { ServerMessageToast } from "@/components/notifications/server-message-toast";
 import { DMMessageToast } from "@/components/notifications/dm-message-toast";
+import { MentionToast } from "@/components/notifications/mention-toast";
 
 export type NotificationType = "dm" | "mention" | "channel_update" | "server_message" | "info" | "error";
 
@@ -130,12 +131,24 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         })
       );
     } else if (type === "mention") {
-      const toastConfig = {
-        title,
-        description: message,
-      };
-      console.log("📢 [Notif] 🟢 Showing MENTION toast (sonner success)");
-      toast.success(title, toastConfig);
+      console.log("📢 [Notif] 🟢 Showing MENTION toast (custom component)");
+      toast.custom((t: any) =>
+        React.createElement(MentionToast, {
+          serverName: data?.serverName,
+          channelName: data?.channelName,
+          username: data?.username,
+          message: message,
+          onDismiss: () => toast.dismiss(t.id),
+          onView: () => {
+            window.dispatchEvent(
+              new CustomEvent("notification:server-message-click", {
+                detail: { ...data },
+              })
+            );
+            toast.dismiss(t.id);
+          },
+        })
+      );
     } else if (type === "error") {
       console.log("📢 [Notif] 🔴 Showing ERROR toast (sonner)");
       toast.error(title);

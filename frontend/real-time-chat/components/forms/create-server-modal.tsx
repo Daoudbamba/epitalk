@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { X, Plus, Edit3 } from "lucide-react";
 import { serversApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 import { useLanguage } from "@/components/language-provider";
@@ -31,6 +32,9 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
   const [joinError, setJoinError] = useState<string | null>(null);
   const [shakeCreate, setShakeCreate] = useState(false);
   const [shakeJoin, setShakeJoin] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { language } = useLanguage();
   const isEnglish = language === "en";
 
@@ -44,6 +48,13 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
     }
   };
 
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || file.size > 5 * 1024 * 1024) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
   const handleCreate = async () => {
     const trimmed = createName.trim();
     if (!trimmed) {
@@ -54,9 +65,18 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
     setLoadingCreate(true);
     setCreateError(null);
     try {
-      await serversApi.create(trimmed);
+      const server = await serversApi.create(trimmed);
+      if (avatarFile) {
+        try {
+          await serversApi.uploadAvatar(server.id, avatarFile);
+        } catch {
+          // Avatar upload failure is non-blocking — server is still created
+        }
+      }
       await onSuccess();
       setCreateName("");
+      setAvatarFile(null);
+      setAvatarPreview(null);
       onOpenChange(false);
     } catch (err) {
       setCreateError(getErrorMessage(err));
@@ -92,6 +112,8 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
     setJoinCode("");
     setCreateError(null);
     setJoinError(null);
+    setAvatarFile(null);
+    setAvatarPreview(null);
     onOpenChange(false);
   };
 
@@ -107,100 +129,147 @@ export function CreateServerModal({ open, onOpenChange, onSuccess }: CreateServe
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-50 bg-black/35" onClick={handleClose} />
-      <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-90 max-w-[calc(100vw-32px)] bg-white rounded-2xl p-6 shadow-lg">
+      {/* Overlay */}
+      <div className="fixed inset-0 z-50 bg-black/40" onClick={handleClose} />
 
-        {/* Avatar placeholder */}
-        <div className="flex justify-center mb-6">
-          <div className="relative w-16 h-16 group">
-            <div className="w-16 h-16 rounded-full bg-et-avatar-empty flex items-center justify-center">
-              <i className="bi bi-image text-et-muted text-xl" />
+      {/* Modal */}
+      <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white rounded-lg shadow-xl p-6 font-sans max-h-[90vh] overflow-y-auto">
+
+        {/* Close button */}
+        <button
+          onClick={handleClose}
+          disabled={loadingCreate || loadingJoin}
+          className="absolute top-4 right-4 w-7 h-7 rounded flex items-center justify-center text-[#8A929C] hover:bg-[#ECEEF1] hover:text-[#333333] transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Avatar upload */}
+        <div className="flex justify-center">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-24 h-24 rounded-full bg-[#DCE9F8] hover:bg-[#C5D9F2] flex items-center justify-center transition-colors overflow-hidden cursor-pointer"
+              style={avatarPreview ? { backgroundImage: `url(${avatarPreview})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+            >
+              {!avatarPreview && <Plus className="w-6 h-6 text-[#003D82]" />}
+            </button>
+            <div className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-[#0066CC] text-white flex items-center justify-center">
+              <Edit3 className="w-3.5 h-3.5" />
             </div>
-            <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-white border border-et-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
-              <i className="bi bi-pencil text-[9px] text-et-secondary" />
-            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
           </div>
         </div>
 
+        {/* Pre-title */}
+        <p className="text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C] mt-4 text-center">
+          NOUVEAU SERVEUR
+        </p>
+
+        {/* Title */}
+        <h2 className="text-[20px] font-semibold text-[#003D82] mt-1 text-center">
+          {isEnglish ? "Join or create a server" : "Rejoindre ou créer un serveur"}
+        </h2>
+
         {/* Section — Créer */}
-        <div className="mb-5">
-          <p className="text-[14px] font-medium text-et-title mb-0.5">
-            {isEnglish ? "Create a server" : "Créer un serveur"}
-          </p>
-          <p className="text-[12px] text-et-muted mb-3">
+        <div className="mt-5">
+          <div className="flex items-center justify-between">
+            <span className="text-[14px] font-medium text-[#333333]">
+              {isEnglish ? "Create a server" : "Créer un serveur"}
+            </span>
+            <span className="text-[12px] text-[#8A929C]">
+              {isEnglish ? "You will be creator" : "Vous serez créateur"}
+            </span>
+          </div>
+          <p className="text-[13px] text-[#6B737D] mt-1">
             {isEnglish
-              ? "Create your own server and invite your friends"
-              : "Créer votre propre serveur et invitez vos amis"}
+              ? "Create your own space and invite your classmates."
+              : "Créez votre propre espace et invitez vos camarades de promo."}
           </p>
-          <div className="flex gap-2">
+          <div className="mt-2 flex gap-2">
             <input
               value={createName}
               onChange={(e) => { setCreateName(e.target.value); setCreateError(null); }}
               onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-              placeholder={isEnglish ? "Server name..." : "Nom du serveur..."}
+              placeholder={isEnglish ? "Server name — e.g. Promo 2027" : "Nom du serveur — ex. Promo 2027"}
               disabled={loadingCreate}
               autoFocus
               className={[
-                "flex-1 h-9 px-3 text-[13px] rounded-lg border bg-white text-et-text placeholder:text-et-muted focus:outline-none focus:border-et-orange transition-colors",
-                shakeCreate ? "shake border-et-red-soft" : "border-et-border-input",
+                "flex-1 h-10 px-3 rounded border text-[14px] bg-white text-[#333333] placeholder:text-[#8A929C] focus:outline-none focus:border-[#0066CC] transition-colors",
+                shakeCreate ? "shake border-red-400" : "border-[#D5DAE0]",
               ].join(" ")}
             />
             <button
               onClick={handleCreate}
               disabled={loadingCreate}
-              className="h-9 px-3 rounded-lg border border-et-orange text-et-orange text-[13px] font-medium hover:bg-orange-50/50 transition-colors disabled:opacity-50 shrink-0"
+              className="px-6 h-10 rounded bg-[#0066CC] text-white text-[14px] font-medium hover:bg-[#0055AA] transition-colors disabled:opacity-50 shrink-0"
             >
               {loadingCreate ? "..." : isEnglish ? "Create" : "Créer"}
             </button>
           </div>
-          {createError && <p className="text-[11px] text-et-red-soft mt-1.5">{createError}</p>}
+          {createError && <p className="text-[11px] text-red-500 mt-1.5">{createError}</p>}
         </div>
 
-        <hr className="border-et-border mb-5" />
+        {/* Separator */}
+        <div className="mt-5 flex items-center gap-3">
+          <div className="flex-1 h-px bg-[#E1E5EA]" />
+          <span className="text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C]">ou</span>
+          <div className="flex-1 h-px bg-[#E1E5EA]" />
+        </div>
 
         {/* Section — Rejoindre */}
-        <div className="mb-6">
-          <p className="text-[14px] font-medium text-et-title mb-0.5">
-            {isEnglish ? "Join a server" : "Rejoindre un serveur"}
-          </p>
-          <p className="text-[12px] text-et-muted mb-3">
+        <div className="mt-5">
+          <div className="flex items-center justify-between">
+            <span className="text-[14px] font-medium text-[#333333]">
+              {isEnglish ? "Join a server" : "Rejoindre un serveur"}
+            </span>
+            <span className="text-[12px] text-[#8A929C]">
+              {isEnglish ? "Invite code" : "Code d'invitation"}
+            </span>
+          </div>
+          <p className="text-[13px] text-[#6B737D] mt-1">
             {isEnglish
-              ? "Paste a code or full invite link."
-              : "Colle un code ou un lien complet d'invitation."}
+              ? "Paste a code (6 characters) or a full invite link."
+              : "Collez un code (6 caractères) ou un lien complet d'invitation."}
           </p>
-          <div className="flex gap-2">
+          <div className="mt-2 flex gap-2">
             <input
               value={joinCode}
               onChange={(e) => { setJoinCode(e.target.value); setJoinError(null); }}
               onKeyDown={(e) => { if (e.key === "Enter") handleJoin(); }}
-              placeholder={isEnglish ? "Invite link or code..." : "Lien d'invite ou code..."}
+              placeholder="epitalk.io/ GEPI-2027"
               disabled={loadingJoin}
               className={[
-                "flex-1 h-9 px-3 text-[13px] rounded-lg border bg-white text-et-text placeholder:text-et-muted focus:outline-none focus:border-et-orange transition-colors",
-                shakeJoin ? "shake border-et-red-soft" : "border-et-border-input",
+                "flex-1 h-10 px-3 rounded border text-[14px] bg-white text-[#333333] placeholder:text-[#8A929C] focus:outline-none focus:border-[#0066CC] transition-colors",
+                shakeJoin ? "shake border-red-400" : "border-[#D5DAE0]",
               ].join(" ")}
             />
             <button
               onClick={handleJoin}
               disabled={loadingJoin}
-              className="h-9 px-3 rounded-lg border border-et-orange text-et-orange text-[13px] font-medium hover:bg-orange-50/50 transition-colors disabled:opacity-50 shrink-0"
+              className="px-6 h-10 rounded bg-[#0066CC] text-white text-[14px] font-medium hover:bg-[#0055AA] transition-colors disabled:opacity-50 shrink-0"
             >
               {loadingJoin ? "..." : isEnglish ? "Join" : "Rejoindre"}
             </button>
           </div>
-          {joinError && <p className="text-[11px] text-et-red-soft mt-1.5">{joinError}</p>}
+          {joinError && <p className="text-[11px] text-red-500 mt-1.5">{joinError}</p>}
         </div>
 
         {/* Cancel */}
-        <div className="flex justify-center">
-          <button
-            onClick={handleClose}
-            disabled={loadingCreate || loadingJoin}
-            className="px-8 py-2 rounded-lg border border-et-red-soft text-et-red-soft text-[13px] font-medium hover:bg-red-50/50 transition-colors disabled:opacity-50"
-          >
-            {isEnglish ? "Cancel" : "Annuler"}
-          </button>
-        </div>
+        <button
+          onClick={handleClose}
+          disabled={loadingCreate || loadingJoin}
+          className="mt-6 w-full h-10 rounded border border-[#D5DAE0] bg-white text-[#333333] text-[14px] font-medium hover:bg-[#F5F7FA] transition-colors disabled:opacity-50"
+        >
+          {isEnglish ? "Cancel" : "Annuler"}
+        </button>
       </div>
     </>,
     document.body

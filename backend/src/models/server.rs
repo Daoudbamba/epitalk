@@ -11,6 +11,7 @@ pub struct Server {
     pub id: Uuid,
     pub name: String,
     pub owner_id: Uuid,
+    pub avatar_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -21,6 +22,7 @@ pub struct ServerResponse {
     pub id: Uuid,
     pub name: String,
     pub owner_id: Uuid,
+    pub avatar_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub member_count: Option<i64>,
 }
@@ -31,6 +33,7 @@ impl From<Server> for ServerResponse {
             id: server.id,
             name: server.name,
             owner_id: server.owner_id,
+            avatar_url: server.avatar_url,
             created_at: server.created_at,
             member_count: None,
         }
