@@ -736,9 +736,9 @@ export function MembersPanel({
                 // Show "..." only for users who have moderation rights
                 const showMenu = canActOnMember && (isPedagoOrOwner || isModerator);
                 // Role-change items only for PÉDAGO/Owner
-                const canChangeRoleForMember = canActOnMember && isPedagoOrOwner;
+                const canChangeRoleForMember = canActOnMember && isOwner;
                 const showKick = canActOnMember && (isPedagoOrOwner || isModerator);
-                const showBan = canActOnMember && (isPedagoOrOwner || isModerator);
+                const showBan = canActOnMember && isPedagoOrOwner;
                 const showTransfer = canActOnMember && isOwner;
 
                 const presenceStatus = resolvePresenceStatus(m.user_id, presence, m.status);

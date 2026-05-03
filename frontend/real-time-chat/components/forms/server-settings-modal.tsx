@@ -35,6 +35,8 @@ export function ServerSettingsModal({ open, onOpenChange, onSuccess }: ServerSet
 
   const server = servers.find((s) => s.id === activeServerId) ?? null;
   const isOwner = !!server && !!currentUser && server.owner_id === currentUser.id;
+  const currentUserRole = members.find((m) => m.user_id === currentUser?.id)?.role;
+  const canInvite = isOwner || currentUserRole === "Admin" || currentUserRole === "Moderator";
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -166,6 +168,7 @@ export function ServerSettingsModal({ open, onOpenChange, onSuccess }: ServerSet
         {error && <p className="text-[11px] text-red-500 mb-4">{error}</p>}
 
         {/* Section — Inviter un membre */}
+        {canInvite && (
         <div className="mt-5">
           <div className="flex items-center justify-between">
             <span className="text-[14px] font-medium text-[#333333]">
@@ -190,8 +193,10 @@ export function ServerSettingsModal({ open, onOpenChange, onSuccess }: ServerSet
             </button>
           </div>
         </div>
+        )}
 
         {/* Section — Lien d'invitation */}
+        {canInvite && (
         <div className="mt-5">
           <div className="flex items-center justify-between">
             <span className="text-[14px] font-medium text-[#333333]">
@@ -230,6 +235,7 @@ export function ServerSettingsModal({ open, onOpenChange, onSuccess }: ServerSet
             </button>
           </div>
         </div>
+        )}
 
         {/* Danger zone — delete / leave */}
         <div className="mt-8 pt-5 border-t border-[#D5DAE0]">
