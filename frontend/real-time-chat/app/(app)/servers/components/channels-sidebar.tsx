@@ -1,14 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Hash, ChevronDown, Settings, Plus, Trash2 } from "lucide-react";
-import { channelsApi } from "@/lib/api";
+import { Hash, ChevronDown, Settings, Plus, Trash2, UserPlus, Copy, Check } from "lucide-react";
+import { channelsApi, serversApi } from "@/lib/api";
 import { ApiError } from "@/lib/api/errors";
 import { useServerStore } from "@/store/server.store";
 import { useChannelStore } from "@/store/channel.store";
 import { useAuthStore } from "@/store/auth.store";
+import { useMemberStore } from "@/store/member.store";
 import { CreateChannelModal } from "@/components/forms/create-channel-modal";
 import { useLanguage } from "@/components/language-provider";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 type Status = { type: "success" | "error" | "info"; text: string } | null;
 
@@ -30,7 +38,21 @@ export function ChannelsSidebar({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [openCreateChannel, setOpenCreateChannel] = useState(false);
+  const [openInviteDialog, setOpenInviteDialog] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [loadingInvite, setLoadingInvite] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { language } = useLanguage();
+  const isEnglish = language === "en";
+
+  const members = useMemberStore((s) => s.members);
+
+  const myRole = useMemo(() => {
+    if (!currentUser) return null;
+    return members.find((m) => m.user_id === currentUser.id)?.role ?? null;
+  }, [members, currentUser]);
+
+  const canInvite = myRole === "Owner" || myRole === "Admin" || myRole === "Moderator";
 
   const activeServer = useMemo(
     () => servers.find((s) => s.id === activeServerId) ?? null,
@@ -101,6 +123,30 @@ export function ChannelsSidebar({
   const handleChannelCreated = async () => {
     await refresh();
     setOk("Channel créé.");
+  };
+
+  const onOpenInviteDialog = async () => {
+    if (!activeServerId) return;
+    setInviteLink(null);
+    setCopied(false);
+    setOpenInviteDialog(true);
+    setLoadingInvite(true);
+    try {
+      const invite = await serversApi.createInvite(activeServerId);
+      const link = `${window.location.origin}/invite/${invite.code}`;
+      setInviteLink(link);
+    } catch (e) {
+      setInviteLink(null);
+    } finally {
+      setLoadingInvite(false);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const onDelete = async (channelId: string) => {
@@ -228,20 +274,31 @@ export function ChannelsSidebar({
             onClick={onOpenSettings}
             disabled={!activeServerId}
             className="flex-1 flex items-center justify-center gap-1.5 h-9 px-3 rounded border border-[#D5DAE0] bg-transparent text-[#6B737D] text-[13px] hover:bg-[#F5F7FA] hover:text-[#333333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            title={language === "en" ? "Server settings" : "Paramètres serveur"}
+            title={isEnglish ? "Server settings" : "Paramètres serveur"}
           >
             <Settings size={14} />
-            {language === "en" ? "Settings" : "Paramètres"}
+            {isEnglish ? "Settings" : "Paramètres"}
+          </button>
+        )}
+        {canInvite && (
+          <button
+            onClick={onOpenInviteDialog}
+            disabled={!activeServerId || loadingInvite}
+            className="flex items-center gap-1.5 h-9 px-3 rounded border border-[#D5DAE0] bg-transparent text-[#6B737D] text-[13px] hover:bg-[#F5F7FA] hover:text-[#333333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            title={isEnglish ? "Invite a member" : "Inviter un membre"}
+          >
+            <UserPlus size={14} />
+            {isEnglish ? "Invite" : "Inviter"}
           </button>
         )}
         <button
           onClick={onCreate}
           disabled={!activeServerId || loading}
           className="flex items-center gap-1.5 h-9 px-3 rounded bg-[#0066CC] text-white text-[13px] font-medium hover:bg-[#0055AA] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-          title={language === "en" ? "Create a channel" : "Créer un channel"}
+          title={isEnglish ? "Create a channel" : "Créer un channel"}
         >
           <Plus size={14} />
-          {language === "en" ? "Channel" : "Channel"}
+          {isEnglish ? "Channel" : "Channel"}
         </button>
       </div>
 
@@ -253,6 +310,58 @@ export function ChannelsSidebar({
         onSuccess={handleChannelCreated}
         serverName={activeServer?.name}
       />
+
+      {/* Invite dialog */}
+      <Dialog open={openInviteDialog} onOpenChange={setOpenInviteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {isEnglish ? "Invite a member" : "Inviter un membre"}
+            </DialogTitle>
+            <DialogDescription>
+              {isEnglish
+                ? "Share this link to let someone join your server."
+                : "Partage ce lien pour inviter quelqu'un sur ton serveur."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2">
+            {loadingInvite ? (
+              <div className="flex items-center justify-center h-12">
+                <div className="w-5 h-5 rounded-full border-2 border-[#0066CC] border-t-transparent animate-spin" />
+              </div>
+            ) : inviteLink ? (
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={inviteLink}
+                  className="flex-1 h-9 px-3 rounded border border-[#D5DAE0] bg-[#F5F5F5] text-[13px] text-[#333333] font-mono outline-none select-all"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <button
+                  onClick={copyInviteLink}
+                  className="h-9 w-9 flex items-center justify-center rounded border border-[#D5DAE0] bg-transparent text-[#6B737D] hover:bg-[#F5F7FA] hover:text-[#333333] transition-colors"
+                  title={isEnglish ? "Copy" : "Copier"}
+                >
+                  {copied ? <Check size={14} className="text-[#2BAE5C]" /> : <Copy size={14} />}
+                </button>
+              </div>
+            ) : (
+              <p className="text-[13px] text-red-600">
+                {isEnglish
+                  ? "Failed to generate invite link."
+                  : "Erreur lors de la génération du lien."}
+              </p>
+            )}
+            {inviteLink && (
+              <p className="mt-2 text-[11px] text-[#8A929C]">
+                {isEnglish
+                  ? "This link expires in 24 hours."
+                  : "Ce lien expire dans 24 heures."}
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
