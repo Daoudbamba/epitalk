@@ -1,5 +1,7 @@
 "use client";
 
+import { toast } from "sonner";
+
 import {
   useEffect,
   useLayoutEffect,
@@ -324,7 +326,12 @@ export function DmChatPanel() {
           `/api/gifs/search?q=${encodeURIComponent(query)}&limit=24`,
           { signal: controller.signal },
         );
-        if (!res.ok) { setGifResults([]); setGifLoading(false); return; }
+        if (!res.ok) {
+          setError("Le service GIF est indisponible actuellement");
+          setGifResults([]);
+          setGifLoading(false);
+          return;
+        }
         const json = await res.json();
         const results: { id: string; url: string; preview?: string; provider?: string }[] = [];
         if (json.results) {
@@ -345,7 +352,10 @@ export function DmChatPanel() {
         }
         setGifResults(results);
       } catch (err: unknown) {
-        if (!(err instanceof DOMException) || err.name !== "AbortError") console.error("GIF search failed", err);
+        if (!(err instanceof DOMException) || err.name !== "AbortError") {
+          console.error("GIF search failed", err);
+          setError("La recherche GIF a échoué");
+        }
         setGifResults([]);
       } finally {
         setGifLoading(false);
@@ -1025,7 +1035,12 @@ export function DmChatPanel() {
                 setGifLoading(true);
                 try {
                   const res = await fetch(`/api/gifs/search?q=${encodeURIComponent(gifQuery || "trending")}&limit=24`);
-                  if (!res.ok) { setGifResults([]); return; }
+                  if (!res.ok) {
+                    setError("Le service GIF est indisponible actuellement");
+                    setGifResults([]);
+                    toast.error("Service GIF indisponible");
+                    return;
+                  }
                   const json = await res.json();
                   const results: { id: string; url: string; preview?: string; provider?: string }[] = [];
                   if (json.results) {
@@ -1040,7 +1055,11 @@ export function DmChatPanel() {
                     }
                   }
                   setGifResults(results);
-                } catch { setGifResults([]); } finally { setGifLoading(false); }
+                } catch {
+                  setError("La recherche GIF a échoué");
+                  setGifResults([]);
+                  toast.error("Recherche GIF échouée");
+                } finally { setGifLoading(false); }
               }} className="px-3 py-1 bg-[#0066CC] text-white rounded text-[13px] hover:bg-[#0057AF]" disabled={gifLoading}>
                 {gifLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Rechercher"}
               </button>
@@ -1058,7 +1077,10 @@ export function DmChatPanel() {
                   onClick={() => {
                     try {
                       if (activePeerId) sendDmGif(activePeerId, { id: g.id, url: g.url, preview: g.preview, provider: g.provider }, null);
-                    } catch { setError("Erreur lors de l'envoi du GIF"); }
+                    } catch {
+                      setError("Erreur lors de l'envoi du GIF");
+                      toast.error("Échec de l'envoi du GIF");
+                    }
                     finally { setOpenGifPicker(null); setGifResults([]); setGifQuery(""); }
                   }}
                 />

@@ -76,7 +76,7 @@ export function createServersApi(client: FetchClient) {
         `/servers/${serverId}/members/${memberId}/ban`
       ),
     listBans: (serverId: string) =>
-      client.get<Ban[]>(`/servers/${serverId}/members/bans`),
+      client.get<Ban[]>(`/servers/${serverId}/members/bans/list`),
 
     // Invites
     createInvite: (serverId: string, expiresInHours?: number, maxUses?: number) =>

@@ -5,6 +5,15 @@ const RETRY_TIMEOUT_MS = 45_000;
 const NON_REFRESHABLE_PATHS = ["/auth/login", "/auth/register", "/auth/refresh"];
 let refreshInFlight: Promise<string | null> | null = null;
 
+function parseErrorPayloadFromText(rawText: string): unknown {
+  if (!rawText) return null;
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return rawText;
+  }
+}
+
 function isEnglishPreferred(): boolean {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem("epitalk_language") === "en";
@@ -180,13 +189,8 @@ export class FetchClient {
     }
 
     if (!res.ok) {
-      let payload: unknown = null;
-      try {
-        payload = await res.json();
-      } catch {
-        const text = await res.text().catch(() => "");
-        payload = text || null;
-      }
+      const rawText = await res.text().catch(() => "");
+      const payload = parseErrorPayloadFromText(rawText);
       throw parseApiError(res.status, payload);
     }
 
@@ -227,11 +231,8 @@ export class FetchClient {
     });
 
     if (!res.ok) {
-      let payload: unknown = null;
-      try { payload = await res.json(); } catch {
-        const text = await res.text().catch(() => "");
-        payload = text || null;
-      }
+      const rawText = await res.text().catch(() => "");
+      const payload = parseErrorPayloadFromText(rawText);
       throw parseApiError(res.status, payload);
     }
 

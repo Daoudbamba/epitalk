@@ -36,6 +36,7 @@ import {
 import type { WsMessage } from "@/lib/ws/types";
 import { useLanguage } from "@/components/language-provider";
 import { useAppearanceStore } from "@/store/appearance.store";
+import { toast } from "sonner";
 
 const FONT_SIZE_MAP = { sm: "14px", base: "16px", lg: "18px", xl: "20px" } as const;
 
@@ -172,6 +173,7 @@ export function ChatPanel() {
       setPinnedMessages(data);
     } catch (err) {
       console.error("Failed to load pinned messages:", err);
+      setError(isEnglish ? "Unable to load pinned messages" : "Impossible de charger les messages épinglés");
     } finally {
       setPinnedLoading(false);
     }
@@ -180,18 +182,28 @@ export function ChatPanel() {
   const handlePin = async (messageId: string) => {
     if (!activeServerId || !activeChannelId) return;
     try {
+      setError(null);
       await messagesApi.pin(activeServerId, activeChannelId, messageId);
+      await loadPinnedMessages();
+      toast.success(isEnglish ? "Message pinned" : "Message épinglé");
     } catch (err) {
       console.error("Failed to pin message:", err);
+      setError(isEnglish ? "You do not have permission to pin messages" : "Vous n'avez pas la permission d'épingler des messages");
+      toast.error(isEnglish ? "Pin failed" : "Échec de l'épinglage");
     }
   };
 
   const handleUnpin = async (messageId: string) => {
     if (!activeServerId || !activeChannelId) return;
     try {
+      setError(null);
       await messagesApi.unpin(activeServerId, activeChannelId, messageId);
+      await loadPinnedMessages();
+      toast.success(isEnglish ? "Message unpinned" : "Message désépinglé");
     } catch (err) {
       console.error("Failed to unpin message:", err);
+      setError(isEnglish ? "You do not have permission to unpin messages" : "Vous n'avez pas la permission de désépingler des messages");
+      toast.error(isEnglish ? "Unpin failed" : "Échec du désépinglage");
     }
   };
 
@@ -618,6 +630,7 @@ export function ChatPanel() {
           { signal: controller.signal },
         );
         if (!res.ok) {
+          setError(isEnglish ? "GIF service is currently unavailable" : "Le service GIF est indisponible actuellement");
           setGifResults([]);
           setGifLoading(false);
           return;
@@ -659,6 +672,7 @@ export function ChatPanel() {
       } catch (err: unknown) {
         if (!(err instanceof DOMException) || err.name !== "AbortError") {
           console.error("GIF search failed", err);
+          setError(isEnglish ? "GIF search failed" : "La recherche GIF a échoué");
         }
         setGifResults([]);
       } finally {
@@ -1445,7 +1459,13 @@ export function ChatPanel() {
                     const res = await fetch(
                       `/api/gifs/search?q=${encodeURIComponent(gifQuery || "trending")}&limit=24`,
                     );
-                    if (!res.ok) { setGifResults([]); setGifLoading(false); return; }
+                    if (!res.ok) {
+                      setGifResults([]);
+                      setGifLoading(false);
+                      setError(isEnglish ? "GIF service is currently unavailable" : "Le service GIF est indisponible actuellement");
+                      toast.error(isEnglish ? "GIF service unavailable" : "Service GIF indisponible");
+                      return;
+                    }
                     const json = await res.json();
                     const results: { id: string; url: string; preview?: string; provider?: string }[] = [];
                     if (json.results) {
@@ -1468,6 +1488,8 @@ export function ChatPanel() {
                   } catch (err) {
                     console.error("GIF search failed", err);
                     setGifResults([]);
+                    setError(isEnglish ? "GIF search failed" : "La recherche GIF a échoué");
+                    toast.error(isEnglish ? "GIF search failed" : "Recherche GIF échouée");
                   } finally {
                     setGifLoading(false);
                   }
@@ -1508,6 +1530,7 @@ export function ChatPanel() {
                     } catch (e) {
                       console.error("Failed to send gif", e);
                       setError("Erreur lors de l'envoi du GIF");
+                      toast.error(isEnglish ? "Failed to send GIF" : "Échec de l'envoi du GIF");
                     } finally {
                       setOpenGifPicker(null);
                       setGifResults([]);

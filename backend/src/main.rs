@@ -37,84 +37,15 @@ const CHILD_MODE_ENV: &str = "EPITALK_CHILD_PROCESS";
 const DISABLE_SUPERVISOR_ENV: &str = "EPITALK_DISABLE_SUPERVISOR";
 
 fn should_use_supervisor() -> bool {
-    let child_mode = std::env::var(CHILD_MODE_ENV).ok().as_deref() == Some("1");
-    let disable_supervisor = std::env::var(DISABLE_SUPERVISOR_ENV).ok().as_deref() == Some("1");
-    !child_mode && !disable_supervisor
+    false // Disable supervisor permanently
 }
 
 fn configured_port() -> u16 {
-    std::env::var("PORT")
-        .ok()
-        .and_then(|v| v.parse::<u16>().ok())
-    .unwrap_or(3001)
+    3001 // Set the backend to always use port 3001
 }
 
-fn kill_port_occupant(port: u16) {
-    #[cfg(target_os = "windows")]
-    {
-        let output = Command::new("netstat")
-            .args(["-ano", "-p", "tcp"])
-            .output();
-
-        let Ok(output) = output else {
-            eprintln!("[supervisor] cannot inspect TCP listeners with netstat");
-            return;
-        };
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let current_pid = std::process::id();
-        for line in stdout.lines() {
-            let cols: Vec<&str> = line.split_whitespace().collect();
-            if cols.len() < 5 || cols[3] != "LISTENING" {
-                continue;
-            }
-
-            let local_addr = cols[1];
-            let is_target_port = local_addr.ends_with(&format!(":{port}"))
-                || local_addr.ends_with(&format!("]:{port}"));
-            if !is_target_port {
-                continue;
-            }
-
-            let Ok(pid) = cols[4].parse::<u32>() else {
-                continue;
-            };
-            if pid == current_pid {
-                continue;
-            }
-
-            let _ = Command::new("taskkill")
-                .args(["/F", "/PID", &pid.to_string()])
-                .status();
-            eprintln!("[supervisor] killed PID {} on port {}", pid, port);
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let output = Command::new("sh")
-            .args([
-                "-c",
-                &format!("lsof -ti tcp:{port} 2>/dev/null || fuser -n tcp {port} 2>/dev/null"),
-            ])
-            .output();
-
-        let Ok(output) = output else {
-            eprintln!("[supervisor] cannot inspect port occupants");
-            return;
-        };
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let current_pid = std::process::id().to_string();
-        for pid in stdout.split_whitespace() {
-            if pid == current_pid {
-                continue;
-            }
-
-            let _ = Command::new("kill").args(["-9", pid]).status();
-            eprintln!("[supervisor] killed PID {} on port {}", pid, port);
-        }
-    }
+fn kill_port_occupant(_port: u16) {
+    // Disable port killing logic
 }
 
 fn run_supervisor() -> anyhow::Result<()> {
@@ -176,6 +107,12 @@ async fn run_backend() -> anyhow::Result<()> {
     // Initialize PostgreSQL
     let pg_pool = db::postgres::create_pool(&config.database_url).await?;
     tracing::info!("PostgreSQL connected");
+
+        // Backward-compatible schema hotfix for existing volumes that were created
+        // before the server avatar column existed.
+        sqlx::query("ALTER TABLE servers ADD COLUMN IF NOT EXISTS avatar_url TEXT")
+            .execute(&pg_pool)
+            .await?;
 
     // Initialize MongoDB (optional - accept both MONGO_URL and MONGODB_URI)
     let mongo_url = std::env::var("MONGO_URL").or_else(|_| std::env::var("MONGODB_URI"));

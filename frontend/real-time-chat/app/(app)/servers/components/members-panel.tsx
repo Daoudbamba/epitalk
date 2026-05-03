@@ -23,6 +23,7 @@ import type { PresenceStatus } from "@/lib/ws/types";
 import { serversApi } from "@/lib/api";
 import { ApiError, getErrorMessage } from "@/lib/api/errors";
 import { useLanguage } from "@/components/language-provider";
+import { toast } from "sonner";
 
 const ROLE_TAG: Record<string, string> = {
   Owner: "PED",
@@ -85,27 +86,44 @@ function formatExpiry(expiresAt: string | null | undefined, isEnglish: boolean):
     : `Expire dans ${days} jour${days > 1 ? "s" : ""}`;
 }
 
+function isConnectedStatus(status: string | null | undefined): boolean {
+  const normalized = (status ?? "offline").toLowerCase();
+  return normalized === "online" || normalized === "idle" || normalized === "dnd";
+}
+
+function resolvePresenceStatus(
+  userId: string,
+  presence: Record<string, { status: PresenceStatus; last_activity?: string }>,
+  fallbackStatus: string | null | undefined,
+): string {
+  return (presence[userId]?.status ?? fallbackStatus ?? "offline").toLowerCase();
+}
+
 function MemberMenu({
   canChangeRole,
   showKick,
   showBan,
+  showTransfer,
   onRolePedago,
   onRoleStaff,
   onRoleMember,
   onKick,
   onBanTemporary,
   onBanPermanent,
+  onTransfer,
   isEnglish,
 }: {
   canChangeRole: boolean;
   showKick: boolean;
   showBan: boolean;
+  showTransfer: boolean;
   onRolePedago: () => void;
   onRoleStaff: () => void;
   onRoleMember: () => void;
   onKick: () => void;
   onBanTemporary: () => void;
   onBanPermanent: () => void;
+  onTransfer: () => void;
   isEnglish: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -185,6 +203,18 @@ function MemberMenu({
               </button>
             </>
           )}
+          {showTransfer && (
+            <>
+              <div className="h-px bg-[#E1E5EA] my-1" />
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-[13px] hover:bg-[#ECEEF1] text-[#8A3F18]"
+                onClick={() => { setOpen(false); onTransfer(); }}
+              >
+                {isEnglish ? "Transfer ownership" : "Transférer la propriété"}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -251,6 +281,7 @@ export function MembersPanel({
 
   const [kickTarget, setKickTarget] = useState<{ id: string; username: string } | null>(null);
   const [banTarget, setBanTarget] = useState<{ id: string; username: string; permanent: boolean } | null>(null);
+  const [transferTarget, setTransferTarget] = useState<{ id: string; username: string } | null>(null);
   const [banReason, setBanReason] = useState("");
   const [banDurationValue, setBanDurationValue] = useState<number>(1);
   const [banDurationUnit, setBanDurationUnit] = useState<BanDurationUnit>("hours");
@@ -317,9 +348,11 @@ export function MembersPanel({
       const data = await serversApi.listMembers(server.id);
       setMembers(data);
       await onRefresh();
+      toast.success(isEnglish ? "Member kicked" : "Membre expulsé");
     } catch (err) {
       console.error("Kick error:", err);
       setActionError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
       try {
         const data = await serversApi.listMembers(server.id);
         setMembers(data);
@@ -339,9 +372,11 @@ export function MembersPanel({
       await serversApi.updateMemberRole(server.id, memberId, newRole);
       const data = await serversApi.listMembers(server.id);
       setMembers(data);
+      toast.success(isEnglish ? "Role updated" : "Rôle mis à jour");
     } catch (err) {
       console.error("Role update error:", err);
       setActionError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
     } finally {
       setLoadingRole(null);
     }
@@ -375,9 +410,11 @@ export function MembersPanel({
       } catch (refreshError) {
         console.warn("Servers refresh after ban failed:", refreshError);
       }
+      toast.success(isEnglish ? "Member banned" : "Membre banni");
     } catch (err) {
       console.error("Ban error:", err);
       setActionError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
       try {
         const data = await serversApi.listMembers(server.id);
         setMembers(data);
@@ -397,11 +434,30 @@ export function MembersPanel({
       await serversApi.unbanMember(server.id, memberId);
       const bansData = await serversApi.listBans(server.id);
       setBans(bansData);
+      toast.success(isEnglish ? "Member unbanned" : "Membre débanni");
     } catch (err) {
       console.error("Unban error:", err);
       setActionError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
     } finally {
       setLoadingUnban(null);
+    }
+  };
+
+  const doTransferOwnership = async () => {
+    if (!server || !transferTarget) return;
+    setActionError(null);
+    try {
+      await serversApi.transfer(server.id, transferTarget.id);
+      const data = await serversApi.listMembers(server.id);
+      setMembers(data);
+      await onRefresh();
+      setTransferTarget(null);
+      toast.success(isEnglish ? "Ownership transferred" : "Propriété transférée");
+    } catch (err) {
+      console.error("Transfer ownership error:", err);
+      setActionError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
     }
   };
 
@@ -429,8 +485,8 @@ export function MembersPanel({
   const myStatusConfig = STATUS_CONFIG[myRawStatus] ?? STATUS_CONFIG.online;
 
   const sortedMembers = [...members].sort((a, b) => {
-    const aOnline = presence[a.user_id]?.status?.toLowerCase() === "online" ? 0 : 1;
-    const bOnline = presence[b.user_id]?.status?.toLowerCase() === "online" ? 0 : 1;
+    const aOnline = isConnectedStatus(resolvePresenceStatus(a.user_id, presence, a.status)) ? 0 : 1;
+    const bOnline = isConnectedStatus(resolvePresenceStatus(b.user_id, presence, b.status)) ? 0 : 1;
     if (aOnline !== bOnline) return aOnline - bOnline;
     const rolePriority: Record<string, number> = {
       Owner: 0,
@@ -441,8 +497,12 @@ export function MembersPanel({
     return (rolePriority[a.role] ?? 4) - (rolePriority[b.role] ?? 4);
   });
 
+  const connectedCount = members.filter((m) =>
+    isConnectedStatus(resolvePresenceStatus(m.user_id, presence, m.status)),
+  ).length;
+
   const offlineCount = members.filter(
-    (m) => (presence[m.user_id]?.status?.toLowerCase() ?? "offline") === "offline",
+    (m) => !isConnectedStatus(resolvePresenceStatus(m.user_id, presence, m.status)),
   ).length;
 
   const categoryOrder = ["PÉDAGO", "STAFF", "ÉTUDIANTS"];
@@ -572,12 +632,39 @@ export function MembersPanel({
         </DialogContent>
       </Dialog>
 
+      {/* Ownership transfer confirmation */}
+      <ConfirmActionDialog
+        open={!!transferTarget}
+        onOpenChange={(open) => {
+          if (!open) setTransferTarget(null);
+        }}
+        title={
+          isEnglish
+            ? `Transfer ownership to ${transferTarget?.username ?? "this member"}?`
+            : `Transférer la propriété à ${transferTarget?.username ?? "ce membre"} ?`
+        }
+        description={
+          isEnglish
+            ? "This action is immediate and cannot be undone."
+            : "Cette action est immédiate et ne peut pas être annulée."
+        }
+        confirmLabel={isEnglish ? "Transfer" : "Transférer"}
+        cancelLabel={isEnglish ? "Cancel" : "Annuler"}
+        confirmVariant="destructive"
+        loading={false}
+        onConfirm={doTransferOwnership}
+      />
+
       {/* Header */}
       <div className="px-4 pt-3 pb-2 border-b border-[#D5DAE0] shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-[14px] font-semibold text-[#003D82]">
             {isEnglish ? "Members" : "Membres"} · {members.length}
           </span>
+        </div>
+
+        <div className="mt-1 text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C]">
+          {isEnglish ? "Connected" : "Connectés"} · {connectedCount}
         </div>
 
         {/* Presence selector */}
@@ -652,8 +739,9 @@ export function MembersPanel({
                 const canChangeRoleForMember = canActOnMember && isPedagoOrOwner;
                 const showKick = canActOnMember && (isPedagoOrOwner || isModerator);
                 const showBan = canActOnMember && (isPedagoOrOwner || isModerator);
+                const showTransfer = canActOnMember && isOwner;
 
-                const presenceStatus = presence[m.user_id]?.status?.toLowerCase();
+                const presenceStatus = resolvePresenceStatus(m.user_id, presence, m.status);
                 const isOnline = presenceStatus === "online";
                 const isDnd = presenceStatus === "dnd";
 
@@ -711,6 +799,7 @@ export function MembersPanel({
                             canChangeRole={canChangeRoleForMember}
                             showKick={showKick}
                             showBan={showBan}
+                            showTransfer={showTransfer}
                             onRolePedago={() => void onChangeRole(m.user_id, "Admin")}
                             onRoleStaff={() => void onChangeRole(m.user_id, "Moderator")}
                             onRoleMember={() => void onChangeRole(m.user_id, "Member")}
@@ -725,6 +814,7 @@ export function MembersPanel({
                               setBanTarget({ id: m.user_id, username: m.username, permanent: true });
                               setBanReason("");
                             }}
+                            onTransfer={() => setTransferTarget({ id: m.user_id, username: m.username })}
                             isEnglish={isEnglish}
                           />
                         )}
@@ -745,23 +835,38 @@ export function MembersPanel({
         </div>
       )}
 
-      {/* Hidden bans section — preserves ban/unban logic */}
-      <div className="hidden">
-        {loadingBans && <span />}
-        {bans.map((ban) => (
-          <div key={ban.id}>
-            <span>{ban.username}</span>
-            <span>{formatExpiry(ban.expires_at, isEnglish)}</span>
-            {canBan && (
-              <button
-                onClick={() => onUnban(ban.user_id)}
-                disabled={loadingUnban === ban.user_id}
-              >
-                {isEnglish ? "Unban" : "Débannir"}
-              </button>
-            )}
+      {/* Bans list */}
+      <div className="border-t border-[#D5DAE0] px-3 py-2">
+        <div className="text-[11px] font-mono uppercase tracking-[0.06em] text-[#8A929C] mb-2">
+          {isEnglish ? "Bans" : "Bannissements"} · {bans.length}
+        </div>
+        {loadingBans ? (
+          <p className="text-xs text-[#8A929C]">
+            {isEnglish ? "Loading..." : "Chargement..."}
+          </p>
+        ) : bans.length === 0 ? (
+          <p className="text-xs text-[#8A929C]">
+            {isEnglish ? "No banned members" : "Aucun membre banni"}
+          </p>
+        ) : (
+          <div className="max-h-28 overflow-y-auto space-y-1">
+            {bans.map((ban) => (
+              <div key={ban.id} className="flex items-center gap-2 rounded px-2 py-1 hover:bg-[#ECEEF1]">
+                <span className="flex-1 truncate text-[12px] text-[#333333]">{ban.username}</span>
+                <span className="text-[11px] text-[#8A929C] whitespace-nowrap">{formatExpiry(ban.expires_at, isEnglish)}</span>
+                {canBan && (
+                  <button
+                    onClick={() => onUnban(ban.user_id)}
+                    disabled={loadingUnban === ban.user_id}
+                    className="text-[11px] text-[#0066CC] hover:text-[#0057AF] disabled:opacity-50"
+                  >
+                    {loadingUnban === ban.user_id ? "..." : isEnglish ? "Unban" : "Débannir"}
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </aside>
   );

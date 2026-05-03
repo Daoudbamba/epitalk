@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const GIPHY_API_KEY = process.env.GIPHY_API_KEY;
+const DEFAULT_PUBLIC_GIPHY_API_KEY = "dc6zaTOxFJmzC";
+const GIPHY_API_KEY =
+  process.env.GIPHY_API_KEY ||
+  process.env.NEXT_PUBLIC_GIPHY_API_KEY ||
+  DEFAULT_PUBLIC_GIPHY_API_KEY;
 const GIPHY_BASE = "https://api.giphy.com/v1/gifs";
 
 export async function GET(req: NextRequest) {
-  if (!GIPHY_API_KEY) {
-    return NextResponse.json({ error: "GIF API not configured" }, { status: 503 });
-  }
-
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") || "trending";
   const limit = Math.min(Number(searchParams.get("limit") || "24"), 50);

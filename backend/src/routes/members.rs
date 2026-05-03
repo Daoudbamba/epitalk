@@ -7,7 +7,8 @@
 //! - DELETE /:user_id            - Kick member (ADMIN+, not OWNER)
 //! - POST   /:user_id/ban        - Ban member (ADMIN+, permanent or temporary)
 //! - DELETE /:user_id/ban        - Unban member (ADMIN+)
-//! - GET    /bans                - List active bans (members only)
+//! - GET    /bans                - List active bans (members only, legacy)
+//! - GET    /bans/list           - List active bans (members only, preferred)
 
 use axum::{
     extract::{Path, State},
@@ -29,6 +30,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_members))
         .route("/bans", get(list_bans))
+        .route("/bans/list", get(list_bans))
         .route("/:user_id", get(get_member).delete(kick_member))
         .route("/:user_id/role", axum::routing::patch(update_member_role))
         .route(
