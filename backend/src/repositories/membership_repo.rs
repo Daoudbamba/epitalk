@@ -277,6 +277,39 @@ impl MembershipRepository {
 
         Ok(bans)
     }
+
+    /// Lift all expired temporary bans:
+    /// - re-inserts the user into memberships as Member (idempotent)
+    /// - deletes the expired ban record
+    /// Returns a list of (server_id, user_id, server_name) for WS notifications.
+    pub async fn lift_expired_bans(
+        pool: &PgPool,
+    ) -> AppResult<Vec<(Uuid, Uuid, String)>> {
+        // Single CTE: find expired bans, delete them, return info to re-insert memberships
+        let rows: Vec<(Uuid, Uuid, String)> = sqlx::query_as(
+            r#"
+            WITH expired AS (
+                DELETE FROM bans
+                WHERE expires_at IS NOT NULL
+                  AND expires_at <= NOW()
+                RETURNING server_id, user_id
+            ),
+            reinserted AS (
+                INSERT INTO memberships (user_id, server_id, role)
+                SELECT e.user_id, e.server_id, 'MEMBER'
+                FROM expired e
+                ON CONFLICT (user_id, server_id) DO NOTHING
+            )
+            SELECT e.server_id, e.user_id, s.name AS server_name
+            FROM expired e
+            INNER JOIN servers s ON s.id = e.server_id
+            "#,
+        )
+        .fetch_all(pool)
+        .await?;
+
+        Ok(rows)
+    }
 }
 
 #[cfg(test)]

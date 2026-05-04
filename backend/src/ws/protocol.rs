@@ -203,6 +203,12 @@ pub enum ServerEvent {
         reason: Option<String>,
     },
 
+    /// A temporary ban has expired — the user is now a member again.
+    BanLifted {
+        server_id: String,
+        server_name: String,
+    },
+
     UserOnline {
         user_id: String,
         status: String,

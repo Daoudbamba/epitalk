@@ -38,6 +38,7 @@ const DISPATCH: Partial<Record<ServerEvent["type"], (payload: AnyPayload) => voi
   UserLeft: (p) => memberHandler.onUserLeft(p as never),
   Banned: (p) => memberHandler.onBanned(p as never),
   Kicked: (p) => memberHandler.onKicked(p as never),
+  BanLifted: (p) => memberHandler.onBanLifted(p as never),
 
   MessageNotification: (p) => messageHandler.onMessageNotification(p as never),
 };

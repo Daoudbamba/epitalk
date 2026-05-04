@@ -206,6 +206,11 @@ export const KickedSchema = z.object({
   reason: z.string().nullable().optional(),
 });
 
+export const BanLiftedSchema = z.object({
+  server_id: z.string(),
+  server_name: z.string(),
+});
+
 export const MessageNotificationSchema = z.object({
   server_id: z.string(),
   server_name: z.string(),
@@ -243,6 +248,7 @@ export const ServerEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("Error"), payload: ServerErrorSchema }),
   z.object({ type: z.literal("Banned"), payload: BannedSchema }),
   z.object({ type: z.literal("Kicked"), payload: KickedSchema }),
+  z.object({ type: z.literal("BanLifted"), payload: BanLiftedSchema }),
   z.object({ type: z.literal("Pong") }),
   z.object({ type: z.literal("MessageNotification"), payload: MessageNotificationSchema }),
 ]);

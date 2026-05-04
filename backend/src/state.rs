@@ -4,6 +4,7 @@ use axum::extract::FromRef;
 use crate::auth::JwtService;
 use crate::config::Config;
 use crate::db::message_repo::MessageRepo;
+use crate::repositories::membership_repo::MembershipRepository;
 use crate::services::message_service::MessageService;
 use crate::services::presence_service::PresenceService;
 use crate::services::typing_service::TypingService;
@@ -60,8 +61,40 @@ impl AppState {
             });
         }
 
+        // Background task: lift expired temporary bans every 60 seconds.
+        // For each expired ban: removes from `bans`, re-inserts into `memberships` as Member,
+        // and notifies the user via WebSocket if they are still connected.
+        {
+            let db_for_ban = db.clone();
+            let hub_for_ban = hub.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    match MembershipRepository::lift_expired_bans(&db_for_ban).await {
+                        Ok(lifted) => {
+                            for (server_id, user_id, server_name) in lifted {
+                                tracing::info!(
+                                    "[ban-expiry] lifted ban for user {} on server {}",
+                                    user_id, server_id
+                                );
+                                hub_for_ban.send_event_to_user(
+                                    &user_id.to_string(),
+                                    crate::ws::protocol::ServerEvent::BanLifted {
+                                        server_id: server_id.to_string(),
+                                        server_name,
+                                    },
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("[ban-expiry] failed to lift expired bans: {e}");
+                        }
+                    }
+                }
+            });
+        }
+
         // NOTE: stale-connection cleanup is handled exclusively by the per-connection
-        // cleanup_handle task inside handle_connection (connection.rs).  A global
         // heartbeat scanner was previously running here, but it raced against
         // register_connection: it evicted newly-registered connections that had not
         // yet received a Ping, causing broadcast_room to silently drop all messages

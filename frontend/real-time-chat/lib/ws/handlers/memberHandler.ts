@@ -1,11 +1,13 @@
 import type { z } from "zod";
-import type { UserJoinedSchema, UserLeftSchema, BannedSchema, KickedSchema } from "@/lib/ws/types";
+import type { UserJoinedSchema, UserLeftSchema, BannedSchema, KickedSchema, BanLiftedSchema } from "@/lib/ws/types";
 import { useServerStore } from "@/store/server.store";
+import { serversApi } from "@/lib/api";
 
 type UserJoined = z.infer<typeof UserJoinedSchema>;
 type UserLeft = z.infer<typeof UserLeftSchema>;
 type Banned = z.infer<typeof BannedSchema>;
 type Kicked = z.infer<typeof KickedSchema>;
+type BanLifted = z.infer<typeof BanLiftedSchema>;
 
 /**
  * Handles channel membership presence events and moderation events (ban).
@@ -41,5 +43,22 @@ export const memberHandler = {
       serverName,
       reason: payload.reason ?? null,
     });
+  },
+
+  onBanLifted(payload: BanLifted): void {
+    console.debug("[MemberHandler] ban lifted for server", payload.server_id);
+    // Fetch the server info and add it back to the server list
+    serversApi.get(payload.server_id)
+      .then((server) => {
+        const store = useServerStore.getState();
+        const alreadyMember = store.servers.some((s) => s.id === server.id);
+        if (!alreadyMember) {
+          store.setServers([...store.servers, server]);
+        }
+      })
+      .catch(() => {
+        // Server might not be fetchable yet — user can refresh manually
+        console.warn("[MemberHandler] could not fetch re-joined server", payload.server_id);
+      });
   },
 };
